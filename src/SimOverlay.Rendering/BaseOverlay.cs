@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using SimOverlay.Core;
 using SimOverlay.Core.Config;
+using SimOverlay.Core.Events;
 using Vortice.Direct2D1;
 
 namespace SimOverlay.Rendering;
@@ -44,6 +45,8 @@ public abstract class BaseOverlay : OverlayWindow
         _bus = bus;
         _resources = new RenderResources(D2DContext);
 
+        Subscribe<EditModeChangedEvent>(e => IsLocked = e.IsLocked);
+
         StartRenderLoop();
     }
 
@@ -79,12 +82,26 @@ public abstract class BaseOverlay : OverlayWindow
     // Render entry points
     // -------------------------------------------------------------------------
 
+    // Edit-mode border: Windows accent blue, 2 px, drawn on top of overlay content.
+    private static readonly (float R, float G, float B) EditBorderColor = (0f, 0.47f, 1f);
+
     /// <summary>
     /// Called by the render loop each frame. Forwards to
-    /// <see cref="OnRender(ID2D1DeviceContext, OverlayConfig)"/> with the current config.
+    /// <see cref="OnRender(ID2D1DeviceContext, OverlayConfig)"/> with the current config,
+    /// then overlays the edit-mode border when unlocked.
     /// </summary>
-    protected sealed override void OnRender(ID2D1DeviceContext context) =>
+    protected sealed override void OnRender(ID2D1DeviceContext context)
+    {
         OnRender(context, _config);
+
+        if (!IsLocked)
+        {
+            var w = (float)_config.Width;
+            var h = (float)_config.Height;
+            var brush = Resources.GetBrush(EditBorderColor.R, EditBorderColor.G, EditBorderColor.B);
+            context.DrawRectangle(new Vortice.RawRectF(1, 1, w - 1, h - 1), brush, 2f);
+        }
+    }
 
     /// <summary>
     /// Override to issue D2D draw calls for this overlay.
@@ -92,6 +109,31 @@ public abstract class BaseOverlay : OverlayWindow
     /// consistent for the entire frame.
     /// </summary>
     protected abstract void OnRender(ID2D1DeviceContext context, OverlayConfig config);
+
+    // -------------------------------------------------------------------------
+    // Window move / resize — keep config in sync
+    // -------------------------------------------------------------------------
+
+    protected override void OnMove(int x, int y)
+    {
+        _config.X = x;
+        _config.Y = y;
+    }
+
+    protected override void OnSize(int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+            return;
+
+        _config.Width  = width;
+        _config.Height = height;
+
+        // Resize the swap chain to match the new window size.
+        // NOTE: This runs on the UI (message pump) thread while the render thread
+        //       may be mid-frame. Full synchronisation is handled in TASK-108.
+        ResizeSwapChain(width, height);
+        _resources?.Invalidate();
+    }
 
     // -------------------------------------------------------------------------
     // 60 Hz render loop

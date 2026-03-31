@@ -144,4 +144,18 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern void PostQuitMessage(int nExitCode);
+
+    // -------------------------------------------------------------------------
+    // Window geometry
+    // -------------------------------------------------------------------------
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct RECT
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetWindowRect(nint hwnd, out RECT lpRect);
 }
