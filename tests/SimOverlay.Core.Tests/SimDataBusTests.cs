@@ -1,4 +1,5 @@
 using SimOverlay.Core;
+using Xunit;
 
 namespace SimOverlay.Core.Tests;
 
@@ -49,21 +50,22 @@ public class SimDataBusTests
     }
 
     [Fact]
-    public void PublishFromBackgroundThread_IsReceived()
+    public async Task PublishFromBackgroundThread_IsReceived()
     {
         var bus = new SimDataBus();
         var tcs = new TaskCompletionSource<int>();
 
         bus.Subscribe<int>(x => tcs.TrySetResult(x));
 
-        Task.Run(() => bus.Publish(7));
+        _ = Task.Run(() => bus.Publish(7));
 
-        Assert.True(tcs.Task.Wait(TimeSpan.FromSeconds(2)));
-        Assert.Equal(7, tcs.Task.Result);
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(tcs.Task, completed);
+        Assert.Equal(7, await tcs.Task);
     }
 
     [Fact]
-    public void ConcurrentSubscribeUnsubscribeDuringPublish_DoesNotThrow()
+    public async Task ConcurrentSubscribeUnsubscribeDuringPublish_DoesNotThrow()
     {
         var bus = new SimDataBus();
         var handlers = new List<Action<int>>();
@@ -106,7 +108,7 @@ public class SimDataBusTests
             }
         });
 
-        Task.WaitAll(publisher, mutator);
+        await Task.WhenAll(publisher, mutator);
 
         Assert.Empty(exceptions);
     }
