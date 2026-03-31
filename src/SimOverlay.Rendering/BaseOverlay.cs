@@ -85,10 +85,14 @@ public abstract class BaseOverlay : OverlayWindow
     // Edit-mode border: Windows accent blue, 2 px, drawn on top of overlay content.
     private static readonly (float R, float G, float B) EditBorderColor = (0f, 0.47f, 1f);
 
+    // Size of each resize-grip dot (px) and the step between dot centres.
+    private const float GripDotSize = 3f;
+    private const float GripDotStep = 6f;
+
     /// <summary>
     /// Called by the render loop each frame. Forwards to
     /// <see cref="OnRender(ID2D1DeviceContext, OverlayConfig)"/> with the current config,
-    /// then overlays the edit-mode border when unlocked.
+    /// then overlays the edit-mode border and resize grip when unlocked.
     /// </summary>
     protected sealed override void OnRender(ID2D1DeviceContext context)
     {
@@ -99,8 +103,23 @@ public abstract class BaseOverlay : OverlayWindow
             var w = (float)_config.Width;
             var h = (float)_config.Height;
             var brush = Resources.GetBrush(EditBorderColor.R, EditBorderColor.G, EditBorderColor.B);
+
+            // 2 px accent-blue border around the overlay.
             context.DrawRectangle(new Vortice.RawRectF(1, 1, w - 1, h - 1), brush, 2f);
+
+            // Three diagonal dots in the bottom-right corner — indicate resize grip.
+            // Laid out like a standard size-box: bottom-right, then one step up-left,
+            // then two steps up-left.
+            DrawGripDot(context, brush, w - 4f,                    h - 4f);
+            DrawGripDot(context, brush, w - 4f - GripDotStep,      h - 4f - GripDotStep);
+            DrawGripDot(context, brush, w - 4f - GripDotStep * 2f, h - 4f - GripDotStep * 2f);
         }
+    }
+
+    private static void DrawGripDot(ID2D1DeviceContext context, ID2D1Brush brush, float cx, float cy)
+    {
+        var half = GripDotSize / 2f;
+        context.FillRectangle(new Vortice.RawRectF(cx - half, cy - half, cx + half, cy + half), brush);
     }
 
     /// <summary>
@@ -127,17 +146,14 @@ public abstract class BaseOverlay : OverlayWindow
 
     protected override void OnSize(int width, int height)
     {
-        // Same guard: WM_SIZE arrives during CreateWindowEx, before BaseOverlay
-        // constructor body has run and assigned _config / _resources.
+        // WM_SIZE arrives during CreateWindowEx, before BaseOverlay constructor body
+        // has run and assigned _config / _resources.  Guard until fully initialized.
         if (_resources is null || width <= 0 || height <= 0)
             return;
 
         _config.Width  = width;
         _config.Height = height;
 
-        // Resize the swap chain to match the new window size.
-        // NOTE: This runs on the UI (message pump) thread while the render thread
-        //       may be mid-frame. Full synchronisation is handled in TASK-108.
         ResizeSwapChain(width, height);
         _resources.Invalidate();
     }

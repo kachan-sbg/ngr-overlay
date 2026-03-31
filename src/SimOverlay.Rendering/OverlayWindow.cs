@@ -125,7 +125,6 @@ public class OverlayWindow : IDisposable
 
         _hwnd = NativeMethods.CreateWindowEx(
             dwExStyle:   NativeMethods.WS_EX_TOPMOST
-                       | NativeMethods.WS_EX_LAYERED
                        | NativeMethods.WS_EX_TRANSPARENT
                        | NativeMethods.WS_EX_NOREDIRECTIONBITMAP,
             lpClassName:  _className,
@@ -274,6 +273,15 @@ public class OverlayWindow : IDisposable
             _swapChain.ResizeBuffers(0, width, height, Format.Unknown, SwapChainFlags.None).CheckError();
 
             BindRenderTarget();
+
+            // After ResizeBuffers the DComp visual's cached content extent still
+            // reflects the old swap-chain dimensions.  Re-setting the content and
+            // committing tells DWM to use the new buffer size for compositing.
+            // Without this, pixels outside the original window dimensions are
+            // composited at alpha=0 and therefore always click-through
+            // (WS_EX_LAYERED alpha hit-testing).
+            _dcompVisual?.SetContent(_swapChain);
+            _dcompDevice?.Commit();
         }
     }
 
@@ -294,7 +302,24 @@ public class OverlayWindow : IDisposable
 
                 case NativeMethods.WM_DESTROY:
                     OnDestroy();
+                    NativeMethods.PostQuitMessage(0);
                     return 0;
+
+                case NativeMethods.WM_GETMINMAXINFO:
+                    // Prevent the window from being dragged smaller than the resize
+                    // grip zone so the grip is always reachable.
+                    // MINMAXINFO layout (all ints, 4 bytes each):
+                    //   ptReserved (8), ptMaxSize (8), ptMaxPosition (8),
+                    //   ptMinTrackSize (8) ← offset 24, ptMaxTrackSize (8)
+                    System.Runtime.InteropServices.Marshal.WriteInt32(lParam, 24, ResizeGripSize);
+                    System.Runtime.InteropServices.Marshal.WriteInt32(lParam, 28, ResizeGripSize);
+                    return 0;
+
+                case NativeMethods.WM_EXITSIZEMOVE:
+                    // Windows may reset extended styles during a drag/resize operation.
+                    // Re-apply our lock state so hit-testing works correctly afterward.
+                    ApplyTransparentStyle(_isLocked);
+                    break;
 
                 case NativeMethods.WM_SIZE:
                     OnSize(LoWord(lParam), HiWord(lParam));
@@ -314,6 +339,10 @@ public class OverlayWindow : IDisposable
         }
     }
 
+    // Size of the bottom-right resize grip hit zone in pixels.
+    // Large enough to be reliably reachable on any window size.
+    protected const int ResizeGripSize = 24;
+
     protected virtual nint HandleNcHitTest(nint lParam)
     {
         var cx = LoWord(lParam);
@@ -321,10 +350,11 @@ public class OverlayWindow : IDisposable
 
         NativeMethods.GetWindowRect(_hwnd, out var rect);
 
-        // Bottom-right 16×16 px hit zone → resize grip
-        if (cx >= rect.Right - 16 && cy >= rect.Bottom - 16)
+        // Bottom-right ResizeGripSize×ResizeGripSize px hit zone → resize grip.
+        if (cx >= rect.Right - ResizeGripSize && cy >= rect.Bottom - ResizeGripSize)
             return NativeMethods.HTBOTTOMRIGHT;
 
+        // Everything else is draggable.
         return NativeMethods.HTCAPTION;
     }
 
@@ -355,6 +385,18 @@ public class OverlayWindow : IDisposable
             : new nint(current & ~NativeMethods.WS_EX_TRANSPARENT);
 
         NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE, next);
+
+        // Per MSDN: after SetWindowLongPtr you MUST call SetWindowPos with
+        // SWP_FRAMECHANGED for the new extended style to be honoured by the
+        // window manager (especially for hit-test / mouse routing changes).
+        NativeMethods.SetWindowPos(
+            _hwnd,
+            nint.Zero,
+            0, 0, 0, 0,
+            NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE |
+            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE |
+            NativeMethods.SWP_FRAMECHANGED);
+
     }
 
     // -------------------------------------------------------------------------
