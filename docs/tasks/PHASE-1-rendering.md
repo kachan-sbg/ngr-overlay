@@ -60,8 +60,8 @@
 
 ---
 
-**TASK-108** `[ ]`
+**TASK-108** `[x]`
 - **Title**: Device lost recovery
-- **Description**: Handle `DXGI_ERROR_DEVICE_REMOVED` and `DXGI_ERROR_DEVICE_RESET` from `Present()` or `EndDraw()`. Recovery: (1) Pause render loops. (2) Release all D3D11/D2D/DXGI/DComp resources. (3) Recreate everything. (4) Re-create `RenderResources`. (5) Resume render loops. Log the recovery event.
+- **Description**: Handle `DXGI_ERROR_DEVICE_REMOVED` and `DXGI_ERROR_DEVICE_RESET` from `Present()` or `EndDraw()`. `OverlayWindow.Render()` catches `SharpGenException` with those HRESULTs and re-throws as `DeviceLostException`. `BaseOverlay.RenderLoop` catches `DeviceLostException`, calls `RecoverDevice()` (releases all D3D/D2D/DComp resources and recreates them at the current size), then calls `_resources.Invalidate()` so brushes/formats are rebuilt next frame. If recovery itself fails, backs off 1 s before retrying. All other render errors remain rate-limited to one log per 5 s.
 - **Acceptance Criteria**: Disabling and re-enabling the GPU in Device Manager causes the app to recover within ~2 seconds without a crash. All overlays continue rendering after recovery.
 - **Dependencies**: TASK-106.
