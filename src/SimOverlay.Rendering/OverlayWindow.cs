@@ -205,11 +205,12 @@ public class OverlayWindow : IDisposable
 
         using var backBuffer = _swapChain!.GetBuffer<IDXGISurface>(0);
 
-        // PixelFormat is inferred from the DXGI surface (B8G8R8A8_UNorm / Premultiplied).
-        // Only BitmapOptions.Target is required to use this bitmap as a D2D render target.
         var bitmapProps = new BitmapProperties1
         {
             BitmapOptions = BitmapOptions.Target | BitmapOptions.CannotDraw,
+            PixelFormat = new Vortice.DCommon.PixelFormat(
+                Vortice.DXGI.Format.B8G8R8A8_UNorm,
+                Vortice.DCommon.AlphaMode.Premultiplied),
         };
 
         _d2dTarget = _d2dContext!.CreateBitmapFromDxgiSurface(backBuffer, bitmapProps);
