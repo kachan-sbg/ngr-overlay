@@ -1,0 +1,22 @@
+# Build output
+bin/
+obj/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Visual Studio / VS Code
+.vs/
+*.user
+*.suo
+.vscode/
+
+# Rider
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
