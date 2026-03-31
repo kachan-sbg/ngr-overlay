@@ -21,6 +21,8 @@ public sealed class RenderResources : IDisposable
 
     private bool _disposed;
 
+    public IDWriteFactory WriteFactory => _writeFactory;
+
     public RenderResources(ID2D1DeviceContext context)
     {
         _context = context;

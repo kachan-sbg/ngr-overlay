@@ -114,4 +114,34 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern nint GetWindowLongPtr(nint hwnd, int nIndex);
+
+    // -------------------------------------------------------------------------
+    // Message loop
+    // -------------------------------------------------------------------------
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MSG
+    {
+        public nint   hwnd;
+        public uint   message;
+        public nint   wParam;
+        public nint   lParam;
+        public uint   time;
+        public int    ptX;
+        public int    ptY;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetMessage(out MSG lpMsg, nint hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool TranslateMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    internal static extern nint DispatchMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    internal static extern void PostQuitMessage(int nExitCode);
 }
