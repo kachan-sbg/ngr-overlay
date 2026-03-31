@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SimOverlay.Rendering")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0acd87c53f24f67a42259af9f9ac0f7a45f1ca2f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a5e18cb4f12c5c1a1cfbdc52871a8edd933498a9")]
 [assembly: System.Reflection.AssemblyProductAttribute("SimOverlay.Rendering")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SimOverlay.Rendering")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
