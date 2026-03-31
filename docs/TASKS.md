@@ -14,8 +14,8 @@
 
 | Phase | Status | Tasks |
 |---|---|---|
-| 0 — Scaffolding | `[ ]` | TASK-001 to TASK-004 |
-| 1 — Rendering core | `[ ]` | TASK-101 to TASK-108 |
+| 0 — Scaffolding | `[x]` | TASK-001 to TASK-004 |
+| 1 — Rendering core | `[~]` | TASK-101 to TASK-108 |
 | 2 — iRacing data | `[ ]` | TASK-201 to TASK-205 |
 | 3 — Overlay framework | `[ ]` | TASK-301 to TASK-304 |
 | 4 — MVP overlays | `[ ]` | TASK-401 to TASK-405 |
@@ -26,7 +26,7 @@
 
 ---
 
-**TASK-001**
+**TASK-001** `[x]`
 - **Title**: Create solution and project structure
 - **Phase**: 0
 - **Description**: Create the `.sln` file and all six `.csproj` files (`Core`, `Rendering`, `Sim.Contracts`, `Sim.iRacing`, `Overlays`, `App`). Set target framework to `net8.0-windows`. Add project references matching the dependency graph in ARCHITECTURE.md. Configure `<Nullable>enable</Nullable>` and `<ImplicitUsings>enable</ImplicitUsings>` globally in `Directory.Build.props`. Set `<PlatformTarget>x64</PlatformTarget>` globally (required for DirectX P/Invoke).
@@ -35,7 +35,7 @@
 
 ---
 
-**TASK-002**
+**TASK-002** `[x]`
 - **Title**: Add NuGet dependencies
 - **Phase**: 0
 - **Description**: Add NuGet packages to appropriate projects. `SimOverlay.Rendering`: `Vortice.Direct2D1`, `Vortice.DirectComposition`, `Vortice.DXGI`, `Vortice.Direct3D11`. `SimOverlay.Sim.iRacing`: `IRSDKSharper`. `SimOverlay.App`: `Microsoft.Extensions.DependencyInjection`, `Microsoft.Extensions.Hosting`. `SimOverlay.Core`: `System.Text.Json` (already in .NET 8 BCL, no explicit package needed). Create `Directory.Packages.props` for central package version management.
@@ -44,7 +44,7 @@
 
 ---
 
-**TASK-003**
+**TASK-003** `[x]`
 - **Title**: Configure global build properties and CI
 - **Phase**: 0
 - **Description**: Create `Directory.Build.props` with shared properties: nullable, implicit usings, platform target, treat-warnings-as-errors for non-test projects. Create a `.editorconfig` with C# style rules consistent with project conventions. Add a basic `build.yml` GitHub Actions workflow (if using GitHub) or equivalent that builds the solution.
@@ -53,7 +53,7 @@
 
 ---
 
-**TASK-004**
+**TASK-004** `[x]`
 - **Title**: Create `docs/` directory with architecture documents
 - **Phase**: 0
 - **Description**: Add `PROJECT.md`, `ARCHITECTURE.md`, `OVERLAYS.md`, and `TASKS.md` to the `docs/` folder in the repository root. Commit them as the authoritative design reference.
@@ -66,7 +66,7 @@
 
 ---
 
-**TASK-101**
+**TASK-101** `[x]`
 - **Title**: Implement `SimDataBus`
 - **Phase**: 1
 - **Description**: In `SimOverlay.Core`, implement `ISimDataBus` and `SimDataBus`. The bus maintains a `Dictionary<Type, List<Delegate>>` of subscriber lists. `Publish<T>(T data)` iterates the subscriber list for `typeof(T)` and invokes each delegate. `Subscribe<T>(Action<T> handler)` adds the handler. `Unsubscribe<T>(Action<T> handler)` removes it. Use `ReaderWriterLockSlim` to protect the dictionary for concurrent subscribe/unsubscribe while allowing lock-free reads during publish (or use `ImmutableList` swap pattern for zero-contention publish path). Thread-safe; publish can be called from any thread.
@@ -75,7 +75,7 @@
 
 ---
 
-**TASK-102**
+**TASK-102** `[x]`
 - **Title**: Implement `ConfigStore` and `AppConfig`/`OverlayConfig`/`StreamOverrideConfig` types
 - **Phase**: 1
 - **Description**: In `SimOverlay.Core`, define `AppConfig`, `GlobalSettings`, `ColorConfig`, `OverlayConfig`, and `StreamOverrideConfig` POCOs. `OverlayConfig` contains all base visual properties plus `StreamOverrideConfig? StreamOverride`. `StreamOverrideConfig` mirrors all overridable fields from `OverlayConfig` as nullable (`int?`, `float?`, `ColorConfig?`) — X/Y position fields are NOT included (position is never overridable). Implement `OverlayConfig.Resolve(bool streamModeActive)` which returns the effective config: if `streamModeActive && StreamOverride?.Enabled == true`, return a new `OverlayConfig` where each field is `streamOverride.Field ?? this.Field` (X/Y always from `this`). `GlobalSettings` includes `StreamModeActive` (persisted). Implement `ConfigStore` with atomic save (`config.json.tmp` → `File.Move` with overwrite). Define defaults: stream override disabled, no override values set.
@@ -84,7 +84,7 @@
 
 ---
 
-**TASK-103**
+**TASK-103** `[x]`
 - **Title**: Implement `Sim.Contracts` DTOs and `ISimProvider`
 - **Phase**: 1
 - **Description**: In `SimOverlay.Sim.Contracts`, define all normalized data types: `SessionData`, `DriverData`, `RelativeData`, `RelativeEntry`, `SimState` (enum), `SessionType` (enum), `LicenseClass` (enum with static color-mapping helper method returning RGBA floats). Define `ISimProvider` interface with `SimId`, `IsRunning()`, `Start()`, `Stop()`, and `StateChanged` event.
@@ -93,7 +93,7 @@
 
 ---
 
-**TASK-104**
+**TASK-104** `[x]`
 - **Title**: Win32 overlay window — basic transparent window creation
 - **Phase**: 1
 - **Description**: In `SimOverlay.Rendering`, create `OverlayWindow`. Use `P/Invoke` (or Vortice's Win32 helpers) to register a `WNDCLASSEX`, create a window with `WS_POPUP | WS_VISIBLE` and extended styles `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST`. **Do not use `WS_EX_TOOLWINDOW`** — it hides the window from OBS's window picker. Set each window's title to its display name (e.g., `"SimOverlay — Relative"`). Set position and size from `OverlayConfig`. Show a fully transparent black window. Verify it is click-through.
@@ -102,7 +102,7 @@
 
 ---
 
-**TASK-105**
+**TASK-105** `[x]`
 - **Title**: DXGI swap chain and Direct2D device context setup
 - **Phase**: 1
 - **Description**: Extend `OverlayWindow` to create: (1) a `D3D11` device with `D3D11_CREATE_DEVICE_BGRA_SUPPORT`. (2) A `IDXGISwapChain1` via `IDXGIFactory2.CreateSwapChainForHwnd` with `DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL`, `DXGI_ALPHA_MODE_PREMULTIPLIED`, `DXGI_FORMAT_B8G8R8A8_UNORM`, buffer count 2. (3) A `ID2D1Device` from the DXGI device, and a `ID2D1DeviceContext` from the D2D device. (4) A `IDCompositionDevice`, `IDCompositionTarget` for the HWND, and a `IDCompositionVisual` bound to the swap chain. Call `IDCompositionDevice.Commit()`. Add a `Render()` method that clears to transparent and calls `swapChain.Present(1, 0)`.
@@ -111,7 +111,7 @@
 
 ---
 
-**TASK-106**
+**TASK-106** `[x]`
 - **Title**: Base overlay class — render loop and data snapshot pattern
 - **Phase**: 1
 - **Description**: In `SimOverlay.Rendering`, create `BaseOverlay : OverlayWindow`. Add: (1) `OverlayConfig Config` property. (2) Abstract `OnRender(ID2D1DeviceContext context, OverlayConfig config)`. (3) `Subscribe<T>` helper that delegates to `ISimDataBus` and stores the subscription token for cleanup on `Dispose()`. (4) A render loop on a dedicated `Thread` (`IsBackground = true`) running at 60 fps using `Stopwatch`-based timing. The render loop calls `Render()`. (5) `RenderResources` inner class for caching `ID2D1SolidColorBrush` and `IDWriteTextFormat` objects, invalidated when `OverlayConfig` changes.
