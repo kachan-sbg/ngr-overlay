@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="IRSDKSharper" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SimOverlay.Core\SimOverlay.Core.csproj" />
+    <ProjectReference Include="..\SimOverlay.Sim.Contracts\SimOverlay.Sim.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

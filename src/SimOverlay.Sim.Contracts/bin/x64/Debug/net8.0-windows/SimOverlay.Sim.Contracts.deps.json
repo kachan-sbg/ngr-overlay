@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "SimOverlay.Sim.Contracts/1.0.0": {
+        "dependencies": {
+          "SimOverlay.Core": "1.0.0"
+        },
+        "runtime": {
+          "SimOverlay.Sim.Contracts.dll": {}
+        }
+      },
+      "SimOverlay.Core/1.0.0": {
+        "runtime": {
+          "SimOverlay.Core.dll": {
+            "assemblyVersion": "1.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "SimOverlay.Sim.Contracts/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "SimOverlay.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

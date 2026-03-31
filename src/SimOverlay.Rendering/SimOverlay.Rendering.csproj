@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct2D1" />
+    <PackageReference Include="Vortice.DirectComposition" />
+    <PackageReference Include="Vortice.DXGI" />
+    <PackageReference Include="Vortice.Direct3D11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SimOverlay.Core\SimOverlay.Core.csproj" />
+  </ItemGroup>
+
+</Project>
