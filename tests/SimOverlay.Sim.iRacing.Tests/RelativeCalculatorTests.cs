@@ -122,40 +122,32 @@ public class RelativeCalculatorTests
     // ── Start/finish-line wrap-around ─────────────────────────────────────────
 
     [Fact]
-    public void WrapAround_CarJustAheadAcrossLine_SmallNegativeGap()
+    public void WrapAround_CarJustBehindAcrossLine_SmallPositiveGap()
     {
-        // Player is at 98 %, car 1 is at 2 % — it crossed the line and is just ahead.
-        // Delta raw = 0.02 − 0.98 = −0.96 → wraps to +0.04 → wait, that's wrong.
-        // Player at 0.98, car at 0.02:
-        //   delta = 0.02 − 0.98 = −0.96 → < −0.5 → add 1 → +0.04 (behind by 4%)
-        //   But physically the car crossed the line and is *ahead*.
-        // Actually "ahead" means a smaller position on the next lap — from the player's
-        // perspective at 98 %, a car at 2 % is *behind* by 4 % of the lap (it hasn't
-        // caught back up yet).  A car that is *ahead* of the player at 98 % would be
-        // at, say, 3 % on the NEXT lap (lap difference +1).
-        //
-        // Test: car at 2 % on the same lap as player at 98 % → behind by 4 % = 3.6 s.
+        // Player at 98 %, car 1 at 2 % on the SAME lap.
+        // The car has NOT yet crossed the line — it is 4 % of the lap BEHIND the player.
+        // delta = 0.02 − 0.98 = −0.96 → < −0.5 → add 1 → +0.04 → gap = +3.6 s (behind).
         var snapshot = MakeSnapshot(0, 90f, [
             (0, 0.98f, 5, 1),
             (1, 0.02f, 5, 2),   // 4 % behind after wrap → +3.6 s
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result  = IRacingRelativeCalculator.Compute(snapshot, drivers);
-        var carGap  = result.Entries.Single(e => !e.IsPlayer).GapToPlayerSeconds;
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var carGap = result.Entries.Single(e => !e.IsPlayer).GapToPlayerSeconds;
 
         Assert.True(carGap > 0f, "Car behind S/F line should have positive gap.");
         Assert.Equal(3.6f, carGap, precision: 3);
     }
 
     [Fact]
-    public void WrapAround_CarJustBehindAcrossLine_SmallPositiveGap()
+    public void WrapAround_CarJustAheadAcrossLine_SmallNegativeGap()
     {
-        // Player is at 2 %, car 1 is at 98 % — player just crossed the line, car is close behind.
-        // delta = 0.98 − 0.02 = +0.96 → > +0.5 → subtract 1 → −0.04 → –3.6 s (ahead).
+        // Player at 2 %, car 1 at 98 % — the car just crossed the S/F line and is 4 % AHEAD.
+        // delta = 0.98 − 0.02 = +0.96 → > +0.5 → subtract 1 → −0.04 → gap = −3.6 s (ahead).
         var snapshot = MakeSnapshot(0, 90f, [
             (0, 0.02f, 5, 2),
-            (1, 0.98f, 4, 1),   // −4 % after wrap → –3.6 s
+            (1, 0.98f, 4, 1),   // 4 % ahead after wrap → −3.6 s
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
