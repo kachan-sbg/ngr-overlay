@@ -37,12 +37,20 @@ public class OverlayWindow : IDisposable
     // Graphics state
     // -------------------------------------------------------------------------
 
-    private IDXGISwapChain1?    _swapChain;
-    private ID2D1DeviceContext? _d2dContext;
-    private ID2D1Bitmap1?       _d2dTarget;
+    private IDXGISwapChain1?      _swapChain;
+    private ID2D1DeviceContext?   _d2dContext;
+    private ID2D1Bitmap1?         _d2dTarget;
     private IDCompositionDevice?  _dcompDevice;
     private IDCompositionTarget?  _dcompTarget;
     private IDCompositionVisual?  _dcompVisual;
+
+    // Tracked so RecoverDevice() can recreate at the current size.
+    private int _currentWidth;
+    private int _currentHeight;
+
+    // DXGI error codes that indicate the GPU device has been lost.
+    private const int DxgiErrorDeviceRemoved = unchecked((int)0x887A0005);
+    private const int DxgiErrorDeviceReset   = unchecked((int)0x887A0007);
 
     /// <summary>
     /// Held by the render thread during each frame (BeginDraw → Present) and by
@@ -150,6 +158,8 @@ public class OverlayWindow : IDisposable
 
     private void InitializeGraphics(int width, int height)
     {
+        _currentWidth  = width;
+        _currentHeight = height;
         // 1 — D3D11 device (BGRA support required for Direct2D interop)
         D3D11.D3D11CreateDevice(
             adapter:          null,
@@ -224,6 +234,41 @@ public class OverlayWindow : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // Device lost recovery
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Releases all GPU resources and recreates them from scratch.
+    /// Called by the render loop in <see cref="BaseOverlay"/> after a
+    /// <see cref="DeviceLostException"/>. Must be called on the render thread
+    /// (or any thread — <see cref="RenderLock"/> is acquired internally).
+    /// </summary>
+    public void RecoverDevice()
+    {
+        lock (RenderLock)
+        {
+            ReleaseGraphicsResources();
+            InitializeGraphics(_currentWidth, _currentHeight);
+        }
+    }
+
+    private void ReleaseGraphicsResources()
+    {
+        // Must be called inside RenderLock.
+        if (_d2dContext != null)
+            _d2dContext.Target = null;
+        _d2dTarget?.Dispose();   _d2dTarget   = null;
+        _dcompVisual?.Dispose(); _dcompVisual = null;
+        _dcompTarget?.Dispose(); _dcompTarget = null;
+        _dcompDevice?.Dispose(); _dcompDevice = null;
+        _swapChain?.Dispose();   _swapChain   = null;
+        _d2dContext?.Dispose();  _d2dContext  = null;
+    }
+
+    private static bool IsDeviceLost(int hresult) =>
+        hresult == DxgiErrorDeviceRemoved || hresult == DxgiErrorDeviceReset;
+
+    // -------------------------------------------------------------------------
     // Rendering
     // -------------------------------------------------------------------------
 
@@ -235,17 +280,27 @@ public class OverlayWindow : IDisposable
     {
         lock (RenderLock)
         {
-            _d2dContext!.BeginDraw();
-            _d2dContext.Clear(new Vortice.Mathematics.Color4(0f, 0f, 0f, 0f));
+            try
+            {
+                _d2dContext!.BeginDraw();
+                _d2dContext.Clear(new Vortice.Mathematics.Color4(0f, 0f, 0f, 0f));
 
-            OnRender(_d2dContext);
+                OnRender(_d2dContext);
 
-            _d2dContext.EndDraw();
-            // SyncInterval=0: don't block waiting for vsync. The render loop's
-            // Stopwatch already caps to 60 fps, and for a CreateSwapChainForComposition
-            // flip chain DWM composites at its own rate regardless. Blocking on vsync
-            // here also holds RenderLock and delays WM_SIZE/ResizeBuffers on the UI thread.
-            _swapChain!.Present(0, PresentFlags.None);
+                _d2dContext.EndDraw();
+
+                // SyncInterval=0: don't block waiting for vsync. The render loop's
+                // Stopwatch already caps to 60 fps, and for a CreateSwapChainForComposition
+                // flip chain DWM composites at its own rate regardless.
+                var presentResult = _swapChain!.Present(0, PresentFlags.None);
+                if (IsDeviceLost(presentResult.Code))
+                    throw new DeviceLostException();
+                presentResult.CheckError();
+            }
+            catch (SharpGen.Runtime.SharpGenException ex) when (IsDeviceLost(ex.HResult))
+            {
+                throw new DeviceLostException(ex);
+            }
         }
     }
 
@@ -271,6 +326,9 @@ public class OverlayWindow : IDisposable
             _d2dTarget = null;
 
             _swapChain.ResizeBuffers(0, width, height, Format.Unknown, SwapChainFlags.None).CheckError();
+
+            _currentWidth  = width;
+            _currentHeight = height;
 
             BindRenderTarget();
 
@@ -425,14 +483,8 @@ public class OverlayWindow : IDisposable
 
         if (disposing)
         {
-            if (_d2dContext != null)
-            _d2dContext.Target = null;
-            _d2dTarget?.Dispose();
-            _dcompVisual?.Dispose();
-            _dcompTarget?.Dispose();
-            _dcompDevice?.Dispose();
-            _swapChain?.Dispose();
-            _d2dContext?.Dispose();
+            lock (RenderLock)
+                ReleaseGraphicsResources();
         }
 
         if (_hwnd != nint.Zero)

@@ -193,10 +193,29 @@ public abstract class BaseOverlay : OverlayWindow
                 {
                     Render();
                 }
+                catch (DeviceLostException)
+                {
+                    // GPU device was removed or reset (e.g. driver update, GPU disable).
+                    // Tear down and recreate all D3D/D2D/DComp resources, then
+                    // invalidate cached brushes/formats so they are rebuilt next frame.
+                    AppLog.Warn($"Device lost in '{DisplayName}' — recovering");
+                    try
+                    {
+                        RecoverDevice();
+                        _resources?.Invalidate();
+                        AppLog.Info($"Device recovered for '{DisplayName}'");
+                    }
+                    catch (Exception recoveryEx)
+                    {
+                        AppLog.Exception($"Device recovery failed for '{DisplayName}'", recoveryEx);
+                        // Back off 1 s before retrying to avoid hammering a broken GPU.
+                        Thread.Sleep(1000);
+                    }
+                }
                 catch (Exception ex)
                 {
                     // Rate-limit to one log entry per 5 seconds so a persistent
-                    // D2D error doesn't flood the file. Full recovery in TASK-108.
+                    // non-device-lost error doesn't flood the file.
                     var ts = DateTime.UtcNow;
                     if ((ts - _lastRenderErrorLog).TotalSeconds >= 5)
                     {
