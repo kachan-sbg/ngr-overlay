@@ -287,7 +287,19 @@ public class OverlayWindow : IDisposable
         return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
     }
 
-    protected virtual nint HandleNcHitTest(nint lParam) => NativeMethods.HTCAPTION;
+    protected virtual nint HandleNcHitTest(nint lParam)
+    {
+        var cx = LoWord(lParam);
+        var cy = HiWord(lParam);
+
+        NativeMethods.GetWindowRect(_hwnd, out var rect);
+
+        // Bottom-right 16×16 px hit zone → resize grip
+        if (cx >= rect.Right - 16 && cy >= rect.Bottom - 16)
+            return NativeMethods.HTBOTTOMRIGHT;
+
+        return NativeMethods.HTCAPTION;
+    }
 
     protected virtual void OnDestroy() { }
 

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using SimOverlay.App.Dev;
 using SimOverlay.Core;
+using SimOverlay.Core.Events;
 using SimOverlay.Rendering;
 
 namespace SimOverlay.App;
@@ -21,6 +22,9 @@ internal static class Program
 
             using var overlay = new TestOverlay(bus);
             overlay.Show();
+
+            // DEV: start in edit mode so drag/resize can be exercised immediately.
+            bus.Publish(new EditModeChangedEvent(IsLocked: false));
 
             MessagePump.Run();
         }
