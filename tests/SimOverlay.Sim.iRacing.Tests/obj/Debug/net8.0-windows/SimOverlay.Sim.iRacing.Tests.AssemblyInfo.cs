@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SimOverlay.Sim.iRacing.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+847f9558fc0525696ee602dc46203a2841253d7f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2c5f1d0dd94d6fe43b96374fff6874cd8a1bcd22")]
 [assembly: System.Reflection.AssemblyProductAttribute("SimOverlay.Sim.iRacing.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SimOverlay.Sim.iRacing.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
