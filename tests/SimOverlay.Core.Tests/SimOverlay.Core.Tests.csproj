@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SimOverlay.Core\SimOverlay.Core.csproj" />
+    <ProjectReference Include="..\..\src\SimOverlay.Sim.Contracts\SimOverlay.Sim.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

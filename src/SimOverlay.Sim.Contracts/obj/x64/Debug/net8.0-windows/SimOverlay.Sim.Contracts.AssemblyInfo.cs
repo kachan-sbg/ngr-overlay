@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SimOverlay.Sim.Contracts")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+847f9558fc0525696ee602dc46203a2841253d7f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2f1840246635775dd02e9322c8e346784bccb2dd")]
 [assembly: System.Reflection.AssemblyProductAttribute("SimOverlay.Sim.Contracts")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SimOverlay.Sim.Contracts")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
