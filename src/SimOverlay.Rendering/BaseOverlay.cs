@@ -64,6 +64,14 @@ public abstract class BaseOverlay : OverlayWindow
         _resources?.Invalidate();
     }
 
+    /// <summary>
+    /// Called after <see cref="OverlayWindow.RecoverDevice"/> when triggering
+    /// recovery from outside the render loop (e.g. a dev test shortcut).
+    /// <see cref="OnDeviceRecreated"/> already ran inside RecoverDevice under
+    /// the lock, so this just fires the overlay-level recovered callback.
+    /// </summary>
+    public void InvalidateResources() => OnDeviceRecovered();
+
     // -------------------------------------------------------------------------
     // ISimDataBus subscription helper
     // -------------------------------------------------------------------------
@@ -128,6 +136,22 @@ public abstract class BaseOverlay : OverlayWindow
     /// consistent for the entire frame.
     /// </summary>
     protected abstract void OnRender(ID2D1DeviceContext context, OverlayConfig config);
+
+    /// <summary>
+    /// Called inside <see cref="OverlayWindow.RecoverDevice"/> while RenderLock is held,
+    /// after new D2D resources are created. Updates <see cref="RenderResources"/> with
+    /// the new context so the next frame renders correctly.
+    /// </summary>
+    protected override void OnDeviceRecreated()
+    {
+        _resources?.UpdateContext(D2DContext);
+    }
+
+    /// <summary>
+    /// Called on the render thread immediately after a successful device recovery.
+    /// Override to reset any overlay-level state that depended on GPU resources.
+    /// </summary>
+    protected virtual void OnDeviceRecovered() { }
 
     // -------------------------------------------------------------------------
     // Window move / resize — keep config in sync
@@ -201,8 +225,11 @@ public abstract class BaseOverlay : OverlayWindow
                     AppLog.Warn($"Device lost in '{DisplayName}' — recovering");
                     try
                     {
+                        // RecoverDevice() calls OnDeviceRecreated() internally
+                        // (under RenderLock) which updates RenderResources with
+                        // the new D2D context before this thread runs again.
                         RecoverDevice();
-                        _resources?.Invalidate();
+                        OnDeviceRecovered();
                         AppLog.Info($"Device recovered for '{DisplayName}'");
                     }
                     catch (Exception recoveryEx)

@@ -15,6 +15,7 @@ namespace SimOverlay.App.Dev;
 internal sealed class TestOverlay : BaseOverlay
 {
     private int _frame;
+    private int _recoveries;
 
     public TestOverlay(ISimDataBus bus)
         : base(
@@ -23,6 +24,9 @@ internal sealed class TestOverlay : BaseOverlay
             bus: bus)
     {
     }
+
+    // Called by the render loop after automatic device recovery.
+    protected override void OnDeviceRecovered() => Interlocked.Increment(ref _recoveries);
 
     protected override void OnRender(ID2D1DeviceContext context, OverlayConfig config)
     {
@@ -37,9 +41,9 @@ internal sealed class TestOverlay : BaseOverlay
         var whiteBrush = Resources.GetBrush(1f, 1f, 1f, 1f);
         context.DrawRectangle(new Vortice.RawRectF(1, 1, w - 1, h - 1), whiteBrush, 1f);
 
-        // Frame counter text via DrawTextLayout (works on ID2D1DeviceContext)
-        var label = $"Frame {++_frame}";
-        var textFormat = Resources.GetTextFormat("Segoe UI", 18f);
+        // Frame counter + recovery count
+        var label = $"Frame {++_frame}  |  Recoveries: {_recoveries}";
+        var textFormat = Resources.GetTextFormat("Segoe UI", 14f);
         using var layout = Resources.WriteFactory.CreateTextLayout(label, textFormat, w - 20, h - 20);
         context.DrawTextLayout(new System.Numerics.Vector2(10, 10), layout, whiteBrush);
     }

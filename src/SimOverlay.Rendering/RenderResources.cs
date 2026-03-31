@@ -13,7 +13,7 @@ namespace SimOverlay.Rendering;
 /// </summary>
 public sealed class RenderResources : IDisposable
 {
-    private readonly ID2D1DeviceContext _context;
+    private ID2D1DeviceContext _context;
     private readonly IDWriteFactory _writeFactory;
 
     private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = new();
@@ -72,6 +72,22 @@ public sealed class RenderResources : IDisposable
         }
 
         return format;
+    }
+
+    // -------------------------------------------------------------------------
+    // Context update — called after device recovery with the new D2D context
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Replaces the D2D device context and invalidates all cached resources.
+    /// Must be called after <see cref="OverlayWindow.RecoverDevice"/> so that
+    /// subsequent <see cref="GetBrush"/> / <see cref="GetTextFormat"/> calls
+    /// use the newly created context rather than the dead one.
+    /// </summary>
+    public void UpdateContext(ID2D1DeviceContext context)
+    {
+        _context = context;
+        Invalidate();
     }
 
     // -------------------------------------------------------------------------

@@ -154,6 +154,15 @@ internal static class NativeMethods
     // -------------------------------------------------------------------------
     internal const uint WM_GETMINMAXINFO = 0x0024;
     internal const uint WM_EXITSIZEMOVE  = 0x0232;
+    internal const uint WM_HOTKEY        = 0x0312;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool RegisterHotKey(nint hwnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnregisterHotKey(nint hwnd, int id);
 
     // -------------------------------------------------------------------------
     // SetWindowPos flags
