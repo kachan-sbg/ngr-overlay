@@ -116,13 +116,20 @@ public abstract class BaseOverlay : OverlayWindow
 
     protected override void OnMove(int x, int y)
     {
+        // _resources is set after OverlayWindow's constructor (which fires WM_MOVE
+        // synchronously during CreateWindowEx). Guard until fully initialized.
+        if (_resources is null)
+            return;
+
         _config.X = x;
         _config.Y = y;
     }
 
     protected override void OnSize(int width, int height)
     {
-        if (width <= 0 || height <= 0)
+        // Same guard: WM_SIZE arrives during CreateWindowEx, before BaseOverlay
+        // constructor body has run and assigned _config / _resources.
+        if (_resources is null || width <= 0 || height <= 0)
             return;
 
         _config.Width  = width;
@@ -132,7 +139,7 @@ public abstract class BaseOverlay : OverlayWindow
         // NOTE: This runs on the UI (message pump) thread while the render thread
         //       may be mid-frame. Full synchronisation is handled in TASK-108.
         ResizeSwapChain(width, height);
-        _resources?.Invalidate();
+        _resources.Invalidate();
     }
 
     // -------------------------------------------------------------------------
@@ -150,8 +157,13 @@ public abstract class BaseOverlay : OverlayWindow
         _renderThread.Start();
     }
 
+    // Timestamp of the last render-error log entry — used to rate-limit logging
+    // so a persistent D2D error doesn't flood the log at 60 fps.
+    private DateTime _lastRenderErrorLog = DateTime.MinValue;
+
     private void RenderLoop()
     {
+        AppLog.Info($"Render loop started for '{DisplayName}'");
         var sw = Stopwatch.StartNew();
         var nextFrameMs = sw.Elapsed.TotalMilliseconds;
 
@@ -165,10 +177,16 @@ public abstract class BaseOverlay : OverlayWindow
                 {
                     Render();
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Swallow individual frame errors.
-                    // DXGI device-lost is handled separately in TASK-108.
+                    // Rate-limit to one log entry per 5 seconds so a persistent
+                    // D2D error doesn't flood the file. Full recovery in TASK-108.
+                    var ts = DateTime.UtcNow;
+                    if ((ts - _lastRenderErrorLog).TotalSeconds >= 5)
+                    {
+                        AppLog.Exception($"Render error in '{DisplayName}'", ex);
+                        _lastRenderErrorLog = ts;
+                    }
                 }
 
                 nextFrameMs += TargetFrameMs;
@@ -196,8 +214,10 @@ public abstract class BaseOverlay : OverlayWindow
     protected override void Dispose(bool disposing)
     {
         // Signal the render thread to stop, then wait for it to exit cleanly.
+        AppLog.Info($"Stopping render loop for '{DisplayName}'");
         _running = false;
         _renderThread?.Join(TimeSpan.FromSeconds(2));
+        AppLog.Info($"Render loop stopped for '{DisplayName}'");
 
         if (disposing)
         {

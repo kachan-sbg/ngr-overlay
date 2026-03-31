@@ -14,26 +14,39 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            var ex = e.ExceptionObject as Exception;
+            AppLog.Error($"UNHANDLED EXCEPTION (terminating={e.IsTerminating}): {ex?.GetType().Name}: {ex?.Message}");
+            if (ex is not null) AppLog.Error(ex.StackTrace ?? "(no stack trace)");
+        };
+
+        AppLog.Info("Main() entered");
+
         try
         {
-            // DEV: spin up a test overlay to verify the rendering pipeline.
-            // Replace this block with the real host/DI wiring in a later task.
             var bus = new SimDataBus();
+            AppLog.Info("SimDataBus created");
 
             using var overlay = new TestOverlay(bus);
-            overlay.Show();
+            AppLog.Info("TestOverlay created — entering message pump");
 
-            // DEV: start in edit mode so drag/resize can be exercised immediately.
+            overlay.Show();
             bus.Publish(new EditModeChangedEvent(IsLocked: false));
 
             MessagePump.Run();
+            AppLog.Info("Message pump exited — clean shutdown");
         }
         catch (Exception ex)
         {
+            AppLog.Exception("Fatal startup error", ex);
+
             MessageBox(nint.Zero,
                 $"{ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}",
                 "SimOverlay — Startup Error",
                 0x10 /* MB_ICONERROR */);
         }
+
+        AppLog.Info("Main() exiting");
     }
 }

@@ -44,6 +44,13 @@ public class OverlayWindow : IDisposable
     private IDCompositionTarget?  _dcompTarget;
     private IDCompositionVisual?  _dcompVisual;
 
+    /// <summary>
+    /// Held by the render thread during each frame (BeginDraw → Present) and by
+    /// the UI thread during ResizeSwapChain. Prevents a resize from tearing the
+    /// render target out from under an in-progress frame.
+    /// </summary>
+    internal readonly object RenderLock = new();
+
     // -------------------------------------------------------------------------
     // Public surface
     // -------------------------------------------------------------------------
@@ -227,13 +234,20 @@ public class OverlayWindow : IDisposable
     /// </summary>
     public void Render()
     {
-        _d2dContext!.BeginDraw();
-        _d2dContext.Clear(new Vortice.Mathematics.Color4(0f, 0f, 0f, 0f));
+        lock (RenderLock)
+        {
+            _d2dContext!.BeginDraw();
+            _d2dContext.Clear(new Vortice.Mathematics.Color4(0f, 0f, 0f, 0f));
 
-        OnRender(_d2dContext);
+            OnRender(_d2dContext);
 
-        _d2dContext.EndDraw();
-        _swapChain!.Present(1, PresentFlags.None);
+            _d2dContext.EndDraw();
+            // SyncInterval=0: don't block waiting for vsync. The render loop's
+            // Stopwatch already caps to 60 fps, and for a CreateSwapChainForComposition
+            // flip chain DWM composites at its own rate regardless. Blocking on vsync
+            // here also holds RenderLock and delays WM_SIZE/ResizeBuffers on the UI thread.
+            _swapChain!.Present(0, PresentFlags.None);
+        }
     }
 
     /// <summary>
@@ -251,13 +265,16 @@ public class OverlayWindow : IDisposable
         if (_swapChain is null || _d2dContext is null)
             return;
 
-        _d2dContext.Target = null;
-        _d2dTarget?.Dispose();
-        _d2dTarget = null;
+        lock (RenderLock)
+        {
+            _d2dContext.Target = null;
+            _d2dTarget?.Dispose();
+            _d2dTarget = null;
 
-        _swapChain.ResizeBuffers(0, width, height, Format.Unknown, SwapChainFlags.None).CheckError();
+            _swapChain.ResizeBuffers(0, width, height, Format.Unknown, SwapChainFlags.None).CheckError();
 
-        BindRenderTarget();
+            BindRenderTarget();
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -266,25 +283,35 @@ public class OverlayWindow : IDisposable
 
     private nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
     {
-        switch (msg)
+        // Top-level catch: an unhandled exception escaping a WndProc into native
+        // code causes silent process termination on .NET. Log and swallow instead.
+        try
         {
-            case NativeMethods.WM_NCHITTEST:
-                return _isLocked ? NativeMethods.HTTRANSPARENT : HandleNcHitTest(lParam);
+            switch (msg)
+            {
+                case NativeMethods.WM_NCHITTEST:
+                    return _isLocked ? NativeMethods.HTTRANSPARENT : HandleNcHitTest(lParam);
 
-            case NativeMethods.WM_DESTROY:
-                OnDestroy();
-                return 0;
+                case NativeMethods.WM_DESTROY:
+                    OnDestroy();
+                    return 0;
 
-            case NativeMethods.WM_SIZE:
-                OnSize(LoWord(lParam), HiWord(lParam));
-                break;
+                case NativeMethods.WM_SIZE:
+                    OnSize(LoWord(lParam), HiWord(lParam));
+                    break;
 
-            case NativeMethods.WM_MOVE:
-                OnMove(LoWord(lParam), HiWord(lParam));
-                break;
+                case NativeMethods.WM_MOVE:
+                    OnMove(LoWord(lParam), HiWord(lParam));
+                    break;
+            }
+
+            return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
         }
-
-        return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
+        catch (Exception ex)
+        {
+            Core.AppLog.Exception($"WndProc exception (msg=0x{msg:X4}) in '{DisplayName}'", ex);
+            return 0;
+        }
     }
 
     protected virtual nint HandleNcHitTest(nint lParam)
