@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "84iLKSPHol8=",
+  "success": true,
+  "projectFilePath": "G:\\ngr-overlay\\src\\SimOverlay.Rendering\\SimOverlay.Rendering.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\tom\\.nuget\\packages\\sharpgen.runtime\\2.1.2-beta\\sharpgen.runtime.2.1.2-beta.nupkg.sha512",
+    "C:\\Users\\tom\\.nuget\\packages\\sharpgen.runtime.com\\2.1.2-beta\\sharpgen.runtime.com.2.1.2-beta.nupkg.sha512",
+    "C:\\Users\\tom\\.nuget\\packages\\vortice.direct2d1\\3.5.0\\vortice.direct2d1.3.5.0.nupkg.sha512",
+    "C:\\Users\\tom\\.nuget\\packages\\vortice.direct3d11\\3.5.0\\vortice.direct3d11.3.5.0.nupkg.sha512",
+    "C:\\Users\\tom\\.nuget\\packages\\vortice.directcomposition\\3.5.0\\vortice.directcomposition.3.5.0.nupkg.sha512",
+    "C:\\Users\\tom\\.nuget\\packages\\vortice.directx\\3.5.0\\vortice.directx.3.5.0.nupkg.sha512",
+    "C:\\Users\\tom\\.nuget\\packages\\vortice.dxgi\\3.5.0\\vortice.dxgi.3.5.0.nupkg.sha512",
+    "C:\\Users\\tom\\.nuget\\packages\\vortice.mathematics\\1.7.8\\vortice.mathematics.1.7.8.nupkg.sha512"
+  ],
+  "logs": []
+}

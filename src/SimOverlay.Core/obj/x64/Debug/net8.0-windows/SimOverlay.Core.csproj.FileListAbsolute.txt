@@ -1,0 +1,12 @@
+G:\ngr-overlay\src\SimOverlay.Core\bin\x64\Debug\net8.0-windows\SimOverlay.Core.deps.json
+G:\ngr-overlay\src\SimOverlay.Core\bin\x64\Debug\net8.0-windows\SimOverlay.Core.dll
+G:\ngr-overlay\src\SimOverlay.Core\bin\x64\Debug\net8.0-windows\SimOverlay.Core.pdb
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\SimOverlay.Core.GeneratedMSBuildEditorConfig.editorconfig
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\SimOverlay.Core.AssemblyInfoInputs.cache
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\SimOverlay.Core.AssemblyInfo.cs
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\SimOverlay.Core.csproj.CoreCompileInputs.cache
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\SimOverlay.Core.sourcelink.json
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\SimOverlay.Core.dll
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\refint\SimOverlay.Core.dll
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\SimOverlay.Core.pdb
+G:\ngr-overlay\src\SimOverlay.Core\obj\x64\Debug\net8.0-windows\ref\SimOverlay.Core.dll

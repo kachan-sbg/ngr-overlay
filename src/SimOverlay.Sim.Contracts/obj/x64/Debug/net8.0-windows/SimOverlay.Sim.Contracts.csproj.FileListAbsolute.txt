@@ -1,0 +1,16 @@
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\bin\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.deps.json
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\bin\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.dll
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\bin\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.pdb
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\bin\x64\Debug\net8.0-windows\SimOverlay.Core.dll
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\bin\x64\Debug\net8.0-windows\SimOverlay.Core.pdb
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.csproj.AssemblyReference.cache
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.GeneratedMSBuildEditorConfig.editorconfig
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.AssemblyInfoInputs.cache
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.AssemblyInfo.cs
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.csproj.CoreCompileInputs.cache
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.sourcelink.json
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverl.6F246A96.Up2Date
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.dll
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\refint\SimOverlay.Sim.Contracts.dll
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\SimOverlay.Sim.Contracts.pdb
+G:\ngr-overlay\src\SimOverlay.Sim.Contracts\obj\x64\Debug\net8.0-windows\ref\SimOverlay.Sim.Contracts.dll
