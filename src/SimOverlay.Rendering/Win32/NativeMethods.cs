@@ -12,8 +12,12 @@ internal static class NativeMethods
 
     internal const int WS_EX_TOPMOST             = 0x00000008;
     internal const int WS_EX_TRANSPARENT         = 0x00000020;
-    internal const int WS_EX_LAYERED             = 0x00080000;
     internal const int WS_EX_NOREDIRECTIONBITMAP = 0x00200000;
+    // WS_EX_LAYERED is intentionally NOT used: it causes Windows to build a cached
+    // alpha hit-test mask from the first DComp frame and never expand it on resize,
+    // which permanently makes all pixels outside the initial window size click-through.
+    // Transparency is provided by WS_EX_NOREDIRECTIONBITMAP + DComp premultiplied alpha.
+    // Click-through in locked mode is handled by WM_NCHITTEST returning HTTRANSPARENT.
 
     // WS_EX_TOOLWINDOW is intentionally NOT defined here.
     // Its presence would hide overlay windows from OBS's window picker.
@@ -146,6 +150,21 @@ internal static class NativeMethods
     internal static extern void PostQuitMessage(int nExitCode);
 
     // -------------------------------------------------------------------------
+    // WM_ messages (additional)
+    // -------------------------------------------------------------------------
+    internal const uint WM_GETMINMAXINFO = 0x0024;
+    internal const uint WM_EXITSIZEMOVE  = 0x0232;
+
+    // -------------------------------------------------------------------------
+    // SetWindowPos flags
+    // -------------------------------------------------------------------------
+    internal const uint SWP_NOSIZE      = 0x0001;
+    internal const uint SWP_NOMOVE      = 0x0002;
+    internal const uint SWP_NOZORDER    = 0x0004;
+    internal const uint SWP_NOACTIVATE  = 0x0010;
+    internal const uint SWP_FRAMECHANGED = 0x0020;
+
+    // -------------------------------------------------------------------------
     // Window geometry
     // -------------------------------------------------------------------------
 
@@ -158,4 +177,15 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetWindowRect(nint hwnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetWindowPos(
+        nint   hwnd,
+        nint   hwndInsertAfter,
+        int    x,
+        int    y,
+        int    cx,
+        int    cy,
+        uint   uFlags);
 }

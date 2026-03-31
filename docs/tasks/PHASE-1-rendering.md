@@ -52,10 +52,10 @@
 
 ---
 
-**TASK-107** `[~]`
+**TASK-107** `[x]`
 - **Title**: Lock/unlock (edit mode) — drag and resize
-- **Description**: Implement edit mode in `OverlayWindow`. When `IsLocked = false`: (1) Remove `WS_EX_TRANSPARENT`. (2) Handle `WM_NCHITTEST`: return `HTCAPTION` for most of the client area, `HTBOTTOMRIGHT` for a 16×16 px corner hit zone. (3) Draw a 2px highlight border. When `IsLocked = true`: re-add `WS_EX_TRANSPARENT`, remove the border. Subscribe `BaseOverlay` to `EditModeChangedEvent` on `ISimDataBus`. `OnMove`/`OnSize` keep `OverlayConfig` X/Y/Width/Height in sync.
-- **Acceptance Criteria**: In unlocked mode, overlays can be dragged and resized from the bottom-right corner. The blue border is visible. In locked mode, mouse clicks pass through. Position/size values are preserved in config after re-lock.
+- **Description**: Implement edit mode in `OverlayWindow`. When `IsLocked = false`: (1) Remove `WS_EX_TRANSPARENT` (+ `SetWindowPos(SWP_FRAMECHANGED)` to apply immediately). (2) Handle `WM_NCHITTEST`: return `HTCAPTION` for most of the client area, `HTBOTTOMRIGHT` for a 24×24 px corner hit zone. (3) Draw a 2 px accent-blue border and three diagonal grip dots in the corner. When `IsLocked = true`: re-add `WS_EX_TRANSPARENT`, remove the border. Subscribe `BaseOverlay` to `EditModeChangedEvent` on `ISimDataBus`. `OnMove`/`OnSize` keep `OverlayConfig` X/Y/Width/Height in sync. `WM_EXITSIZEMOVE` re-applies the transparent style after each drag. `WM_GETMINMAXINFO` enforces a minimum window size of `ResizeGripSize × ResizeGripSize` px. **Note**: `WS_EX_LAYERED` must NOT be used — it causes Windows to cache the alpha hit-test mask from the first DComp frame and never expand it on resize, permanently making all pixels outside the initial window size click-through. Transparency is provided by `WS_EX_NOREDIRECTIONBITMAP` + DComp premultiplied alpha.
+- **Acceptance Criteria**: In unlocked mode, overlays can be dragged and resized from the bottom-right corner in any direction including growing larger than the initial size. The blue border and grip dots are visible. In locked mode, mouse clicks pass through. Position/size values are preserved in config after re-lock. Window cannot be resized below 24×24 px.
 - **Dependencies**: TASK-106, TASK-102.
 
 ---
