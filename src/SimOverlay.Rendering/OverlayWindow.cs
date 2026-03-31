@@ -249,8 +249,18 @@ public class OverlayWindow : IDisposable
         {
             ReleaseGraphicsResources();
             InitializeGraphics(_currentWidth, _currentHeight);
+            // Called while still holding RenderLock so subclasses can update any
+            // references to the new D2D context before the render thread runs again.
+            OnDeviceRecreated();
         }
     }
+
+    /// <summary>
+    /// Called inside <see cref="RecoverDevice"/> while <see cref="RenderLock"/> is held,
+    /// immediately after the new D3D/D2D/DComp resources are created.
+    /// Override to update context references (e.g. in <see cref="RenderResources"/>).
+    /// </summary>
+    protected virtual void OnDeviceRecreated() { }
 
     private void ReleaseGraphicsResources()
     {

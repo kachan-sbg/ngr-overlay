@@ -34,7 +34,33 @@ internal static class Program
             overlay.Show();
             bus.Publish(new EditModeChangedEvent(IsLocked: false));
 
-            MessagePump.Run();
+            // Dev hotkeys: F9 = force device recovery, F10 = quit.
+            // Remove before shipping.
+            int hotkeyRecovery = MessagePump.RegisterHotKey(0, 0x78 /* F9  */);
+            int hotkeyQuit     = MessagePump.RegisterHotKey(0, 0x79 /* F10 */);
+            AppLog.Info("DEV: F9 = force device recovery, F10 = quit.");
+
+            MessagePump.Run((msgId, wParam) =>
+            {
+                if (msgId == MessagePump.WmHotKey)
+                {
+                    var id = (int)wParam.ToInt64();
+                    if (id == hotkeyRecovery)
+                    {
+                        AppLog.Info("DEV: F9 — forcing device recovery.");
+                        overlay.RecoverDevice();
+                        overlay.InvalidateResources();
+                        AppLog.Info("DEV: Device recovery forced.");
+                    }
+                    else if (id == hotkeyQuit)
+                    {
+                        MessagePump.Quit();
+                    }
+                }
+            });
+
+            MessagePump.UnregisterHotKey(hotkeyRecovery);
+            MessagePump.UnregisterHotKey(hotkeyQuit);
             AppLog.Info("Message pump exited — clean shutdown");
         }
         catch (Exception ex)
