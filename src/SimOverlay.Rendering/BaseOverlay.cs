@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading;
 using SimOverlay.Core;
 using SimOverlay.Core.Config;
 using SimOverlay.Core.Events;
@@ -16,6 +17,12 @@ public abstract class BaseOverlay : OverlayWindow
 
     private readonly ISimDataBus _bus;
     private readonly List<Action> _unsubscribeActions = new();
+
+    // Optional: when provided, position/size changes are persisted via a 500 ms debounce.
+    private readonly ConfigStore? _configStore;
+    private readonly AppConfig? _appConfig;
+    private Timer? _saveTimer;
+    private const int SaveDebounceMs = 500;
 
     private Thread? _renderThread;
     private volatile bool _running;
@@ -38,12 +45,23 @@ public abstract class BaseOverlay : OverlayWindow
     // Construction
     // -------------------------------------------------------------------------
 
-    protected BaseOverlay(string displayName, OverlayConfig config, ISimDataBus bus)
+    protected BaseOverlay(
+        string displayName,
+        OverlayConfig config,
+        ISimDataBus bus,
+        ConfigStore? configStore = null,
+        AppConfig? appConfig = null)
         : base(displayName, config)
     {
         _config = config;
         _bus = bus;
+        _configStore = configStore;
+        _appConfig = appConfig;
         _resources = new RenderResources(D2DContext);
+
+        if (_configStore is not null && _appConfig is not null)
+            _saveTimer = new Timer(_ => _configStore.Save(_appConfig),
+                state: null, Timeout.Infinite, Timeout.Infinite);
 
         Subscribe<EditModeChangedEvent>(e => IsLocked = e.IsLocked);
 
@@ -164,8 +182,14 @@ public abstract class BaseOverlay : OverlayWindow
         if (_resources is null)
             return;
 
-        _config.X = x;
-        _config.Y = y;
+        // Hold RenderLock so the render thread never sees X updated but Y stale.
+        lock (RenderLock)
+        {
+            _config.X = x;
+            _config.Y = y;
+        }
+
+        ScheduleSave();
     }
 
     protected override void OnSize(int width, int height)
@@ -175,11 +199,22 @@ public abstract class BaseOverlay : OverlayWindow
         if (_resources is null || width <= 0 || height <= 0)
             return;
 
-        _config.Width  = width;
-        _config.Height = height;
+        // Hold RenderLock so the render thread never sees Width updated but Height stale.
+        lock (RenderLock)
+        {
+            _config.Width  = width;
+            _config.Height = height;
+        }
 
         ResizeSwapChain(width, height);
         _resources.Invalidate();
+        ScheduleSave();
+    }
+
+    private void ScheduleSave()
+    {
+        // Restart the 500 ms countdown; the timer fires once and saves.
+        _saveTimer?.Change(SaveDebounceMs, Timeout.Infinite);
     }
 
     // -------------------------------------------------------------------------
@@ -286,6 +321,9 @@ public abstract class BaseOverlay : OverlayWindow
             foreach (var unsubscribe in _unsubscribeActions)
                 unsubscribe();
             _unsubscribeActions.Clear();
+
+            _saveTimer?.Dispose();
+            _saveTimer = null;
 
             _resources?.Dispose();
             _resources = null;

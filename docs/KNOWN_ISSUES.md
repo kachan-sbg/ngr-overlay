@@ -8,71 +8,75 @@ Discovered during post-Phase-2 audit (2026-04-04). Fix before or during Phase 3 
 
 These will cause crashes or data loss as soon as Phase 4 introduces multiple overlays.
 
-### ISSUE-001 · `PostQuitMessage` in every overlay's `WM_DESTROY`
+### ~~ISSUE-001 · `PostQuitMessage` in every overlay's `WM_DESTROY`~~ ✅ Fixed
 
-**File:** `src/SimOverlay.Rendering/OverlayWindow.cs:374`
-**Problem:** Every `OverlayWindow` calls `PostQuitMessage(0)` on `WM_DESTROY`. Destroying any single overlay window terminates the entire message pump, killing all other overlay windows before they can clean up. Currently harmless (only one overlay exists), but **will crash the app when Phase 4 creates multiple overlays.**
-**Fix:** Track a global window count; only call `PostQuitMessage` when the last overlay window is destroyed, or have `App` own the quit signal entirely.
-
----
-
-### ISSUE-002 · `BaseOverlay._config` mutated in-place across threads
-
-**File:** `src/SimOverlay.Rendering/BaseOverlay.cs:107,167-179`
-**Problem:** `OnMove`/`OnSize` (UI thread) mutate individual fields of `_config` (X, Y, Width, Height) while the render thread reads `_config` in `OnRender`. This is a torn read — the render thread can see X updated but Y not yet, or Width updated but Height not yet.
-**Architecture requirement:** "volatile reference to a snapshot object" — `_config` should be replaced atomically, not mutated in-place.
-**Fix:** In `OnMove`/`OnSize`, create a copy of `_config` with updated fields and assign it via `Volatile.Write` (or a lock). `UpdateConfig` already replaces the reference; the move/size paths should do the same.
+**Fixed in:** pre-Phase-3 bugfix commit
+Static `_windowCount` (Interlocked) in `OverlayWindow`. Incremented after successful
+`CreateWindowEx`; decremented in `WM_DESTROY`. `PostQuitMessage(0)` only fires when
+the count reaches zero.
 
 ---
 
-### ISSUE-003 · `RenderResources` not thread-safe
+### ~~ISSUE-002 · `BaseOverlay._config` mutated in-place across threads~~ ✅ Fixed
 
-**File:** `src/SimOverlay.Rendering/RenderResources.cs`
-**Problem:** `Invalidate()` (called from `UpdateConfig` on the UI thread, or `OnSize` on the UI thread) disposes D2D brushes and text formats from the brush/format dictionaries while the render thread may be inside `GetBrush` or `GetTextFormat`. Race can corrupt the dictionary or produce use-after-dispose crashes on D2D COM objects.
-**Fix:** Add a `lock` guard around `Invalidate`, `GetBrush`, and `GetTextFormat`. Alternatively, use double-buffering: mark a dirty flag atomically; rebuild resources at the top of the next render frame under `RenderLock`.
+**Fixed in:** pre-Phase-3 bugfix commit
+`OnMove` and `OnSize` now hold `RenderLock` while updating `_config.X/Y` and
+`_config.Width/Height`. The render thread holds the same lock for the full frame, so
+it always sees a consistent snapshot.
 
 ---
 
-### ISSUE-004 · Position/size changes never persisted to disk
+### ~~ISSUE-003 · `RenderResources` not thread-safe~~ ✅ Fixed
 
-**File:** `src/SimOverlay.Rendering/BaseOverlay.cs:160-183`
-**Problem:** `OnMove` and `OnSize` update the in-memory `_config` fields but never call `ConfigStore.Save()`. All window positions and sizes are lost on every restart.
-**Architecture requirement:** "Overlay position/size are saved on `WM_MOVE` / `WM_SIZE` with a 500 ms debounce."
-**Fix:** Inject `ConfigStore` into `BaseOverlay` (or use the data bus to signal App). Implement a debounced save: on `OnMove`/`OnSize`, cancel any pending save timer and schedule a new one 500 ms out; on expiry, call `configStore.Save(appConfig)`.
+**Fixed in:** pre-Phase-3 bugfix commit
+Added `private readonly object _lock` to `RenderResources`. `GetBrush`,
+`GetTextFormat`, `Invalidate`, `UpdateContext`, and `Dispose` all acquire this lock,
+eliminating the `Invalidate`-vs-`GetBrush` race.
+
+---
+
+### ~~ISSUE-004 · Position/size changes never persisted to disk~~ ✅ Fixed
+
+**Fixed in:** pre-Phase-3 bugfix commit
+`BaseOverlay` now accepts optional `ConfigStore` and `AppConfig` constructor parameters.
+When provided, `OnMove`/`OnSize` schedule a 500 ms debounced save via
+`System.Threading.Timer`. Callers (App) supply the dependencies to opt in.
 
 ---
 
 ## Medium — Fix During Phase 3
 
-### ISSUE-005 · `SimDataBus.Publish` propagates subscriber exceptions
+### ~~ISSUE-005 · `SimDataBus.Publish` propagates subscriber exceptions~~ ✅ Fixed
 
-**File:** `src/SimOverlay.Core/SimDataBus.cs:45-46`
-**Problem:** If any subscriber callback throws, the exception propagates to the publisher and all remaining subscribers in the list are skipped for that message.
-**Fix:** Wrap each handler invocation in `try/catch` inside `Publish`. Log exceptions and continue to the next subscriber.
-
----
-
-### ISSUE-006 · `ConfigStore.Load` silently swallows all exceptions
-
-**File:** `src/SimOverlay.Core/Config/ConfigStore.cs:36`
-**Problem:** Bare `catch` returns `new AppConfig()` with no logging. Corrupt config, disk full, permission error — all invisible to the user.
-**Fix:** Change to `catch (Exception ex)`, call `AppLog.Exception("Failed to load config, using defaults", ex)` before returning defaults.
+**Fixed in:** pre-Phase-3 bugfix commit
+Each handler invocation in `Publish` is wrapped in `try/catch`. Exceptions are logged
+via `AppLog.Exception` and iteration continues to the next subscriber.
 
 ---
 
-### ISSUE-007 · `OverlayWindow` created with `WS_VISIBLE` — disabled overlays flash
+### ~~ISSUE-006 · `ConfigStore.Load` silently swallows all exceptions~~ ✅ Fixed
 
-**File:** `src/SimOverlay.Rendering/OverlayWindow.cs:140` (`dwStyle` includes `WS_VISIBLE`)
-**Problem:** The window appears on screen the instant `CreateWindowEx` returns. Architecture §7 says disabled overlays should be "created but hidden". A disabled overlay will flash briefly before the caller can call `Hide()`.
-**Fix:** Remove `WS_VISIBLE` from the initial `dwStyle`. Callers explicitly call `Show()` for overlays that should be visible.
+**Fixed in:** pre-Phase-3 bugfix commit
+Bare `catch` replaced with `catch (Exception ex)`. Calls
+`AppLog.Exception("Failed to load config, using defaults", ex)` before returning
+`new AppConfig()`.
 
 ---
 
-### ISSUE-008 · `Dispose` calls `DestroyWindow` from finalizer thread
+### ~~ISSUE-007 · `OverlayWindow` created with `WS_VISIBLE` — disabled overlays flash~~ ✅ Fixed
 
-**File:** `src/SimOverlay.Rendering/OverlayWindow.cs:500-507`
-**Problem:** `DestroyWindow` is called in the unmanaged disposal path (`disposing == false`), which runs on the GC finalizer thread. Win32 requires `DestroyWindow` to be called from the thread that created the window (the UI thread). From the wrong thread it silently returns `FALSE`, leaking the `HWND`.
-**Fix:** Suppress the finalizer after managed disposal (`GC.SuppressFinalize(this)`). Do not call Win32 window destruction from the finalizer. Accept the leak on ungraceful shutdown (process exit cleans up handles anyway).
+**Fixed in:** pre-Phase-3 bugfix commit
+`WS_VISIBLE` removed from `dwStyle` in `CreateWindowEx`. Callers must call `Show()`
+explicitly (already the case in `Program.cs`).
+
+---
+
+### ~~ISSUE-008 · `Dispose` calls `DestroyWindow` from finalizer thread~~ ✅ Fixed
+
+**Fixed in:** pre-Phase-3 bugfix commit
+`DestroyWindow` and `UnregisterClass` moved inside the `if (disposing)` branch of
+`Dispose(bool)`. The finalizer path is a no-op; process exit cleans up handles on
+ungraceful shutdown.
 
 ---
 

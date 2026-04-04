@@ -122,50 +122,54 @@ public class RelativeCalculatorTests
     // ── Start/finish-line wrap-around ─────────────────────────────────────────
 
     [Fact]
-    public void WrapAround_CarJustBehindAcrossLine_SmallPositiveGap()
+    public void WrapAround_CarJustAheadAcrossLine_SmallNegativeGap()
     {
         // Player at 98 %, car 1 at 2 % on the SAME lap.
-        // The car has NOT yet crossed the line — it is 4 % of the lap BEHIND the player.
-        // delta = 0.02 − 0.98 = −0.96 → < −0.5 → add 1 → +0.04 → gap = +3.6 s (behind).
+        // Going forward from the player (+2 % more crosses the line, +2 % more reaches the car):
+        // the car is 4 % AHEAD of the player on track.
+        // delta = 0.02 − 0.98 = −0.96 → < −0.5 → add 1 → +0.04 → gap = −(0.04 × 90) = −3.6 s.
         var snapshot = MakeSnapshot(0, 90f, [
             (0, 0.98f, 5, 1),
-            (1, 0.02f, 5, 2),   // 4 % behind after wrap → +3.6 s
+            (1, 0.02f, 5, 2),   // 4 % ahead after wrap → −3.6 s
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
         var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
         var carGap = result.Entries.Single(e => !e.IsPlayer).GapToPlayerSeconds;
 
-        Assert.True(carGap > 0f, "Car behind S/F line should have positive gap.");
-        Assert.Equal(3.6f, carGap, precision: 3);
+        Assert.True(carGap < 0f, "Car physically ahead of S/F line should have negative gap.");
+        Assert.Equal(-3.6f, carGap, precision: 3);
     }
 
     [Fact]
-    public void WrapAround_CarJustAheadAcrossLine_SmallNegativeGap()
+    public void WrapAround_CarJustBehindAcrossLine_SmallPositiveGap()
     {
-        // Player at 2 %, car 1 at 98 % — the car just crossed the S/F line and is 4 % AHEAD.
-        // delta = 0.98 − 0.02 = +0.96 → > +0.5 → subtract 1 → −0.04 → gap = −3.6 s (ahead).
+        // Player at 2 % (lap 5, just crossed), car 1 at 98 % (lap 4, not yet crossed).
+        // Going forward from the car (+2 % crosses the line, +2 % reaches the player):
+        // the car is 4 % BEHIND the player on track.
+        // delta = 0.98 − 0.02 = +0.96 → > +0.5 → subtract 1 → −0.04 → gap = −(−0.04 × 90) = +3.6 s.
         var snapshot = MakeSnapshot(0, 90f, [
             (0, 0.02f, 5, 2),
-            (1, 0.98f, 4, 1),   // 4 % ahead after wrap → −3.6 s
+            (1, 0.98f, 4, 1),   // 4 % behind after wrap → +3.6 s
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
         var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
         var carGap = result.Entries.Single(e => !e.IsPlayer).GapToPlayerSeconds;
 
-        Assert.True(carGap < 0f, "Car ahead of S/F line should have negative gap.");
-        Assert.Equal(-3.6f, carGap, precision: 3);
+        Assert.True(carGap > 0f, "Car physically behind S/F line should have positive gap.");
+        Assert.Equal(3.6f, carGap, precision: 3);
     }
 
     [Fact]
     public void WrapAround_TwoCarsSymmetricAroundLine_GapsAreEqual_OppositeSign()
     {
-        // Player at 0.5, one car at 0.9 (+0.4 * 60 = +24 s), one car at 0.1 (-0.4 * 60 = -24 s).
+        // Player at 0.5.  Car 1 at 0.9 is 40 % ahead  → gap = −(0.4 × 60) = −24 s.
+        //                 Car 2 at 0.1 is 40 % behind → gap = −(−0.4 × 60) = +24 s.
         var snapshot = MakeSnapshot(0, 60f, [
             (0, 0.50f, 3, 2),
-            (1, 0.90f, 3, 3),   // +0.4 * 60 = +24 s
-            (2, 0.10f, 3, 1),   // −0.4 * 60 = −24 s
+            (1, 0.90f, 3, 3),   // 40 % ahead → −24 s
+            (2, 0.10f, 3, 1),   // 40 % behind → +24 s
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1), MakeDriver(2) };
 
@@ -173,8 +177,8 @@ public class RelativeCalculatorTests
         var gapCar1   = result.Entries.Single(e => e.CarNumber == "1").GapToPlayerSeconds;
         var gapCar2   = result.Entries.Single(e => e.CarNumber == "2").GapToPlayerSeconds;
 
-        Assert.Equal( 24f, gapCar1, precision: 3);
-        Assert.Equal(-24f, gapCar2, precision: 3);
+        Assert.Equal(-24f, gapCar1, precision: 3);
+        Assert.Equal( 24f, gapCar2, precision: 3);
     }
 
     // ── Lap difference ────────────────────────────────────────────────────────
@@ -222,7 +226,7 @@ public class RelativeCalculatorTests
             .ToArray();
 
         var snapshot = MakeSnapshot(0, 90f, cars);
-        var drivers  = Enumerable.Range(0, 20).Select(MakeDriver).ToArray();
+        var drivers  = Enumerable.Range(0, 20).Select(i => MakeDriver(i)).ToArray();
 
         var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
 
@@ -238,7 +242,7 @@ public class RelativeCalculatorTests
             .ToArray();
 
         var snapshot = MakeSnapshot(0, 90f, cars);
-        var drivers  = Enumerable.Range(0, 20).Select(MakeDriver).ToArray();
+        var drivers  = Enumerable.Range(0, 20).Select(i => MakeDriver(i)).ToArray();
 
         var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
 
