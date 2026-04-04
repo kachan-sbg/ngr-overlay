@@ -395,7 +395,7 @@ public class StreamOverrideConfig
 - Reads on startup. If file does not exist, returns defaults (all stream overrides disabled, no override values set). Load failures are logged and fall back to defaults.
 - `Save()` is atomic: serialize to string → write to `config.json.tmp` → `File.Move(..., overwrite: true)`.
 - Config changes are pushed to overlays via `BaseOverlay.UpdateConfig(OverlayConfig)`.
-- Overlay position/size persistence with debounce: **not yet implemented** (ISSUE-004). `OnMove`/`OnSize` update the in-memory config but do not yet call `ConfigStore.Save()`. Planned for Phase 3.
+- Overlay position/size persistence with debounce: `BaseOverlay` accepts optional `ConfigStore` and `AppConfig` constructor parameters. When provided, `OnMove`/`OnSize` cancel any pending write and schedule a new one 500 ms out via `System.Threading.Timer`; on expiry, calls `configStore.Save(appConfig)`. The full stream-mode-aware wiring (write size to `StreamOverride.Width/Height` when stream mode active) is completed in Phase 3 (TASK-302) when `OverlayManager` injects these dependencies.
 - `globalSettings.streamModeActive` is persisted — stream mode survives restarts (so OBS scene setup doesn't require re-toggling on every launch).
 
 ### 7. Overlay Lifecycle
