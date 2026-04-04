@@ -90,15 +90,13 @@ Dependency rule: `Core` ← `Sim.Contracts` ← `Sim.iRacing`. `Core` ← `Rende
 
 | Phase | Status | Focus |
 |---|---|---|
-| 0 — Scaffolding | Not started | Solution, projects, NuGet packages, CI |
-| 1 — Rendering core | Not started | SimDataBus, ConfigStore, transparent window, Direct2D, render loop, edit mode |
-| 2 — iRacing data | Not started | MMF connection, 60 Hz poller, session YAML, relative calculator |
+| 0 — Scaffolding | **Done** | Solution, projects, NuGet packages, CI |
+| 1 — Rendering core | **Done** | SimDataBus, ConfigStore, transparent window, Direct2D, render loop, edit mode, device recovery |
+| 2 — iRacing data | **In progress** | MMF connection, 60 Hz poller, session YAML, relative calculator (TASK-205 integration test deferred) |
 | 3 — Overlay framework | Not started | Overlay manager, position persistence, live config updates, sim state display |
 | 4 — MVP overlays | Not started | Relative, Session Info, Delta Bar implementations |
 | 5 — Settings UI | Not started | WPF settings window, color pickers, stream override editor, tray icon |
 | 6 — Polish | Not started | Auto sim detection, single instance, logging, perf profiling, installer |
-
-Update the Status column above as phases complete.
 
 ---
 
