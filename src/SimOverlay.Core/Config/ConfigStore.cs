@@ -32,8 +32,9 @@ public sealed class ConfigStore
             var json = File.ReadAllText(_path);
             return JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Exception("Failed to load config, using defaults", ex);
             return new AppConfig();
         }
     }

@@ -28,6 +28,10 @@ public class OverlayWindow : IDisposable
     // Win32 window class still references the function pointer.
     private readonly NativeMethods.WndProcDelegate _wndProcDelegate;
 
+    // Counts live OverlayWindow instances so PostQuitMessage is only sent when
+    // the last window is destroyed (not on every individual window close).
+    private static int _windowCount;
+
     private nint _hInstance;
     private nint _hwnd;
     private bool _disposed;
@@ -137,7 +141,7 @@ public class OverlayWindow : IDisposable
                        | NativeMethods.WS_EX_NOREDIRECTIONBITMAP,
             lpClassName:  _className,
             lpWindowName: DisplayName,
-            dwStyle:      NativeMethods.WS_POPUP | NativeMethods.WS_VISIBLE,
+            dwStyle:      NativeMethods.WS_POPUP,
             x:            x,
             y:            y,
             nWidth:       width,
@@ -150,6 +154,8 @@ public class OverlayWindow : IDisposable
         if (_hwnd == nint.Zero)
             throw new Win32Exception(Marshal.GetLastWin32Error(),
                 $"CreateWindowEx failed for '{DisplayName}'");
+
+        Interlocked.Increment(ref _windowCount);
     }
 
     // -------------------------------------------------------------------------
@@ -370,7 +376,8 @@ public class OverlayWindow : IDisposable
 
                 case NativeMethods.WM_DESTROY:
                     OnDestroy();
-                    NativeMethods.PostQuitMessage(0);
+                    if (Interlocked.Decrement(ref _windowCount) == 0)
+                        NativeMethods.PostQuitMessage(0);
                     return 0;
 
                 case NativeMethods.WM_GETMINMAXINFO:
@@ -495,16 +502,20 @@ public class OverlayWindow : IDisposable
         {
             lock (RenderLock)
                 ReleaseGraphicsResources();
-        }
 
-        if (_hwnd != nint.Zero)
-        {
-            NativeMethods.DestroyWindow(_hwnd);
-            _hwnd = nint.Zero;
-        }
+            // DestroyWindow must be called from the thread that created the window
+            // (Win32 requirement). Only call it during managed disposal (UI thread).
+            // From the finalizer thread it would silently fail and leak the HWND;
+            // process exit cleans up handles on ungraceful shutdown anyway.
+            if (_hwnd != nint.Zero)
+            {
+                NativeMethods.DestroyWindow(_hwnd);
+                _hwnd = nint.Zero;
+            }
 
-        if (_hInstance != nint.Zero)
-            NativeMethods.UnregisterClass(_className, _hInstance);
+            if (_hInstance != nint.Zero)
+                NativeMethods.UnregisterClass(_className, _hInstance);
+        }
     }
 
     ~OverlayWindow() => Dispose(false);

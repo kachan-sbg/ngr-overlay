@@ -112,4 +112,19 @@ public class SimDataBusTests
 
         Assert.Empty(exceptions);
     }
+
+    [Fact]
+    public void Publish_OneSubscriberThrows_RemainingSubscribersStillReceive()
+    {
+        var bus = new SimDataBus();
+        int received = 0;
+
+        bus.Subscribe<int>(_ => throw new InvalidOperationException("subscriber error"));
+        bus.Subscribe<int>(x => received = x);
+
+        // Should not throw; the second subscriber must still be called.
+        bus.Publish(42);
+
+        Assert.Equal(42, received);
+    }
 }

@@ -48,7 +48,7 @@ internal static class IRacingRelativeCalculator
             if (delta >  0.5f) delta -= 1f;
             if (delta < -0.5f) delta += 1f;
 
-            var gapSeconds = delta * estLapTime;   // negative = ahead of player
+            var gapSeconds = -delta * estLapTime;  // negative = ahead of player
             var lapDiff    = snapshot.Laps[i] - playerLap;
 
             candidates.Add((gapSeconds, new RelativeEntry

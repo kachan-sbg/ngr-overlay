@@ -43,6 +43,16 @@ public sealed class SimDataBus : ISimDataBus
             return;
 
         foreach (var handler in handlers)
-            ((Action<T>)handler)(data);
+        {
+            try
+            {
+                ((Action<T>)handler)(data);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception(
+                    $"SimDataBus subscriber threw for message type '{typeof(T).Name}'", ex);
+            }
+        }
     }
 }

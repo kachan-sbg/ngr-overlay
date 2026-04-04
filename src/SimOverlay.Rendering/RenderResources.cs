@@ -16,6 +16,7 @@ public sealed class RenderResources : IDisposable
     private ID2D1DeviceContext _context;
     private readonly IDWriteFactory _writeFactory;
 
+    private readonly object _lock = new();
     private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = new();
     private readonly Dictionary<(string Family, float Size), IDWriteTextFormat> _textFormats = new();
 
@@ -40,13 +41,16 @@ public sealed class RenderResources : IDisposable
     {
         var key = PackColor(r, g, b, a);
 
-        if (!_brushes.TryGetValue(key, out var brush))
+        lock (_lock)
         {
-            brush = _context.CreateSolidColorBrush(new Color4(r, g, b, a));
-            _brushes[key] = brush;
-        }
+            if (!_brushes.TryGetValue(key, out var brush))
+            {
+                brush = _context.CreateSolidColorBrush(new Color4(r, g, b, a));
+                _brushes[key] = brush;
+            }
 
-        return brush;
+            return _brushes[key];
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -57,21 +61,24 @@ public sealed class RenderResources : IDisposable
     {
         var key = (fontFamily, fontSize);
 
-        if (!_textFormats.TryGetValue(key, out var format))
+        lock (_lock)
         {
-            format = _writeFactory.CreateTextFormat(
-                fontFamily,
-                fontCollection:  null,
-                fontWeight:      FontWeight.Normal,
-                fontStyle:       FontStyle.Normal,
-                fontStretch:     FontStretch.Normal,
-                fontSize:        fontSize,
-                localeName:      "");
+            if (!_textFormats.TryGetValue(key, out var format))
+            {
+                format = _writeFactory.CreateTextFormat(
+                    fontFamily,
+                    fontCollection:  null,
+                    fontWeight:      FontWeight.Normal,
+                    fontStyle:       FontStyle.Normal,
+                    fontStretch:     FontStretch.Normal,
+                    fontSize:        fontSize,
+                    localeName:      "");
 
-            _textFormats[key] = format;
+                _textFormats[key] = format;
+            }
+
+            return _textFormats[key];
         }
-
-        return format;
     }
 
     // -------------------------------------------------------------------------
@@ -86,8 +93,11 @@ public sealed class RenderResources : IDisposable
     /// </summary>
     public void UpdateContext(ID2D1DeviceContext context)
     {
-        _context = context;
-        Invalidate();
+        lock (_lock)
+        {
+            _context = context;
+            InvalidateCore();
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -95,6 +105,12 @@ public sealed class RenderResources : IDisposable
     // -------------------------------------------------------------------------
 
     public void Invalidate()
+    {
+        lock (_lock)
+            InvalidateCore();
+    }
+
+    private void InvalidateCore()
     {
         foreach (var brush in _brushes.Values)
             brush.Dispose();
@@ -115,7 +131,8 @@ public sealed class RenderResources : IDisposable
             return;
 
         _disposed = true;
-        Invalidate();
+        lock (_lock)
+            InvalidateCore();
         _writeFactory.Dispose();
     }
 
