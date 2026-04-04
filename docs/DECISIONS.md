@@ -161,3 +161,25 @@ Format per entry:
 - `OverlayConfig.Resolve(bool streamModeActive)` is called at the start of every render frame to get the effective config — must be a cheap operation (no allocation if no override active, or a simple struct copy).
 - Settings UI needs two tabs per overlay (Screen / Stream Override). Override tab needs "Custom" checkbox per field to indicate inherit vs override.
 - Edit mode + stream mode interaction: drag saves to base X/Y always; resize saves to override dimensions if in stream mode with override enabled.
+
+---
+
+## 2026-04-04 — Omit `WS_EX_LAYERED` from overlay window styles
+
+**Decision:** Do not apply `WS_EX_LAYERED` to overlay windows. Use `WS_EX_NOREDIRECTIONBITMAP` + DirectComposition premultiplied alpha for transparency instead.
+
+**Context:** During Phase 1 implementation, overlay windows were initially created with `WS_EX_LAYERED`. After adding resize support, resizing the window beyond its original size stopped generating mouse events in the expanded area — the interactive region stayed permanently at the original 300×100 pixels.
+
+**Rationale:**
+- When `WS_EX_LAYERED` is present, Windows caches the DWM/DComp alpha hit-test mask from the first presented frame. The interactive area is computed once and never updated, even after the window resizes or new frames are presented.
+- `WS_EX_NOREDIRECTIONBITMAP` alone (without `WS_EX_LAYERED`) does not suffer this caching. The hit-test region tracks the actual window rectangle, which updates correctly on resize.
+- DComp premultiplied alpha provides correct per-pixel transparency without `WS_EX_LAYERED`. No `UpdateLayeredWindow` is needed.
+
+**Alternatives considered:**
+- Calling `SetWindowLongPtr` + `SetWindowPos(SWP_FRAMECHANGED)` to force re-evaluation of the hit-test mask — tried, did not solve the problem.
+- Adding a `WM_EXITSIZEMOVE` handler to re-apply the transparent style after drag — tried, partially worked for drag but not for programmatic resize.
+- Neither alternative addressed the root cause. Only removing `WS_EX_LAYERED` entirely solved it.
+
+**Consequences:**
+- `WS_EX_LAYERED` must never be re-added to overlay window styles, even experimentally.
+- The architecture document initially listed `WS_EX_LAYERED` as part of the window style — corrected in the same commit as this decision entry.

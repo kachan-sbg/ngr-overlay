@@ -18,10 +18,17 @@ SimOverlay.sln
 │   ├── SimOverlay.Sim.iRacing.Tests/
 │   └── SimOverlay.Overlays.Tests/
 └── docs/
-    ├── PROJECT.md
+    ├── README.md
     ├── ARCHITECTURE.md
     ├── OVERLAYS.md
-    └── TASKS.md
+    ├── DECISIONS.md
+    ├── KNOWN_ISSUES.md
+    └── tasks/
+        ├── INDEX.md
+        ├── PHASE-0-scaffolding.md
+        ├── PHASE-1-rendering.md
+        ├── PHASE-2-iracing.md
+        └── ...
 ```
 
 #### Project Dependency Graph
@@ -120,8 +127,8 @@ Responsibility: implement `ISimProvider` for iRacing using the `Local\IRSDKMemMa
 
 Key types:
 - `IRacingProvider : ISimProvider` — wraps IRSDKSharper (preferred) or a raw MMF reader. Manages connection lifecycle.
-- `IRacingPoller` — runs on a dedicated background thread (`Thread` with `IsBackground = true`), loops at 60 Hz using a high-resolution timer (`SpinWait` + `Stopwatch` for accuracy). Reads the MMF, decodes fields, and publishes to `ISimDataBus`.
-- `IRacingSessionDecoder` — parses the YAML session string (updated at ~1 Hz or on session change) into `SessionData`. Runs on the same background thread but only when the session string version changes.
+- `IRacingPoller` — wraps `IRSDKSharper` (HerboldRacing NuGet). IRSDKSharper owns its own background thread and fires `OnTelemetryData` at ~60 Hz and `OnSessionInfo` when the YAML session string changes. `IRacingPoller` handles these events, builds domain snapshots, and publishes to `ISimDataBus`. `RelativeData` is published every 6th telemetry tick (~10 Hz).
+- `IRacingSessionDecoder` — static decoder called from `IRacingPoller.OnSessionInfo`. Converts the typed `IRacingSdkSessionInfo` YAML model into `SessionData` + `List<DriverSnapshot>`.
 - `IRacingRelativeCalculator` — computes gap-to-player from track position (`LapDistPct` for each car) and constructs `RelativeData`. Run at 10 Hz (every 6th 60 Hz tick).
 
 Detection: `IRacingProvider.IsRunning()` checks for the existence of the `Local\IRSDKMemMapFileName` named memory-mapped file, or checks whether a process named `iRacingUI` or `iRacing simulator` is running (process name check is less fragile).
@@ -137,7 +144,8 @@ Key types:
 `OverlayWindow`
 - Creates a Win32 window with styles:
   - `WS_POPUP` (no border/title)
-  - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST`
+  - `WS_EX_TRANSPARENT | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST`
+  - `WS_EX_LAYERED` is intentionally **omitted** — Windows caches the DComp alpha hit-test mask from the first presented frame and never expands it on resize, making the window permanently unresizable beyond its original size. Transparency is achieved via `WS_EX_NOREDIRECTIONBITMAP` + DComp premultiplied alpha alone. See DECISIONS.md.
   - `WS_EX_TOOLWINDOW` is intentionally **omitted** — its presence hides windows from OBS's window picker. See "OBS Capture Compatibility" section below.
 - Sets up DXGI swap chain: `DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL`, `DXGI_ALPHA_MODE_PREMULTIPLIED`, format `DXGI_FORMAT_B8G8R8A8_UNORM`.
 - Creates `IDCompositionDevice`, `IDCompositionTarget`, `IDCompositionVisual`. The visual is bound to the swap chain surface.
@@ -162,10 +170,11 @@ Render-data synchronization: each `BaseOverlay` subclass maintains a `volatile` 
 - Keyed by color/font parameters from `OverlayConfig`.
 - Recreated when `OverlayConfig` changes or when the device is lost (`DXGI_ERROR_DEVICE_REMOVED`).
 
-`DeviceLostRecovery`
-- Handles `DXGI_ERROR_DEVICE_REMOVED` / `DXGI_ERROR_DEVICE_RESET`.
-- Tears down and recreates the D3D11 device, DXGI swap chain, D2D device context, and `IDCompositionDevice`.
-- Signals all active `OverlayWindow` instances to re-create their resources.
+`DeviceLostException`
+- Thrown by `OverlayWindow.Render()` when `Present` or `EndDraw` returns `DXGI_ERROR_DEVICE_REMOVED` (0x887A0005) or `DXGI_ERROR_DEVICE_RESET` (0x887A0007).
+- Caught by `BaseOverlay.RenderLoop`, which calls `OverlayWindow.RecoverDevice()` to tear down and recreate all D3D11 / DXGI / D2D / DComp resources.
+- `RecoverDevice()` calls the `OnDeviceRecreated()` virtual hook **while `RenderLock` is still held**, so `RenderResources.UpdateContext()` runs atomically before the render thread can execute the next frame.
+- `BaseOverlay` overrides `OnDeviceRecreated()` to call `_resources.UpdateContext(D2DContext)`.
 
 #### SimOverlay.Overlays
 
@@ -236,9 +245,9 @@ Per frame, per overlay:
 3. Calls `deviceContext.BeginDraw()`.
 4. Clears to fully transparent black: `deviceContext.Clear(new Color4(0, 0, 0, 0))`.
 5. Calls `OnRender(deviceContext, config)` — overlay-specific drawing.
-6. Calls `deviceContext.EndDraw()`. Handles `D2DERR_RECREATE_TARGET` by triggering device lost recovery.
-7. Calls `swapChain.Present(1, 0)` (vsync interval 1, or 0 for uncapped).
-8. Calls `dcompDevice.Commit()` to push the new frame to the composition engine.
+6. Calls `deviceContext.EndDraw()`. Handles `D2DERR_RECREATE_TARGET` / `DXGI_ERROR_DEVICE_REMOVED` by throwing `DeviceLostException`, caught in the render loop.
+7. Calls `swapChain.Present(0, PresentFlags.None)` (uncapped — frame rate is governed by the Stopwatch-based 60 fps loop, not vsync).
+8. `dcompDevice.Commit()` is **not** called per frame. It is called once during `InitializeGraphics` (to establish the visual→swapchain binding) and once after `ResizeSwapChain`. Subsequent frames are presented directly through the swap chain without re-committing the visual tree.
 
 Alpha compositing: all geometry is drawn with premultiplied alpha. The overlay's background is a filled rectangle with premultiplied RGBA from `OverlayConfig.BackgroundColor`. Text and other elements are drawn on top. The DXGI surface with `DXGI_ALPHA_MODE_PREMULTIPLIED` and `WS_EX_NOREDIRECTIONBITMAP` ensures the DWM composites the overlay window correctly over the simulator.
 
@@ -299,11 +308,14 @@ This is a single window with a switchable appearance profile — not two separat
   "version": 1,
   "globalSettings": {
     "startWithWindows": false,
-    "streamModeActive": false,
-    "simPriorityOrder": ["iRacing", "ACC", "LMU", "RF2"]
+    "streamModeActive": false
+    // simPriorityOrder: planned for Phase 6 (SimDetector work)
   },
-  "overlays": {
-    "Relative": {
+  // overlays: serialized as a JSON array (List<OverlayConfig> in C#), each item
+  // has an "id" field ("Relative", "SessionInfo", "DeltaBar") used as the lookup key.
+  "overlays": [
+  {
+    "id": "Relative",
       "enabled": true,
       "x": 100,
       "y": 200,
@@ -343,6 +355,7 @@ This is a single window with a switchable appearance profile — not two separat
 // Base overlay config — all fields required, no nulls
 public class OverlayConfig
 {
+    public string Id { get; set; }      // overlay name key, e.g. "Relative"
     public bool Enabled { get; set; }
     public int X { get; set; }          // position — NOT overridable by stream mode
     public int Y { get; set; }          // position — NOT overridable by stream mode
@@ -351,11 +364,13 @@ public class OverlayConfig
     public float Opacity { get; set; }
     public ColorConfig BackgroundColor { get; set; }
     public ColorConfig TextColor { get; set; }
-    public int FontSize { get; set; }
-    // overlay-specific fields (e.g., showIRating, maxDriversShown) defined in subclasses
+    public float FontSize { get; set; } // float — Direct2D takes float font sizes
+    // overlay-specific fields (ShowIRating, ShowLicense, MaxDriversShown, etc.) on same class
     public StreamOverrideConfig? StreamOverride { get; set; }
 
-    // Returns effective config for rendering — merges stream override if active
+    // Returns effective config for rendering — merges stream override if active.
+    // Config changes are pushed to overlays via BaseOverlay.UpdateConfig() — there
+    // is no ConfigChanged event on OverlayConfig itself.
     public OverlayConfig Resolve(bool streamModeActive);
 }
 
@@ -377,10 +392,10 @@ public class StreamOverrideConfig
 
 #### ConfigStore
 
-- Reads on startup. If file does not exist, writes defaults (all stream overrides disabled, no override values set).
+- Reads on startup. If file does not exist, returns defaults (all stream overrides disabled, no override values set). Load failures are logged and fall back to defaults.
 - `Save()` is atomic: serialize to string → write to `config.json.tmp` → `File.Move(..., overwrite: true)`.
-- `OverlayConfig` objects are passed by reference into each overlay. Config changes fire `OverlayConfig.ConfigChanged`.
-- Overlay position/size are saved on `WM_MOVE` / `WM_SIZE` with a 500 ms debounce.
+- Config changes are pushed to overlays via `BaseOverlay.UpdateConfig(OverlayConfig)`.
+- Overlay position/size persistence with debounce: **not yet implemented** (ISSUE-004). `OnMove`/`OnSize` update the in-memory config but do not yet call `ConfigStore.Save()`. Planned for Phase 3.
 - `globalSettings.streamModeActive` is persisted — stream mode survives restarts (so OBS scene setup doesn't require re-toggling on every launch).
 
 ### 7. Overlay Lifecycle
