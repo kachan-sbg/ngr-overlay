@@ -1,8 +1,9 @@
 using System.Runtime.InteropServices;
-using SimOverlay.App.Dev;
 using SimOverlay.Core;
-using SimOverlay.Core.Events;
+using SimOverlay.Core.Config;
 using SimOverlay.Rendering;
+using SimOverlay.Sim.Contracts;
+using SimOverlay.Sim.iRacing;
 
 namespace SimOverlay.App;
 
@@ -25,42 +26,41 @@ internal static class Program
 
         try
         {
-            var bus = new SimDataBus();
-            AppLog.Info("SimDataBus created");
+            // --- Core services ---
+            var configStore = new ConfigStore();
+            var appConfig   = configStore.Load();
+            var bus         = new SimDataBus();
+            AppLog.Info("Core services created");
 
-            using var overlay = new TestOverlay(bus);
-            AppLog.Info("TestOverlay created — entering message pump");
+            // --- Sim providers (priority order) ---
+            IReadOnlyList<ISimProvider> providers = [new IRacingProvider(bus)];
 
-            overlay.Show();
-            bus.Publish(new EditModeChangedEvent(IsLocked: false));
+            // --- Sim detector ---
+            using var detector = new SimDetector(bus, providers);
+            AppLog.Info("SimDetector started");
 
-            // Dev hotkeys: F9 = force device recovery, F10 = quit.
-            // Remove before shipping.
-            int hotkeyRecovery = MessagePump.RegisterHotKey(0, 0x78 /* F9  */);
-            int hotkeyQuit     = MessagePump.RegisterHotKey(0, 0x79 /* F10 */);
-            AppLog.Info("DEV: F9 = force device recovery, F10 = quit.");
+            // --- Overlays ---
+            using var overlayManager = new OverlayManager(bus, appConfig, configStore);
+            AppLog.Info("OverlayManager created — entering message pump");
+
+            // Dev hotkey: F10 = quit.
+            int hotkeyQuit = MessagePump.RegisterHotKey(0, 0x79 /* F10 */);
+            AppLog.Info("DEV: F10 = quit.");
 
             MessagePump.Run((msgId, wParam) =>
             {
                 if (msgId == MessagePump.WmHotKey)
                 {
                     var id = (int)wParam.ToInt64();
-                    if (id == hotkeyRecovery)
-                    {
-                        AppLog.Info("DEV: F9 — forcing device recovery.");
-                        overlay.RecoverDevice();
-                        overlay.InvalidateResources();
-                        AppLog.Info("DEV: Device recovery forced.");
-                    }
-                    else if (id == hotkeyQuit)
-                    {
+                    if (id == hotkeyQuit)
                         MessagePump.Quit();
-                    }
                 }
             });
 
-            MessagePump.UnregisterHotKey(hotkeyRecovery);
             MessagePump.UnregisterHotKey(hotkeyQuit);
+
+            // Persist any final state on clean shutdown.
+            configStore.Save(appConfig);
             AppLog.Info("Message pump exited — clean shutdown");
         }
         catch (Exception ex)

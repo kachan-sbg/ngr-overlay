@@ -4,6 +4,8 @@ using SimOverlay.Core;
 using SimOverlay.Core.Config;
 using SimOverlay.Core.Events;
 using Vortice.Direct2D1;
+using Vortice.DirectWrite;
+using Vortice.Mathematics;
 
 namespace SimOverlay.Rendering;
 
@@ -20,8 +22,8 @@ public abstract class BaseOverlay : OverlayWindow
 
     // Optional: when provided, position/size changes are persisted via a 500 ms debounce.
     private readonly ConfigStore? _configStore;
-    private readonly AppConfig? _appConfig;
-    private Timer? _saveTimer;
+    private readonly AppConfig?   _appConfig;
+    private Timer?  _saveTimer;
     private const int SaveDebounceMs = 500;
 
     private Thread? _renderThread;
@@ -31,10 +33,18 @@ public abstract class BaseOverlay : OverlayWindow
     // Config and resources
     // -------------------------------------------------------------------------
 
+    // _config holds the *backing* (non-resolved) OverlayConfig that maps to the
+    // entry in AppConfig.Overlays.  OnRender() resolves it per-frame so stream
+    // mode changes are always reflected without a restart.
     private OverlayConfig _config;
+
+    // Set by UpdateConfig(); the render thread picks it up and calls Invalidate()
+    // before the next draw to avoid disposing D2D objects from the wrong thread.
+    private volatile bool _pendingInvalidate;
+
     private RenderResources? _resources;
 
-    /// <summary>Current effective overlay configuration.</summary>
+    /// <summary>Current backing overlay configuration (not stream-mode resolved).</summary>
     public OverlayConfig Config => _config;
 
     /// <summary>Cached D2D brushes and DirectWrite text formats for this overlay.</summary>
@@ -42,44 +52,68 @@ public abstract class BaseOverlay : OverlayWindow
         _resources ?? throw new InvalidOperationException("Resources not yet initialized.");
 
     // -------------------------------------------------------------------------
+    // Sim state (TASK-304)
+    // -------------------------------------------------------------------------
+
+    // Stored as int so we can mark the field volatile (enums are not permitted).
+    private volatile int _simStateRaw = (int)SimState.Disconnected;
+
+    /// <summary>Last known sim state; checked each frame to show placeholder text.</summary>
+    protected SimState SimState => (SimState)_simStateRaw;
+
+    // -------------------------------------------------------------------------
     // Construction
     // -------------------------------------------------------------------------
 
+    /// <param name="displayName">Win32 window title.</param>
+    /// <param name="config">
+    ///   The <em>backing</em> (non-resolved) <see cref="OverlayConfig"/> entry from
+    ///   <see cref="AppConfig.Overlays"/>.  The window is positioned/sized using the
+    ///   stream-mode-resolved dimensions so the correct profile is used at startup.
+    /// </param>
+    /// <param name="bus">Shared data bus.</param>
+    /// <param name="configStore">When provided, move/resize events are persisted.</param>
+    /// <param name="appConfig">Required when <paramref name="configStore"/> is supplied.</param>
     protected BaseOverlay(
         string displayName,
         OverlayConfig config,
         ISimDataBus bus,
         ConfigStore? configStore = null,
-        AppConfig? appConfig = null)
-        : base(displayName, config)
+        AppConfig?   appConfig   = null)
+        : base(displayName,
+               appConfig is not null
+                   ? config.Resolve(appConfig.GlobalSettings.StreamModeActive)
+                   : config)
     {
-        _config = config;
-        _bus = bus;
+        _config      = config;
+        _bus         = bus;
         _configStore = configStore;
-        _appConfig = appConfig;
-        _resources = new RenderResources(D2DContext);
+        _appConfig   = appConfig;
+        _resources   = new RenderResources(D2DContext);
 
         if (_configStore is not null && _appConfig is not null)
             _saveTimer = new Timer(_ => _configStore.Save(_appConfig),
                 state: null, Timeout.Infinite, Timeout.Infinite);
 
         Subscribe<EditModeChangedEvent>(e => IsLocked = e.IsLocked);
+        Subscribe<SimStateChangedEvent>(e => _simStateRaw = (int)e.State);
+        Subscribe<StreamModeChangedEvent>(_ => _pendingInvalidate = true);
 
         StartRenderLoop();
     }
 
     // -------------------------------------------------------------------------
-    // Config update — invalidates cached resources
+    // Config update — deferred invalidation (TASK-303)
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Applies a new config. Cached brushes and text formats are invalidated
-    /// and will be lazily recreated on the next render frame.
+    /// Applies a new backing config.  Resource invalidation is deferred to the
+    /// next render tick to avoid disposing D2D objects from a non-render thread.
     /// </summary>
     public void UpdateConfig(OverlayConfig config)
     {
-        _config = config;
-        _resources?.Invalidate();
+        _config          = config;   // atomic reference write on 64-bit
+        _pendingInvalidate = true;   // render thread will call Invalidate() next frame
     }
 
     /// <summary>
@@ -116,30 +150,84 @@ public abstract class BaseOverlay : OverlayWindow
     private const float GripDotStep = 6f;
 
     /// <summary>
-    /// Called by the render loop each frame. Forwards to
-    /// <see cref="OnRender(ID2D1DeviceContext, OverlayConfig)"/> with the current config,
-    /// then overlays the edit-mode border and resize grip when unlocked.
+    /// Called by the render loop each frame. Applies any pending config
+    /// invalidation, resolves the effective config for the active mode,
+    /// handles sim-state placeholder rendering, then delegates to
+    /// <see cref="OnRender(ID2D1DeviceContext, OverlayConfig)"/> and paints
+    /// the edit-mode border when unlocked.
     /// </summary>
     protected sealed override void OnRender(ID2D1DeviceContext context)
     {
-        OnRender(context, _config);
-
-        if (!IsLocked)
+        // --- TASK-303: deferred resource invalidation (render thread only) ---
+        if (_pendingInvalidate)
         {
-            var w = (float)_config.Width;
-            var h = (float)_config.Height;
-            var brush = Resources.GetBrush(EditBorderColor.R, EditBorderColor.G, EditBorderColor.B);
-
-            // 2 px accent-blue border around the overlay.
-            context.DrawRectangle(new Vortice.RawRectF(1, 1, w - 1, h - 1), brush, 2f);
-
-            // Three diagonal dots in the bottom-right corner — indicate resize grip.
-            // Laid out like a standard size-box: bottom-right, then one step up-left,
-            // then two steps up-left.
-            DrawGripDot(context, brush, w - 4f,                    h - 4f);
-            DrawGripDot(context, brush, w - 4f - GripDotStep,      h - 4f - GripDotStep);
-            DrawGripDot(context, brush, w - 4f - GripDotStep * 2f, h - 4f - GripDotStep * 2f);
+            _resources?.Invalidate();
+            _pendingInvalidate = false;
         }
+
+        // Resolve stream-mode config per frame so toggling stream mode takes
+        // effect immediately without requiring a config push.
+        var streamModeActive = _appConfig?.GlobalSettings.StreamModeActive ?? false;
+        var effectiveConfig  = _config.Resolve(streamModeActive);
+
+        var w = (float)effectiveConfig.Width;
+        var h = (float)effectiveConfig.Height;
+
+        // --- TASK-304: sim state placeholder ---
+        var simState = (SimState)_simStateRaw;
+        if (simState != Core.SimState.InSession)
+        {
+            RenderSimStatePlaceholder(context, effectiveConfig, simState, w, h);
+        }
+        else
+        {
+            OnRender(context, effectiveConfig);
+        }
+
+        // Edit-mode border is drawn on top regardless of sim state.
+        if (!IsLocked)
+            DrawEditDecoration(context, w, h);
+    }
+
+    // --- TASK-304 placeholder renderer ---
+    private void RenderSimStatePlaceholder(
+        ID2D1DeviceContext context,
+        OverlayConfig config,
+        SimState state,
+        float w,
+        float h)
+    {
+        // Dim background so the user can see overlay bounds.
+        var bgBrush = Resources.GetBrush(config.BackgroundColor);
+        context.FillRectangle(new Vortice.RawRectF(0, 0, w, h), bgBrush);
+
+        var text = state == Core.SimState.Disconnected
+            ? "Sim not detected"
+            : "Waiting for session\u2026";
+
+        var textBrush  = Resources.GetBrush(1f, 1f, 1f, 0.55f);
+        var textFormat = Resources.GetTextFormat("Segoe UI", 12f);
+
+        // Centre the text in the overlay.
+        using var layout = Resources.WriteFactory.CreateTextLayout(
+            text, textFormat, w - 20f, h - 10f);
+        layout.TextAlignment      = TextAlignment.Center;
+        layout.ParagraphAlignment = ParagraphAlignment.Center;
+
+        context.DrawTextLayout(new System.Numerics.Vector2(10f, 5f), layout, textBrush);
+    }
+
+    private void DrawEditDecoration(ID2D1DeviceContext context, float w, float h)
+    {
+        var brush = Resources.GetBrush(EditBorderColor.R, EditBorderColor.G, EditBorderColor.B);
+
+        // 2 px accent-blue border around the overlay.
+        context.DrawRectangle(new Vortice.RawRectF(1, 1, w - 1, h - 1), brush, 2f);
+
+        // Three diagonal dots in the bottom-right corner — indicate resize grip.
+        DrawGripDot(context, brush, w - 4f,                    h - 4f);
+        DrawGripDot(context, brush, w - 4f - GripDotStep,      h - 4f - GripDotStep);
+        DrawGripDot(context, brush, w - 4f - GripDotStep * 2f, h - 4f - GripDotStep * 2f);
     }
 
     private static void DrawGripDot(ID2D1DeviceContext context, ID2D1Brush brush, float cx, float cy)
@@ -150,8 +238,8 @@ public abstract class BaseOverlay : OverlayWindow
 
     /// <summary>
     /// Override to issue D2D draw calls for this overlay.
-    /// Called at ~60 fps on the render thread; <paramref name="config"/> is a snapshot
-    /// consistent for the entire frame.
+    /// Called at ~60 fps on the render thread; <paramref name="config"/> is the
+    /// stream-mode-resolved snapshot consistent for the entire frame.
     /// </summary>
     protected abstract void OnRender(ID2D1DeviceContext context, OverlayConfig config);
 
@@ -172,7 +260,7 @@ public abstract class BaseOverlay : OverlayWindow
     protected virtual void OnDeviceRecovered() { }
 
     // -------------------------------------------------------------------------
-    // Window move / resize — keep config in sync
+    // Window move / resize — keep config in sync (TASK-302)
     // -------------------------------------------------------------------------
 
     protected override void OnMove(int x, int y)
@@ -182,7 +270,8 @@ public abstract class BaseOverlay : OverlayWindow
         if (_resources is null)
             return;
 
-        // Hold RenderLock so the render thread never sees X updated but Y stale.
+        // Position is always written to the base (backing) config regardless of
+        // stream mode — position is never part of the stream override profile.
         lock (RenderLock)
         {
             _config.X = x;
@@ -194,16 +283,24 @@ public abstract class BaseOverlay : OverlayWindow
 
     protected override void OnSize(int width, int height)
     {
-        // WM_SIZE arrives during CreateWindowEx, before BaseOverlay constructor body
-        // has run and assigned _config / _resources.  Guard until fully initialized.
         if (_resources is null || width <= 0 || height <= 0)
             return;
 
-        // Hold RenderLock so the render thread never sees Width updated but Height stale.
+        // TASK-302: size is written to the stream override when stream mode is
+        // active and the override is enabled; otherwise to the base config.
         lock (RenderLock)
         {
-            _config.Width  = width;
-            _config.Height = height;
+            var streamModeActive = _appConfig?.GlobalSettings.StreamModeActive ?? false;
+            if (streamModeActive && _config.StreamOverride is { Enabled: true })
+            {
+                _config.StreamOverride.Width  = width;
+                _config.StreamOverride.Height = height;
+            }
+            else
+            {
+                _config.Width  = width;
+                _config.Height = height;
+            }
         }
 
         ResizeSwapChain(width, height);
@@ -223,23 +320,21 @@ public abstract class BaseOverlay : OverlayWindow
 
     private void StartRenderLoop()
     {
-        _running = true;
+        _running      = true;
         _renderThread = new Thread(RenderLoop)
         {
             IsBackground = true,
-            Name = $"Render_{DisplayName}",
+            Name         = $"Render_{DisplayName}",
         };
         _renderThread.Start();
     }
 
-    // Timestamp of the last render-error log entry — used to rate-limit logging
-    // so a persistent D2D error doesn't flood the log at 60 fps.
     private DateTime _lastRenderErrorLog = DateTime.MinValue;
 
     private void RenderLoop()
     {
         AppLog.Info($"Render loop started for '{DisplayName}'");
-        var sw = Stopwatch.StartNew();
+        var sw          = Stopwatch.StartNew();
         var nextFrameMs = sw.Elapsed.TotalMilliseconds;
 
         while (_running)
@@ -254,15 +349,9 @@ public abstract class BaseOverlay : OverlayWindow
                 }
                 catch (DeviceLostException)
                 {
-                    // GPU device was removed or reset (e.g. driver update, GPU disable).
-                    // Tear down and recreate all D3D/D2D/DComp resources, then
-                    // invalidate cached brushes/formats so they are rebuilt next frame.
                     AppLog.Warn($"Device lost in '{DisplayName}' — recovering");
                     try
                     {
-                        // RecoverDevice() calls OnDeviceRecreated() internally
-                        // (under RenderLock) which updates RenderResources with
-                        // the new D2D context before this thread runs again.
                         RecoverDevice();
                         OnDeviceRecovered();
                         AppLog.Info($"Device recovered for '{DisplayName}'");
@@ -270,14 +359,11 @@ public abstract class BaseOverlay : OverlayWindow
                     catch (Exception recoveryEx)
                     {
                         AppLog.Exception($"Device recovery failed for '{DisplayName}'", recoveryEx);
-                        // Back off 1 s before retrying to avoid hammering a broken GPU.
                         Thread.Sleep(1000);
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Rate-limit to one log entry per 5 seconds so a persistent
-                    // non-device-lost error doesn't flood the file.
                     var ts = DateTime.UtcNow;
                     if ((ts - _lastRenderErrorLog).TotalSeconds >= 5)
                     {
@@ -288,15 +374,11 @@ public abstract class BaseOverlay : OverlayWindow
 
                 nextFrameMs += TargetFrameMs;
 
-                // If we fell significantly behind, snap forward rather than
-                // spinning to catch up (e.g., after a long GC pause).
                 if (sw.Elapsed.TotalMilliseconds > nextFrameMs + TargetFrameMs)
                     nextFrameMs = sw.Elapsed.TotalMilliseconds + TargetFrameMs;
             }
             else
             {
-                // Sleep for roughly 1 ms when there is time to spare.
-                // This keeps CPU usage low without busy-waiting the full interval.
                 var sleepMs = nextFrameMs - now;
                 if (sleepMs >= 1.5)
                     Thread.Sleep(1);
@@ -310,7 +392,6 @@ public abstract class BaseOverlay : OverlayWindow
 
     protected override void Dispose(bool disposing)
     {
-        // Signal the render thread to stop, then wait for it to exit cleanly.
         AppLog.Info($"Stopping render loop for '{DisplayName}'");
         _running = false;
         _renderThread?.Join(TimeSpan.FromSeconds(2));

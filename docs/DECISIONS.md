@@ -183,3 +183,66 @@ Format per entry:
 **Consequences:**
 - `WS_EX_LAYERED` must never be re-added to overlay window styles, even experimentally.
 - The architecture document initially listed `WS_EX_LAYERED` as part of the window style — corrected in the same commit as this decision entry.
+
+---
+
+## 2026-04-05 — BaseOverlay stores the backing config; resolves per-frame for stream mode
+
+**Decision:** `BaseOverlay._config` holds the raw (non-resolved) `OverlayConfig` from `AppConfig.Overlays`. The stream-mode-resolved config is computed by calling `_config.Resolve(streamModeActive)` on every render frame rather than being cached.
+
+**Context:** TASK-302 requires that resizing in stream mode writes to `StreamOverride.Width/Height` rather than the base config. This requires the backing config to be accessible at `WM_SIZE` time. If `_config` held the resolved copy, the `StreamOverride` object would be unreachable.
+
+**Rationale:**
+- Keeping the backing config in `_config` makes `OnSize` trivially correct: write to `_config.StreamOverride` or `_config` depending on mode.
+- `Resolve()` returns `this` (same reference) when stream mode is off, so there is zero allocation cost in the common case.
+- When stream mode is active, `Resolve()` allocates one small POCO per frame (~180 objects/sec across 3 overlays). GC gen-0 cost is negligible at 60 fps.
+- Per-frame resolution means stream mode toggles are reflected in the next frame without any explicit cache invalidation.
+
+**Alternatives considered:**
+- **Cache the resolved config, invalidate on `StreamModeChangedEvent`**: Adds a dirty flag and an extra code path. Correct but complex; the allocation saving is not measurable.
+- **Pass resolved config as a separate field**: Two configs in `BaseOverlay` is confusing and requires discipline to keep in sync.
+
+**Consequences:**
+- `UpdateConfig()` must receive the backing config (not a resolved copy) or persistence breaks.
+- `OverlayWindow` receives the stream-mode-resolved dimensions for initial window sizing so the correct profile is used at startup.
+
+---
+
+## 2026-04-05 — Deferred RenderResources.Invalidate() to render thread (TASK-303)
+
+**Decision:** `UpdateConfig()` sets a `volatile bool _pendingInvalidate` flag rather than calling `_resources.Invalidate()` directly. The render thread checks and applies the invalidation at the top of each frame.
+
+**Context:** `RenderResources.Invalidate()` disposes cached `ID2D1SolidColorBrush` and `IDWriteTextFormat` COM objects. The render thread may have received a brush reference from `GetBrush()` and be mid-draw when `Invalidate()` is called from a settings thread, causing use-after-dispose.
+
+**Rationale:**
+- Brush objects are used outside the `RenderResources` internal lock. Disposing from another thread is unsafe regardless.
+- Deferring to the render thread (the only thread that calls `GetBrush`/draws with results) eliminates the race entirely.
+- A single `volatile bool` is sufficient — successive `UpdateConfig()` calls before the render thread wakes still result in exactly one `Invalidate()`.
+
+**Alternatives considered:**
+- **Lock around all brush usage in `OnRender`**: Invasive; changes every overlay's draw code and adds lock contention.
+- **Copy brushes before drawing**: Direct2D COM objects are not cheaply copyable.
+
+**Consequences:**
+- Config changes take effect within one render frame (~16 ms) — meets TASK-303 acceptance criteria.
+- `StreamModeChangedEvent` also sets `_pendingInvalidate` so appearance changes from stream mode toggle apply on the next frame.
+
+---
+
+## 2026-04-05 — SimDetector bridges ISimProvider.StateChanged to ISimDataBus
+
+**Decision:** `SimDetector` subscribes to `ISimProvider.StateChanged` and re-publishes each state as a `SimStateChangedEvent` on `ISimDataBus`. Overlays subscribe to the bus event, not to the provider directly.
+
+**Context:** `BaseOverlay` lives in `SimOverlay.Rendering`, which must not depend on `SimOverlay.Sim.Contracts`. Overlays cannot subscribe to `ISimProvider.StateChanged` directly without violating the dependency graph.
+
+**Rationale:**
+- `ISimDataBus` and `SimStateChangedEvent` live in `SimOverlay.Core` — safe for every layer to reference.
+- `SimDetector` in `App` already owns the provider lifecycle, making it the natural bridging point.
+- Keeps `Rendering` and `Overlays` fully decoupled from sim-specific contracts.
+
+**Alternatives considered:**
+- **Move `SimStateChangedEvent` to `Sim.Contracts`**: Overlays then depend on `Sim.Contracts`, violating current layering rules.
+- **Add a separate `ISimStateSource` interface in Core**: More indirection than needed for one event type.
+
+**Consequences:**
+- All sim-state consumers go through the bus. Adding a second provider later requires no changes to overlays or rendering.
