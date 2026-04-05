@@ -42,6 +42,71 @@ public sealed class OverlayManager : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // Settings — preview and apply
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Pushes a config snapshot to the live overlay for immediate visual preview.
+    /// Does <em>not</em> persist to disk. Called on every Settings field blur.
+    /// </summary>
+    public void PreviewConfig(string overlayId, OverlayConfig config)
+    {
+        GetOverlay(overlayId)?.UpdateConfig(config);
+    }
+
+    /// <summary>
+    /// Applies a config to the live overlay (appearance + position + size) and
+    /// persists it to disk. Called when the user clicks Apply in Settings.
+    /// </summary>
+    public void ApplyConfig(string overlayId, OverlayConfig config)
+    {
+        var existing = FindConfig(overlayId);
+        if (existing is null) return;
+
+        // Copy all fields from the incoming config into the live AppConfig entry
+        // so the reference held by the overlay and the config file stay in sync.
+        CopyConfig(config, existing);
+
+        var overlay = GetOverlay(overlayId);
+        if (overlay is null) return;
+
+        overlay.UpdateConfig(existing);
+        overlay.SetPosition(existing.X, existing.Y);
+        overlay.SetSize(existing.Width, existing.Height);
+        ApplyVisibility(overlay, existing);
+
+        _configStore.Save(_appConfig);
+    }
+
+    private static void CopyConfig(OverlayConfig src, OverlayConfig dst)
+    {
+        dst.Enabled              = src.Enabled;
+        dst.X                    = src.X;
+        dst.Y                    = src.Y;
+        dst.Width                = src.Width;
+        dst.Height               = src.Height;
+        dst.Opacity              = src.Opacity;
+        dst.BackgroundColor      = src.BackgroundColor;
+        dst.TextColor            = src.TextColor;
+        dst.FontSize             = src.FontSize;
+        dst.ShowIRating          = src.ShowIRating;
+        dst.ShowLicense          = src.ShowLicense;
+        dst.MaxDriversShown      = src.MaxDriversShown;
+        dst.PlayerHighlightColor = src.PlayerHighlightColor;
+        dst.ShowWeather          = src.ShowWeather;
+        dst.ShowDelta            = src.ShowDelta;
+        dst.ShowGameTime         = src.ShowGameTime;
+        dst.Use12HourClock       = src.Use12HourClock;
+        dst.TemperatureUnit      = src.TemperatureUnit;
+        dst.DeltaBarMaxSeconds   = src.DeltaBarMaxSeconds;
+        dst.FasterColor          = src.FasterColor;
+        dst.SlowerColor          = src.SlowerColor;
+        dst.ShowTrendArrow       = src.ShowTrendArrow;
+        dst.ShowDeltaText        = src.ShowDeltaText;
+        dst.StreamOverride       = src.StreamOverride;
+    }
+
+    // -------------------------------------------------------------------------
     // Enable / disable
     // -------------------------------------------------------------------------
 

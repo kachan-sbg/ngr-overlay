@@ -188,15 +188,17 @@ public abstract class BaseOverlay : OverlayWindow
         var bgBrush = Resources.GetBrush(effectiveConfig.BackgroundColor);
         context.FillRectangle(new Vortice.RawRectF(0, 0, w, h), bgBrush);
 
-        // --- TASK-304: sim state placeholder ---
+        // Edit mode: always call OnRender so the user sees realistic mock data
+        // while positioning and resizing overlays. Sim state is irrelevant here.
+        // Normal mode: show placeholder when sim is not in session.
         var simState = (SimState)_simStateRaw;
-        if (simState != Core.SimState.InSession)
+        if (!IsLocked || simState == Core.SimState.InSession)
         {
-            RenderSimStatePlaceholder(context, effectiveConfig, simState, w, h);
+            OnRender(context, effectiveConfig);
         }
         else
         {
-            OnRender(context, effectiveConfig);
+            RenderSimStatePlaceholder(context, effectiveConfig, simState, w, h);
         }
 
         // Edit-mode border is drawn on top regardless of sim state.

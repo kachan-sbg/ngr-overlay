@@ -35,6 +35,24 @@ public sealed class RelativeOverlay : BaseOverlay
 
     private volatile RelativeData? _latest;
 
+    // ── Edit-mode mock data ───────────────────────────────────────────────────
+    private static readonly RelativeData MockData = new()
+    {
+        Entries =
+        [
+            new() { Position =  1, CarNumber = "44", DriverName = "L. Hamilton",   IRating = 5843, LicenseClass = LicenseClass.A,   LicenseLevel = "A 3.0", GapToPlayerSeconds = -8.45f, LapDifference = 0 },
+            new() { Position =  2, CarNumber =  "1", DriverName = "M. Verstappen", IRating = 6210, LicenseClass = LicenseClass.A,   LicenseLevel = "A 4.8", GapToPlayerSeconds = -5.10f, LapDifference = 0 },
+            new() { Position =  3, CarNumber = "16", DriverName = "C. Leclerc",    IRating = 5102, LicenseClass = LicenseClass.A,   LicenseLevel = "A 2.1", GapToPlayerSeconds = -2.43f, LapDifference = 0 },
+            new() { Position =  4, CarNumber = "63", DriverName = "G. Russell",    IRating = 4891, LicenseClass = LicenseClass.B,   LicenseLevel = "B 4.1", GapToPlayerSeconds = -1.12f, LapDifference = 0 },
+            new() { Position =  5, CarNumber =  "4", DriverName = "L. Norris",     IRating = 4102, LicenseClass = LicenseClass.B,   LicenseLevel = "B 2.7", GapToPlayerSeconds =  0.00f, LapDifference = 0, IsPlayer = true },
+            new() { Position =  6, CarNumber = "81", DriverName = "O. Piastri",    IRating = 3892, LicenseClass = LicenseClass.B,   LicenseLevel = "B 0.9", GapToPlayerSeconds = +1.34f, LapDifference = 0 },
+            new() { Position =  7, CarNumber = "11", DriverName = "S. Perez",      IRating = 5102, LicenseClass = LicenseClass.A,   LicenseLevel = "A 1.5", GapToPlayerSeconds = +2.88f, LapDifference = 0 },
+            new() { Position =  8, CarNumber = "14", DriverName = "F. Alonso",     IRating = 4750, LicenseClass = LicenseClass.Pro, LicenseLevel = "Pro",   GapToPlayerSeconds = +4.21f, LapDifference = 0 },
+            new() { Position =  9, CarNumber = "55", DriverName = "C. Sainz",      IRating = 4350, LicenseClass = LicenseClass.B,   LicenseLevel = "B 4.7", GapToPlayerSeconds = +5.90f, LapDifference = 0 },
+            new() { Position = 10, CarNumber = "18", DriverName = "L. Stroll",     IRating = 3200, LicenseClass = LicenseClass.C,   LicenseLevel = "C 1.2", GapToPlayerSeconds = +7.15f, LapDifference = 0 },
+        ],
+    };
+
     public RelativeOverlay(
         ISimDataBus bus,
         OverlayConfig config,
@@ -47,7 +65,7 @@ public sealed class RelativeOverlay : BaseOverlay
 
     protected override void OnRender(ID2D1RenderTarget context, OverlayConfig config)
     {
-        var data    = _latest;
+        var data    = IsLocked ? _latest : MockData;
         var entries = data?.Entries ?? [];
 
         var fontSize = config.FontSize;
