@@ -456,6 +456,21 @@ public class OverlayWindow : IDisposable
 
     public void Hide() => NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
 
+    /// <summary>
+    /// Re-asserts this window's position at the top of the TOPMOST z-order band.
+    /// Safe to call from any thread. Use when another TOPMOST window (e.g. the sim)
+    /// has pushed this overlay underneath it.
+    /// </summary>
+    public void BringToFront()
+    {
+        if (_hwnd == nint.Zero) return;
+        NativeMethods.SetWindowPos(
+            _hwnd,
+            NativeMethods.HWND_TOPMOST,
+            0, 0, 0, 0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+    }
+
     // -------------------------------------------------------------------------
     // Edit-mode style toggle
     // -------------------------------------------------------------------------
