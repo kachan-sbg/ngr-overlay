@@ -30,10 +30,14 @@ internal static class NativeMethods
     // -------------------------------------------------------------------------
     // WM_ messages
     // -------------------------------------------------------------------------
-    internal const uint WM_DESTROY   = 0x0002;
-    internal const uint WM_SIZE      = 0x0005;
-    internal const uint WM_MOVE      = 0x0003;
-    internal const uint WM_NCHITTEST = 0x0084;
+    internal const uint WM_DESTROY      = 0x0002;
+    internal const uint WM_SIZE         = 0x0005;
+    internal const uint WM_MOVE         = 0x0003;
+    internal const uint WM_NCHITTEST    = 0x0084;
+    internal const uint WM_SYSCOMMAND   = 0x0112;
+
+    // WM_SYSCOMMAND wParam values (mask off low 4 bits per MSDN)
+    internal const nint SC_MINIMIZE     = 0xF020;
 
     // -------------------------------------------------------------------------
     // Hit-test return values

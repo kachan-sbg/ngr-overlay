@@ -390,6 +390,15 @@ public class OverlayWindow : IDisposable
                     System.Runtime.InteropServices.Marshal.WriteInt32(lParam, 28, ResizeGripSize);
                     return 0;
 
+                case NativeMethods.WM_SYSCOMMAND:
+                    // Swallow all minimize requests (Win+D, taskbar right-click → Minimize,
+                    // etc.). Overlay windows are not normal app windows — they should always
+                    // remain visible at their z-order position and never enter a minimized state
+                    // that requires user interaction to undo.
+                    if ((wParam & 0xFFF0) == NativeMethods.SC_MINIMIZE)
+                        return 0;
+                    break;
+
                 case NativeMethods.WM_EXITSIZEMOVE:
                     // Windows may reset extended styles during a drag/resize operation.
                     // Re-apply our lock state so hit-testing works correctly afterward.
