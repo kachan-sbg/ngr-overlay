@@ -11,6 +11,7 @@ public sealed class ConfigStore
     };
 
     private readonly string _path;
+    private readonly object _saveLock = new();
 
     public ConfigStore() : this(DefaultPath()) { }
 
@@ -41,12 +42,17 @@ public sealed class ConfigStore
 
     public void Save(AppConfig config)
     {
-        var dir = Path.GetDirectoryName(_path)!;
-        Directory.CreateDirectory(dir);
+        // Lock so concurrent debounced saves from multiple overlays don't race
+        // on the .tmp file.
+        lock (_saveLock)
+        {
+            var dir = Path.GetDirectoryName(_path)!;
+            Directory.CreateDirectory(dir);
 
-        var tmp = _path + ".tmp";
-        var json = JsonSerializer.Serialize(config, JsonOptions);
-        File.WriteAllText(tmp, json);
-        File.Move(tmp, _path, overwrite: true);
+            var tmp  = _path + ".tmp";
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            File.WriteAllText(tmp, json);
+            File.Move(tmp, _path, overwrite: true);
+        }
     }
 }
