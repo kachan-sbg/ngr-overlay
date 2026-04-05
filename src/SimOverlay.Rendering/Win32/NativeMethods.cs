@@ -49,8 +49,12 @@ internal static class NativeMethods
     // -------------------------------------------------------------------------
     // ShowWindow commands
     // -------------------------------------------------------------------------
-    internal const int SW_SHOW = 5;
-    internal const int SW_HIDE = 0;
+    internal const int SW_HIDE    = 0;
+    internal const int SW_SHOW    = 5;
+    internal const int SW_RESTORE = 9;   // restores a minimized window to its normal size/position
+
+    // WM_SIZE wParam values
+    internal const nint SIZE_MINIMIZED = 1;
 
     // -------------------------------------------------------------------------
     // WNDCLASSEX
@@ -189,6 +193,10 @@ internal static class NativeMethods
     {
         public int Left, Top, Right, Bottom;
     }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsIconic(nint hwnd);  // true if the window is minimized
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

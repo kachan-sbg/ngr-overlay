@@ -35,7 +35,8 @@ public class OverlayWindow : IDisposable
     private nint _hInstance;
     private nint _hwnd;
     private bool _disposed;
-    private bool _isLocked = true;
+    private bool _isLocked     = true;
+    private bool _shouldBeVisible;   // tracks Show()/Hide() intent
 
     // -------------------------------------------------------------------------
     // Graphics state
@@ -406,6 +407,14 @@ public class OverlayWindow : IDisposable
                     break;
 
                 case NativeMethods.WM_SIZE:
+                    if (wParam == NativeMethods.SIZE_MINIMIZED && _shouldBeVisible)
+                    {
+                        // The system (or another process) minimized us — restore immediately.
+                        // This handles full-screen-exclusive games that call ShowWindow(SW_MINIMIZE)
+                        // on other windows; our WM_SYSCOMMAND SC_MINIMIZE guard doesn't cover that.
+                        NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
+                        return 0;
+                    }
                     OnSize(LoWord(lParam), HiWord(lParam));
                     break;
 
@@ -452,18 +461,32 @@ public class OverlayWindow : IDisposable
     // Visibility
     // -------------------------------------------------------------------------
 
-    public void Show() => NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
+    public void Show()
+    {
+        _shouldBeVisible = true;
+        NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
+    }
 
-    public void Hide() => NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
+    public void Hide()
+    {
+        _shouldBeVisible = false;
+        NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
+    }
 
     /// <summary>
     /// Re-asserts this window's position at the top of the TOPMOST z-order band.
-    /// Safe to call from any thread. Use when another TOPMOST window (e.g. the sim)
-    /// has pushed this overlay underneath it.
+    /// If the window was minimized by the system (e.g. when a full-screen exclusive
+    /// game started), it is restored first. Safe to call from any thread.
     /// </summary>
     public void BringToFront()
     {
-        if (_hwnd == nint.Zero) return;
+        if (_hwnd == nint.Zero || !_shouldBeVisible) return;
+
+        // Restore before adjusting z-order — SetWindowPos on a minimized window
+        // only updates z-order metadata; the window stays invisible until restored.
+        if (NativeMethods.IsIconic(_hwnd))
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
+
         NativeMethods.SetWindowPos(
             _hwnd,
             NativeMethods.HWND_TOPMOST,
