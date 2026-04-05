@@ -346,13 +346,6 @@ public abstract class BaseOverlay : OverlayWindow
 
     private DateTime _lastRenderErrorLog = DateTime.MinValue;
 
-    // Safety-net: re-assert topmost z-order every N frames (~2 s at 60 fps).
-    // The primary mechanism is the WinEvent z-order hook in Program.cs which
-    // reacts immediately whenever the sim re-asserts its own topmost position.
-    // This interval is a fallback for cases the hook doesn't cover.
-    private const int BringToFrontInterval = 120;
-    private int _bringToFrontCounter;
-
     private void RenderLoop()
     {
         AppLog.Info($"Render loop started for '{DisplayName}'");
@@ -365,12 +358,6 @@ public abstract class BaseOverlay : OverlayWindow
 
             if (now >= nextFrameMs)
             {
-                if (++_bringToFrontCounter >= BringToFrontInterval)
-                {
-                    _bringToFrontCounter = 0;
-                    BringToFront();
-                }
-
                 try
                 {
                     Render();
