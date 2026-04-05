@@ -29,8 +29,9 @@ internal static class NativeMethods
     internal static extern bool SetLayeredWindowAttributes(
         nint hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
-    // WS_EX_TOOLWINDOW is intentionally NOT defined here.
-    // Its presence would hide overlay windows from OBS's window picker.
+    // WS_EX_TOOLWINDOW intentionally NOT used on overlay windows — it hides them from OBS's window picker.
+    // It IS used on hidden owner windows (see OverlayWindow) where visibility is irrelevant.
+    internal const int WS_EX_TOOLWINDOW = 0x00000080;
 
     // -------------------------------------------------------------------------
     // SetWindowLong / SetWindowLongPtr indices

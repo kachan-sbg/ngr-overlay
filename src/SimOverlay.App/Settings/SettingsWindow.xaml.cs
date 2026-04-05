@@ -1,5 +1,7 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 using SimOverlay.Core.Config;
 using SimOverlay.Overlays;
 using CheckBox = System.Windows.Controls.CheckBox;
@@ -61,12 +63,35 @@ public partial class SettingsWindow : Window
         _overlayPanel = new OverlaySettingsPanel();
         _globalPanel  = new GlobalSettingsPanel(overlayManager, appConfig, configStore);
 
+        LoadIcon();
         BuildViewModels();
         BuildNavList();
 
         // Select first overlay by default.
         if (OverlayNavList.Items.Count > 0)
             OverlayNavList.SelectedIndex = 0;
+    }
+
+    // ── Icon ──────────────────────────────────────────────────────────────────
+
+    private void LoadIcon()
+    {
+        var icoPath = Path.Combine(AppContext.BaseDirectory, "Resources", "simoverlay.ico");
+        if (!File.Exists(icoPath)) return;
+
+        try
+        {
+            var img = new BitmapImage();
+            img.BeginInit();
+            img.UriSource      = new Uri(icoPath, UriKind.Absolute);
+            img.CacheOption    = BitmapCacheOption.OnLoad;
+            img.DecodePixelWidth  = 32;
+            img.DecodePixelHeight = 32;
+            img.EndInit();
+            img.Freeze();
+            Icon = img;
+        }
+        catch { /* icon is cosmetic — ignore failures */ }
     }
 
     // ── Entry point ───────────────────────────────────────────────────────────

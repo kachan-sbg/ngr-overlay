@@ -23,9 +23,26 @@ internal static class Program
             var ex = e.ExceptionObject as Exception;
             AppLog.Error($"UNHANDLED EXCEPTION (terminating={e.IsTerminating}): {ex?.GetType().Name}: {ex?.Message}");
             if (ex is not null) AppLog.Error(ex.StackTrace ?? "(no stack trace)");
+
+            if (e.IsTerminating)
+            {
+                MessageBox(nint.Zero,
+                    $"SimOverlay encountered a fatal error and must close.\n\n{ex?.GetType().Name}: {ex?.Message}\n\n{ex?.StackTrace}",
+                    "SimOverlay — Fatal Error",
+                    0x10 /* MB_ICONERROR */);
+            }
         };
 
         AppLog.Info("Main() entered");
+
+        // ── Single-instance guard ─────────────────────────────────────────────
+        // Must be created before any UI so the hidden HWND is on the STA thread.
+        using var singleInstance = new SingleInstanceGuard();
+        if (singleInstance.IsAlreadyRunning)
+        {
+            AppLog.Info("Second instance detected — signaled first instance and exiting.");
+            return;
+        }
 
         try
         {
@@ -33,6 +50,16 @@ internal static class Program
             // ShutdownMode=OnExplicitShutdown: WPF doesn't own the message loop — our
             // Win32 MessagePump does. WPF messages are dispatched via ComponentDispatcher.
             var wpfApp = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+
+            wpfApp.DispatcherUnhandledException += (_, e) =>
+            {
+                AppLog.Exception("WPF dispatcher unhandled exception", e.Exception);
+                MessageBox(nint.Zero,
+                    $"SimOverlay encountered an unhandled error.\n\n{e.Exception.GetType().Name}: {e.Exception.Message}\n\n{e.Exception.StackTrace}",
+                    "SimOverlay — Unhandled Error",
+                    0x10 /* MB_ICONERROR */);
+                e.Handled = true;
+            };
 
             // --- Core services ---
             var configStore = new ConfigStore();
@@ -63,6 +90,9 @@ internal static class Program
                 return settingsWindow;
             }
             void OpenSettings() => GetOrCreateSettings().OpenOrActivate();
+
+            // Wire single-instance signal → open Settings (fired when a second instance starts).
+            singleInstance.OpenSettingsRequested = OpenSettings;
 
             // --- Tray icon ---
             using var tray = new TrayIconController(

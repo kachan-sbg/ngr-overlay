@@ -49,6 +49,7 @@ public class OverlayWindow : IDisposable
 
     private nint _hInstance;
     private nint _hwnd;
+    private nint _hOwner;   // hidden owner HWND that suppresses the taskbar button
     private bool _disposed;
     private bool _isLocked      = true;
     private bool _shouldBeVisible;
@@ -152,6 +153,22 @@ public class OverlayWindow : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(),
                 $"RegisterClassEx failed for '{DisplayName}'");
 
+        // Create a hidden owner window.  Win32 does not add taskbar buttons for owned
+        // windows, so this suppresses the overlay's taskbar entry.  WS_EX_TOOLWINDOW
+        // hides the owner itself (it's 0×0 and invisible anyway).  Crucially the flag
+        // is NOT applied to the overlay — OBS's WGC enumerates all top-level HWNDs
+        // returned by EnumWindows, including owned ones, so capture still works.
+        _hOwner = NativeMethods.CreateWindowEx(
+            dwExStyle:    NativeMethods.WS_EX_TOOLWINDOW,
+            lpClassName:  "Static",
+            lpWindowName: "",
+            dwStyle:      NativeMethods.WS_POPUP,
+            x: 0, y: 0, nWidth: 0, nHeight: 0,
+            hWndParent:   nint.Zero,
+            hMenu:        nint.Zero,
+            hInstance:    _hInstance,
+            lpParam:      nint.Zero);
+
         _hwnd = NativeMethods.CreateWindowEx(
             dwExStyle:   NativeMethods.WS_EX_TOPMOST
                        | NativeMethods.WS_EX_LAYERED       // ULW: DWM composites our bitmap above DXGI planes
@@ -167,7 +184,7 @@ public class OverlayWindow : IDisposable
             y:            y,
             nWidth:       width,
             nHeight:      height,
-            hWndParent:   nint.Zero,
+            hWndParent:   _hOwner,
             hMenu:        nint.Zero,
             hInstance:    _hInstance,
             lpParam:      nint.Zero);
@@ -618,6 +635,14 @@ public class OverlayWindow : IDisposable
             {
                 NativeMethods.DestroyWindow(_hwnd);
                 _hwnd = nint.Zero;
+            }
+
+            // Destroy the hidden owner after the overlay so WM_DESTROY fires on
+            // the overlay window (not cascade-destroyed by the owner).
+            if (_hOwner != nint.Zero)
+            {
+                NativeMethods.DestroyWindow(_hOwner);
+                _hOwner = nint.Zero;
             }
 
             if (_hInstance != nint.Zero)
