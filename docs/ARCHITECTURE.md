@@ -216,21 +216,37 @@ Key types:
 - Fires `ActiveProviderChanged` event.
 
 `TrayIconController`
-- Creates `NotifyIcon` (WinForms) or equivalent.
-- Context menu: "Settings", "Toggle Edit Mode", "Stream Mode: Off / On", "Exit".
-- "Toggle Edit Mode" broadcasts `EditModeChangedEvent` to all overlays.
-- "Stream Mode" toggles `AppConfig.GlobalSettings.StreamModeActive`, saves config, broadcasts `StreamModeChangedEvent`. Label updates to reflect state.
+- `System.Windows.Forms.NotifyIcon` (requires `<UseWindowsForms>true</UseWindowsForms>`).
+- Context menu: "Settings…", "Edit mode" (CheckOnClick), "Stream mode" (CheckOnClick), "Exit".
+- Double-click opens Settings window.
+- Checkbox states synced from `OverlayManager` each time the menu opens (`_syncingMenu` flag prevents feedback loop on programmatic set).
+- Edit/stream mode changes delegated to `OverlayManager.SetEditMode` / `SetStreamMode`.
 
 `SettingsWindow`
-- WPF `Window` or WinUI3 `Window`.
-- Contains a list of overlays with enable/disable toggles.
-- Per-overlay settings panel has two tabs: **"Screen"** (base config) and **"Stream Override"**.
-  - Stream Override tab has an "Enable override" toggle at the top. When off, the tab fields are dimmed/disabled.
-  - Each field in the Stream Override tab has a "Custom" checkbox next to it. Unchecked = inherit from base (null in JSON). Checked = use the value in the adjacent input.
-  - This avoids overwhelming users: they only set the fields they actually want to differ.
-- "Apply" writes updated `OverlayConfig` values to `ConfigStore` and fires `ConfigChanged`.
-- "Edit Mode" toggle button.
-- "Stream Mode" toggle button (mirrors tray menu).
+- WPF `Window`, `ShowInTaskbar=false`, lazy singleton (hidden on close, not destroyed).
+- Sidebar: `OverlayNavList` (per-overlay name + enable/disable checkbox) + `GlobalNavList`.
+- `ContentArea` (`ContentControl`) swaps between `OverlaySettingsPanel` (reused instance) and `GlobalSettingsPanel`.
+- Per-overlay panel has two tabs: **Screen** (base config) and **Stream Override**.
+  - Screen tab: Position & Size, Appearance, overlay-specific sections (hidden via `Visibility.Collapsed` for non-applicable overlays).
+  - Stream Override tab: "Enable stream override" checkbox + per-field `OverrideRow` controls. Each row has a "Custom" checkbox; unchecked = inherit from base (null in JSON), field is dimmed at 0.4 opacity.
+- LostFocus on any field → `OverlayManager.PreviewConfig` (immediate visual feedback, no disk save).
+- Apply button → `OverlayManager.ApplyConfig` (updates position/size, persists to disk).
+- `GlobalSettingsPanel`: Edit mode + Stream mode toggles (apply immediately, no Apply button needed); Start With Windows (deferred to Apply, writes registry `HKCU\...\Run`).
+
+`OverlayManager` (coordinator)
+- Owns all three overlay instances and their configs.
+- `SetEditMode(bool)` / `SetStreamMode(bool)` — single source of truth; publishes bus events and keeps `EditModeActive` / `StreamModeActive` readable for UI sync.
+- `PreviewConfig` / `ApplyConfig` — settings preview/apply split.
+
+Helper controls (all in `SimOverlay.App.Settings`)
+- `FieldRow` — `[ContentProperty(Children)]` labelled row.
+- `ColorEditor` — compact R/G/B/A TextBoxes + preview swatch; DataContext = `ColorViewModel`.
+- `OverrideRow` — "Custom" CheckBox + label + content slot; `HasOverride` DP binds TwoWay to `StreamOverrideViewModel.HasXxx`.
+- `EnumBoolConverter` — `IValueConverter` singleton for RadioButton ↔ enum binding.
+
+WPF + Win32 pump coexistence
+- `new Application { ShutdownMode = OnExplicitShutdown }` created before any WPF windows; `Application.Run()` is NOT called.
+- Win32 `DispatchMessage` loop pumps both Win32 and WPF messages via `ComponentDispatcher`.
 
 ### 3. Process Model
 
@@ -448,16 +464,16 @@ No changes to `Rendering`, `Overlays`, or `Core` are required. The overlay imple
 
 ### 10. Dependency Injection
 
-The `App` project uses `Microsoft.Extensions.DependencyInjection`. The DI container is configured at startup:
+The `App` project uses manual construction in `Program.cs` (DI packages are referenced but the container is not used — straightforward wiring was sufficient for the current object graph):
 
-- `ISimDataBus` → `SimDataBus` (singleton)
-- `ConfigStore` (singleton)
-- `AppConfig` (singleton, loaded from `ConfigStore`)
-- `ISimProvider` registrations: `IRacingProvider`, plus future providers
-- `SimDetector` (singleton)
-- All overlay classes (singleton each)
-- `TrayIconController` (singleton)
-- `SettingsWindow` (transient — created on demand)
+- `ConfigStore` + `AppConfig` — loaded first; passed by reference everywhere
+- `SimDataBus` — shared bus; injected into overlays and `SimDetector`
+- `IRacingProvider` — constructed and passed to `SimDetector`
+- `SimDetector` — owns provider lifetime
+- `OverlayManager` — owns all three overlay windows; coordinator for edit/stream mode
+- `ZOrderHook` — reacts to `EVENT_OBJECT_REORDER` to restore z-order
+- `TrayIconController` — `NotifyIcon`; opens `SettingsWindow` on demand
+- `SettingsWindow` — lazy singleton; created on first F9 / tray open
 
 ### 11. OBS Capture Compatibility
 

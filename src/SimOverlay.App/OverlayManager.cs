@@ -1,5 +1,6 @@
 using SimOverlay.Core;
 using SimOverlay.Core.Config;
+using SimOverlay.Core.Events;
 using SimOverlay.Overlays;
 using SimOverlay.Rendering;
 
@@ -13,8 +14,18 @@ namespace SimOverlay.App;
 /// </summary>
 public sealed class OverlayManager : IDisposable
 {
+    private readonly ISimDataBus  _bus;
     private readonly AppConfig    _appConfig;
     private readonly ConfigStore  _configStore;
+
+    // Local mirror so callers can read state without subscribing to events.
+    private bool _editModeActive;
+
+    /// <summary>True when overlays are unlocked for dragging/resizing.</summary>
+    public bool EditModeActive => _editModeActive;
+
+    /// <summary>True when stream-mode overrides are active.</summary>
+    public bool StreamModeActive => _appConfig.GlobalSettings.StreamModeActive;
 
     private readonly RelativeOverlay    _relative;
     private readonly SessionInfoOverlay _sessionInfo;
@@ -25,6 +36,7 @@ public sealed class OverlayManager : IDisposable
     /// <param name="configStore">Used to persist enable/disable changes immediately.</param>
     public OverlayManager(ISimDataBus bus, AppConfig appConfig, ConfigStore configStore)
     {
+        _bus         = bus;
         _appConfig   = appConfig;
         _configStore = configStore;
 
@@ -104,6 +116,33 @@ public sealed class OverlayManager : IDisposable
         dst.ShowTrendArrow       = src.ShowTrendArrow;
         dst.ShowDeltaText        = src.ShowDeltaText;
         dst.StreamOverride       = src.StreamOverride;
+    }
+
+    // -------------------------------------------------------------------------
+    // Edit mode / stream mode
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Enables or disables edit mode globally (unlocks all overlays for drag/resize).
+    /// Publishes <see cref="EditModeChangedEvent"/> on the data bus.
+    /// </summary>
+    public void SetEditMode(bool active)
+    {
+        _editModeActive = active;
+        // IsLocked=true means normal (click-through); IsLocked=false means edit mode.
+        _bus.Publish(new EditModeChangedEvent(IsLocked: !active));
+    }
+
+    /// <summary>
+    /// Activates or deactivates stream mode and persists it to config.
+    /// Publishes <see cref="StreamModeChangedEvent"/> so overlays invalidate
+    /// their resource caches and re-resolve the effective config.
+    /// </summary>
+    public void SetStreamMode(bool active)
+    {
+        _appConfig.GlobalSettings.StreamModeActive = active;
+        _bus.Publish(new StreamModeChangedEvent(IsActive: active));
+        _configStore.Save(_appConfig);
     }
 
     // -------------------------------------------------------------------------

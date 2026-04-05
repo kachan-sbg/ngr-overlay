@@ -321,3 +321,30 @@ Format per entry:
 **Alternatives considered:**
 - Show real data in edit mode: rejected — live data moves while user is repositioning, making it hard to judge layout.
 - Live-update on every keystroke: rejected — causes continuous `SetWindowPos` calls while typing; blur is the natural "commit" moment for a text field.
+
+
+---
+
+## 2026-04-05 — Settings UI architecture: helper UserControls + OverlayManager as coordinator
+
+**Decision:**
+1. `FieldRow`, `ColorEditor`, and `OverrideRow` are thin WPF UserControls with `[ContentProperty(nameof(Children))]` — children go into an inner StackPanel slot.
+2. `OverlayManager` is the single coordinator for edit/stream mode: it holds `EditModeActive`/`StreamModeActive` state and exposes `SetEditMode`/`SetStreamMode` which publish the appropriate bus events. Settings panels and the tray icon both go through `OverlayManager` rather than publishing to `ISimDataBus` directly.
+3. `SettingsWindow` is created lazily on first open and hidden (not destroyed) on close, preserving ViewModel state between opens.
+4. `GlobalSettingsPanel` applies edit/stream mode changes immediately on toggle; Start With Windows is deferred to Apply.
+
+**Context:** Multiple UI surfaces (tray icon, Settings window, F9 hotkey) need to trigger the same mode changes. `ISimDataBus` is the correct data-flow bus but is write-only from callsites; reading current state from it would require explicit subscriptions. `OverlayManager` already owns overlays and config — the natural place to add coordinating state.
+
+**Rationale:**
+- Keeps `ISimDataBus` as a pure pub/sub bus; no state leaks onto it.
+- `OverlayManager` is already injected everywhere it's needed (`SettingsWindow`, `TrayIconController`, `GlobalSettingsPanel`).
+- Helper UserControls (`FieldRow`, `ColorEditor`, `OverrideRow`) keep the panel XAML declarative — no code-behind repetition.
+- `_syncingMenu` flag in `TrayIconController` prevents `CheckedChanged` feedback loops when `SyncCheckedStates` sets checkbox values programmatically.
+
+**Alternatives considered:**
+- **Publish edit/stream mode events directly from tray/settings**: Works but duplicates the publish logic in every callsite; no single source of truth for current state.
+- **Expose `IsEditMode` on `ISimDataBus`**: Adds state to a pure event bus; breaks the interface contract.
+
+**Consequences:**
+- Any new UI surface that needs to trigger mode changes injects `OverlayManager` and calls `SetEditMode`/`SetStreamMode` — consistent pattern.
+- `OverlayManager._editModeActive` mirrors what overlays track in `IsLocked`; they can diverge if an event is lost. Acceptable: the next Settings open calls `Reload()` which reads the manager's state.

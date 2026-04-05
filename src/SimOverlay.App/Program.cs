@@ -1,4 +1,7 @@
 using System.Runtime.InteropServices;
+using System.Windows;
+using Application = System.Windows.Application;
+using SimOverlay.App.Settings;
 using SimOverlay.Core;
 using SimOverlay.Core.Config;
 using SimOverlay.Rendering;
@@ -26,6 +29,11 @@ internal static class Program
 
         try
         {
+            // --- WPF Application (required for SettingsWindow) ---
+            // ShutdownMode=OnExplicitShutdown: WPF doesn't own the message loop — our
+            // Win32 MessagePump does. WPF messages are dispatched via ComponentDispatcher.
+            var wpfApp = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+
             // --- Core services ---
             var configStore = new ConfigStore();
             var appConfig   = configStore.Load();
@@ -41,30 +49,56 @@ internal static class Program
 
             // --- Overlays ---
             using var overlayManager = new OverlayManager(bus, appConfig, configStore);
-            AppLog.Info("OverlayManager created — entering message pump");
+            AppLog.Info("OverlayManager created");
+
+            // --- Settings window (lazy singleton) ---
+            SettingsWindow? settingsWindow = null;
+            SettingsWindow GetOrCreateSettings()
+            {
+                if (settingsWindow is null)
+                {
+                    settingsWindow = new SettingsWindow(overlayManager, appConfig, configStore);
+                    AppLog.Info("SettingsWindow created");
+                }
+                return settingsWindow;
+            }
+            void OpenSettings() => GetOrCreateSettings().OpenOrActivate();
+
+            // --- Tray icon ---
+            using var tray = new TrayIconController(
+                overlayManager,
+                openSettings: OpenSettings,
+                quit: () =>
+                {
+                    AppLog.Info("Quit via tray — saving config and exiting.");
+                    configStore.Save(appConfig);
+                    Environment.Exit(0);
+                });
+            AppLog.Info("TrayIconController started — entering message pump");
 
             // --- Z-order hook ---
-            // Reacts immediately when any other TOPMOST window (the sim) re-asserts
-            // its z-order, placing our overlays back on top. Runs on the UI message
-            // pump thread via WINEVENT_OUTOFCONTEXT — no extra threads needed.
             using var zOrderHook = new ZOrderHook(
                 overlayManager.BringAllToFront,
                 overlayManager.OwnedHandles);
 
-            // Dev hotkey: F10 = quit.
-            int hotkeyQuit = MessagePump.RegisterHotKey(0, 0x79 /* F10 */);
-            AppLog.Info("DEV: F10 = quit.");
+            // Dev hotkeys (no modifiers):
+            //   F9  = open Settings
+            //   F10 = quit
+            int hotkeySettings = MessagePump.RegisterHotKey(modifiers: 0, virtualKey: 0x78 /* F9  */);
+            int hotkeyQuit     = MessagePump.RegisterHotKey(modifiers: 0, virtualKey: 0x79 /* F10 */);
+            AppLog.Info("DEV: F9 = Settings, F10 = quit.");
 
             MessagePump.Run((msgId, wParam) =>
             {
                 if (msgId == MessagePump.WmHotKey)
                 {
                     var id = (int)wParam.ToInt64();
+
+                    if (id == hotkeySettings)
+                        OpenSettings();
+
                     if (id == hotkeyQuit)
                     {
-                        // Save config synchronously, then force-exit.
-                        // IRSDKSharper may leave a foreground thread alive after Stop(),
-                        // so Environment.Exit(0) avoids the process hanging on cleanup.
                         AppLog.Info("F10 quit — saving config and exiting.");
                         zOrderHook.Dispose();
                         configStore.Save(appConfig);
