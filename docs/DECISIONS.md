@@ -289,3 +289,17 @@ Format per entry:
 **Consequences:**
 - Phase 4 overlay implementations should use the config's background color (same source), so there is no visual difference between the pre-filled background and what the overlay would draw anyway.
 - `RenderSimStatePlaceholder` still draws its own background fill — this is now redundant but harmless (overdraws the same pixels).
+
+## 2026-04-05 — Remove periodic BringToFront from render loop
+
+**Decision:** Removed the 120-frame (~2 s) `BringToFront()` call from `BaseOverlay.RenderLoop`. Z-order is maintained solely by `ZOrderHook` (EVENT_OBJECT_REORDER).
+
+**Context:** After Phase 4 smoke testing, overlays blinked visibly every ~2 seconds even with no sim running. The blink was initially misattributed to `SimDetector` polling, but persisted after the SimDetector debounce fix. Inspection of the render loop revealed `BringToFront()` being called every 120 frames as a fallback z-order mechanism. `BringToFront` calls `SetWindowPos(HWND_TOPMOST)`, which causes DWM to re-composite the layered window — briefly producing a transparent frame visible as a blink.
+
+**Rationale:** `ZOrderHook` fires `EVENT_OBJECT_REORDER` immediately whenever any TOPMOST window changes z-order, and calls `BringAllToFront()` on the overlay manager. This is the correct reactive mechanism. The periodic fallback in the render loop was added as belt-and-suspenders, but its side effect (DWM re-composition causing blink) outweighs any benefit.
+
+**Alternatives considered:**
+- **Reduce interval (e.g. 600 frames / 10 s)**: Still blinks, just less frequently.
+- **Keep fallback, suppress DWM re-composition**: No known API to do this with ULW layered windows.
+
+**Consequences:** If `ZOrderHook` misses an event (e.g. a sim that uses a non-standard z-order API), overlays may end up under the sim window and only recover on the next hook event. Acceptable trade-off given no blink is the primary UX requirement.
