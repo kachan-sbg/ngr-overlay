@@ -28,7 +28,7 @@ internal sealed class TestOverlay : BaseOverlay
     // Called by the render loop after automatic device recovery.
     protected override void OnDeviceRecovered() => Interlocked.Increment(ref _recoveries);
 
-    protected override void OnRender(ID2D1DeviceContext context, OverlayConfig config)
+    protected override void OnRender(ID2D1RenderTarget context, OverlayConfig config)
     {
         var w = (float)config.Width;
         var h = (float)config.Height;

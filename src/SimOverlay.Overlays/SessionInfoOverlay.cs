@@ -41,7 +41,7 @@ public sealed class SessionInfoOverlay : BaseOverlay
     }
 
     /// <inheritdoc/>
-    protected override void OnRender(ID2D1DeviceContext context, OverlayConfig config)
+    protected override void OnRender(ID2D1RenderTarget context, OverlayConfig config)
     {
         // Phase 4: draw session info fields.
     }

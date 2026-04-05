@@ -98,6 +98,7 @@ public abstract class BaseOverlay : OverlayWindow
         Subscribe<EditModeChangedEvent>(e => IsLocked = e.IsLocked);
         Subscribe<SimStateChangedEvent>(e =>
         {
+            AppLog.Info($"SimStateChangedEvent → {e.State} (overlay='{DisplayName}')");
             _simStateRaw = (int)e.State;
             // Re-assert our topmost z-order position whenever the sim state changes.
             // iRacing (and most sims) call SetWindowPos(HWND_TOPMOST) on startup, which
@@ -162,10 +163,10 @@ public abstract class BaseOverlay : OverlayWindow
     /// Called by the render loop each frame. Applies any pending config
     /// invalidation, resolves the effective config for the active mode,
     /// handles sim-state placeholder rendering, then delegates to
-    /// <see cref="OnRender(ID2D1DeviceContext, OverlayConfig)"/> and paints
+    /// <see cref="OnRender(ID2D1RenderTarget, OverlayConfig)"/> and paints
     /// the edit-mode border when unlocked.
     /// </summary>
-    protected sealed override void OnRender(ID2D1DeviceContext context)
+    protected sealed override void OnRender(ID2D1RenderTarget context)
     {
         // --- TASK-303: deferred resource invalidation (render thread only) ---
         if (_pendingInvalidate)
@@ -181,6 +182,11 @@ public abstract class BaseOverlay : OverlayWindow
 
         var w = (float)effectiveConfig.Width;
         var h = (float)effectiveConfig.Height;
+
+        // Always draw the background so the overlay is visible even when
+        // the concrete OnRender() is a stub or draws nothing (Phase 3).
+        var bgBrush = Resources.GetBrush(effectiveConfig.BackgroundColor);
+        context.FillRectangle(new Vortice.RawRectF(0, 0, w, h), bgBrush);
 
         // --- TASK-304: sim state placeholder ---
         var simState = (SimState)_simStateRaw;
@@ -200,7 +206,7 @@ public abstract class BaseOverlay : OverlayWindow
 
     // --- TASK-304 placeholder renderer ---
     private void RenderSimStatePlaceholder(
-        ID2D1DeviceContext context,
+        ID2D1RenderTarget context,
         OverlayConfig config,
         SimState state,
         float w,
@@ -226,7 +232,7 @@ public abstract class BaseOverlay : OverlayWindow
         context.DrawTextLayout(new System.Numerics.Vector2(10f, 5f), layout, textBrush);
     }
 
-    private void DrawEditDecoration(ID2D1DeviceContext context, float w, float h)
+    private void DrawEditDecoration(ID2D1RenderTarget context, float w, float h)
     {
         var brush = Resources.GetBrush(EditBorderColor.R, EditBorderColor.G, EditBorderColor.B);
 
@@ -239,7 +245,7 @@ public abstract class BaseOverlay : OverlayWindow
         DrawGripDot(context, brush, w - 4f - GripDotStep * 2f, h - 4f - GripDotStep * 2f);
     }
 
-    private static void DrawGripDot(ID2D1DeviceContext context, ID2D1Brush brush, float cx, float cy)
+    private static void DrawGripDot(ID2D1RenderTarget context, ID2D1Brush brush, float cx, float cy)
     {
         var half = GripDotSize / 2f;
         context.FillRectangle(new Vortice.RawRectF(cx - half, cy - half, cx + half, cy + half), brush);
@@ -250,7 +256,7 @@ public abstract class BaseOverlay : OverlayWindow
     /// Called at ~60 fps on the render thread; <paramref name="config"/> is the
     /// stream-mode-resolved snapshot consistent for the entire frame.
     /// </summary>
-    protected abstract void OnRender(ID2D1DeviceContext context, OverlayConfig config);
+    protected abstract void OnRender(ID2D1RenderTarget context, OverlayConfig config);
 
     /// <summary>
     /// Called inside <see cref="OverlayWindow.RecoverDevice"/> while RenderLock is held,
@@ -312,7 +318,7 @@ public abstract class BaseOverlay : OverlayWindow
             }
         }
 
-        ResizeSwapChain(width, height);
+        ResizeRenderTarget(width, height);
         _resources.Invalidate();
         ScheduleSave();
     }
@@ -340,9 +346,10 @@ public abstract class BaseOverlay : OverlayWindow
 
     private DateTime _lastRenderErrorLog = DateTime.MinValue;
 
-    // Re-assert topmost visibility every N frames (~2 s at 60 fps).
-    // Guards against full-screen apps that hide overlay windows between
-    // SimStateChangedEvents (e.g. during iRacing's loading phase).
+    // Safety-net: re-assert topmost z-order every N frames (~2 s at 60 fps).
+    // The primary mechanism is the WinEvent z-order hook in Program.cs which
+    // reacts immediately whenever the sim re-asserts its own topmost position.
+    // This interval is a fallback for cases the hook doesn't cover.
     private const int BringToFrontInterval = 120;
     private int _bringToFrontCounter;
 

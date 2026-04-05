@@ -164,7 +164,7 @@ Format per entry:
 
 ---
 
-## 2026-04-04 — Omit `WS_EX_LAYERED` from overlay window styles
+## 2026-04-04 — Omit `WS_EX_LAYERED` from overlay window styles *(superseded 2026-04-05 — see below)*
 
 **Decision:** Do not apply `WS_EX_LAYERED` to overlay windows. Use `WS_EX_NOREDIRECTIONBITMAP` + DirectComposition premultiplied alpha for transparency instead.
 
@@ -175,14 +175,7 @@ Format per entry:
 - `WS_EX_NOREDIRECTIONBITMAP` alone (without `WS_EX_LAYERED`) does not suffer this caching. The hit-test region tracks the actual window rectangle, which updates correctly on resize.
 - DComp premultiplied alpha provides correct per-pixel transparency without `WS_EX_LAYERED`. No `UpdateLayeredWindow` is needed.
 
-**Alternatives considered:**
-- Calling `SetWindowLongPtr` + `SetWindowPos(SWP_FRAMECHANGED)` to force re-evaluation of the hit-test mask — tried, did not solve the problem.
-- Adding a `WM_EXITSIZEMOVE` handler to re-apply the transparent style after drag — tried, partially worked for drag but not for programmatic resize.
-- Neither alternative addressed the root cause. Only removing `WS_EX_LAYERED` entirely solved it.
-
-**Consequences:**
-- `WS_EX_LAYERED` must never be re-added to overlay window styles, even experimentally.
-- The architecture document initially listed `WS_EX_LAYERED` as part of the window style — corrected in the same commit as this decision entry.
+**Superseded by:** 2026-04-05 — Switch to `UpdateLayeredWindow` rendering. The hit-test caching concern no longer applies because `WS_EX_LAYERED` + ULW does not use DComp's alpha mask caching. `WM_NCHITTEST` handles hit-testing independently of the layered window bitmap, so resize works correctly.
 
 ---
 
@@ -246,3 +239,53 @@ Format per entry:
 
 **Consequences:**
 - All sim-state consumers go through the bus. Adding a second provider later requires no changes to overlays or rendering.
+
+---
+
+## 2026-04-05 — Replace DirectComposition + GPU D2D with UpdateLayeredWindow + software DCRenderTarget
+
+**Decision:** Replace the Phase 1 rendering stack (D3D11 + `ID2D1DeviceContext` + DXGI swap chain + DirectComposition) with `ID2D1DCRenderTarget` (software CPU rendering) into a GDI DIB, presented each frame via `UpdateLayeredWindow(ULW_ALPHA)`. Window style changes from `WS_EX_NOREDIRECTIONBITMAP` (no `WS_EX_LAYERED`) to `WS_EX_LAYERED` (no `WS_EX_NOREDIRECTIONBITMAP`).
+
+**Context:** During Phase 3 debugging, overlay visibility was investigated because overlays appeared invisible while iRacing was running. The rendering architecture was overhauled under the (incorrect) hypothesis that the DComp swap chain was being composited behind iRacing's DXGI flip chain. The actual root cause turned out to be unrelated (see next entry). However, analysing three candidate approaches revealed that the intermediate approach tried — GPU D3D11 render texture + staging-texture CPU readback + ULW — was objectively the most expensive and was immediately discarded. The resulting comparison made the ULW + software approach the clear winner.
+
+**Rationale:**
+- **DComp z-order reliability**: With `WS_EX_NOREDIRECTIONBITMAP + DComp`, the DComp visual tree has its own DWM composition tier. `SetWindowPos(HWND_TOPMOST)` controls the input routing z-order but not always the visual render order in DWM's DComp layer. `WS_EX_LAYERED + ULW` windows participate in DWM's standard window compositor where HWND z-order fully controls render order. Production overlay tools (SimHub, Crew Chief, iOverlay) all use the layered window approach.
+- **Resource cost comparison at 60 fps for simple overlay content:**
+  - DComp + GPU D2D: ~0.1 ms CPU/frame, ~0.5 ms GPU/frame, no data transfer — most efficient overall, but z-order concerns above.
+  - ULW + GPU staging readback: ~3–5 ms CPU/frame (Map/Unmap stall + 760 KB/frame Marshal.Copy), GPU memory — **worst option**; discarded immediately.
+  - ULW + software DCRenderTarget: ~1–3 ms CPU/frame, no GPU, no data transfer — acceptable for simple 2D content; chosen.
+- The software DCRenderTarget renders directly into the DIB in CPU memory. No staging texture, no GPU memory, no CPU–GPU transfer. For text + rectangles the CPU cost is low (~1–3% of one core across all three overlays at 60 fps).
+- Eliminates the `Vortice.Direct3D11` dependency from `SimOverlay.Rendering`.
+
+**Alternatives considered:**
+- **Keep DComp**: Most CPU-efficient but introduces potential z-order reliability risk. Revisit if Phase 4 rendering performance becomes measurable.
+- **ULW + GPU staging readback**: Tried briefly. Every frame required `CopyResource` + `Map/Unmap` (CPU stall waiting for GPU) + Marshal.Copy of ~760 KB. Higher CPU and memory overhead than either alternative. Rejected.
+
+**Consequences:**
+- `OverlayWindow` no longer holds D3D11/DXGI/DComp resources — much simpler device recovery path.
+- `RenderResources` and all `OnRender` signatures changed from `ID2D1DeviceContext` to `ID2D1RenderTarget` (the common base of both `ID2D1DeviceContext` and `ID2D1DCRenderTarget`).
+- If Phase 4 rendering requires complex effects not available on `ID2D1RenderTarget`, the factory and render target can be upgraded to `ID2D1Factory1` + `ID2D1DeviceContext` without changing `RenderResources` or overlay code.
+- `WS_EX_LAYERED` is now required. Do not remove it.
+- `WS_EX_NOREDIRECTIONBITMAP` must not be re-added — it tells DWM to ignore the ULW bitmap, making the window invisible.
+
+---
+
+## 2026-04-05 — BaseOverlay always draws background before delegating to OnRender
+
+**Decision:** `BaseOverlay.OnRender` unconditionally fills the overlay rectangle with `OverlayConfig.BackgroundColor` before calling the abstract `OnRender(context, config)` (or the sim-state placeholder), in all sim states.
+
+**Context:** During Phase 3 debugging, overlays became invisible the moment iRacing entered a session (`SimState == InSession`). Root-cause analysis of the logs showed the transition was exact: every `SimStateChangedEvent → InSession` entry was immediately followed by invisible overlays. The concrete overlay implementations (`RelativeOverlay`, `SessionInfoOverlay`, `DeltaBarOverlay`) are Phase 3 stubs with empty `OnRender` bodies — they draw nothing. When `InSession`, `BaseOverlay` called the empty stub, resulting in `Clear(transparent)` + nothing = fully transparent window. This was masked for a long time by the parallel rendering pipeline investigation, which kept changing infrastructure while the content was always empty.
+
+**Rationale:**
+- A filled background guarantees the overlay is always visible as long as the window exists and is shown — regardless of whether the concrete `OnRender` draws anything.
+- Phase 4 overlay implementations will draw their own content on top of the background; the background pre-fill costs one `FillRectangle` call and is negligible.
+- The sim-state placeholder already drew a background fill, so the non-`InSession` path is unaffected. Only the `InSession` path needed the guard.
+- Serves as a permanent safety net: future overlays that accidentally draw nothing (e.g., during early Phase 4 development) will show a coloured rectangle rather than invisibly disappearing.
+
+**Alternatives considered:**
+- **Draw the background only in the InSession branch**: Equivalent in current code, but less robust — a future refactor that adds another branch could accidentally omit the background.
+- **Require concrete overlays to always draw a background**: Puts the burden on every subclass; fragile.
+
+**Consequences:**
+- Phase 4 overlay implementations should use the config's background color (same source), so there is no visual difference between the pre-filled background and what the overlay would draw anyway.
+- `RenderSimStatePlaceholder` still draws its own background fill — this is now redundant but harmless (overdraws the same pixels).

@@ -6,9 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Vortice.Direct2D1" />
-    <PackageReference Include="Vortice.DirectComposition" />
     <PackageReference Include="Vortice.DXGI" />
-    <PackageReference Include="Vortice.Direct3D11" />
   </ItemGroup>
 
   <ItemGroup>

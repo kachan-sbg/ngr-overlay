@@ -1,20 +1,35 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using SimOverlay.Core;
 using SimOverlay.Core.Config;
 using SimOverlay.Rendering.Win32;
 using Vortice.Direct2D1;
-using Vortice.Direct3D;
-using Vortice.Direct3D11;
-using Vortice.DirectComposition;
-using Vortice.DXGI;
-using AlphaMode = Vortice.DXGI.AlphaMode;
 
 namespace SimOverlay.Rendering;
 
 /// <summary>
 /// A borderless, always-on-top, click-through Win32 window for rendering overlays.
-/// Hosts a DXGI swap chain + Direct2D device context via DirectComposition for
-/// genuine per-pixel transparency without a chroma key.
+///
+/// <para>
+/// Rendering pipeline: <c>ID2D1DCRenderTarget</c> (software/CPU D2D) renders directly
+/// into a GDI memory DC that has a 32-bit premultiplied-alpha DIB section selected.
+/// Each frame the DIB is presented via <c>UpdateLayeredWindow(ULW_ALPHA)</c>.
+/// </para>
+///
+/// <para>
+/// Using a DC render target (software path) instead of a GPU-backed D3D11/D2D device
+/// context eliminates all GPU interaction from the presentation path.  With the previous
+/// approach, iRacing's DXGI flip chain held a GPU context that interfered with the
+/// staging-texture readback or DWM composition of the layered window, making overlays
+/// invisible while the sim was running.  The software DC render target has no GPU
+/// dependency and is immune to that interaction.
+/// </para>
+///
+/// <para>
+/// Per-pixel transparency is provided by the premultiplied-alpha DIB bitmap passed to
+/// <c>UpdateLayeredWindow(ULW_ALPHA)</c>.  OBS Window Capture (WGC method) captures
+/// layered window content correctly with transparency intact.
+/// </para>
 /// </summary>
 public class OverlayWindow : IDisposable
 {
@@ -35,32 +50,33 @@ public class OverlayWindow : IDisposable
     private nint _hInstance;
     private nint _hwnd;
     private bool _disposed;
-    private bool _isLocked     = true;
-    private bool _shouldBeVisible;   // tracks Show()/Hide() intent
+    private bool _isLocked      = true;
+    private bool _shouldBeVisible;
 
     // -------------------------------------------------------------------------
     // Graphics state
     // -------------------------------------------------------------------------
 
-    private IDXGISwapChain1?      _swapChain;
-    private ID2D1DeviceContext?   _d2dContext;
-    private ID2D1Bitmap1?         _d2dTarget;
-    private IDCompositionDevice?  _dcompDevice;
-    private IDCompositionTarget?  _dcompTarget;
-    private IDCompositionVisual?  _dcompVisual;
+    // D2D software render target — renders directly to a GDI DC (no GPU required)
+    private ID2D1Factory?        _d2dFactory;
+    private ID2D1DCRenderTarget? _dcRenderTarget;
 
-    // Tracked so RecoverDevice() can recreate at the current size.
+    // GDI objects for UpdateLayeredWindow
+    private nint _hdcMemory;   // memory DC
+    private nint _hBitmap;     // 32-bit premultiplied-alpha DIB section
+    private nint _dibBits;     // unmanaged pointer into the DIB's pixel data (unused directly — DCRenderTarget writes here)
+
+    // Tracked so RecoverDevice() and resize can recreate at the current dimensions.
     private int _currentWidth;
     private int _currentHeight;
 
-    // DXGI error codes that indicate the GPU device has been lost.
-    private const int DxgiErrorDeviceRemoved = unchecked((int)0x887A0005);
-    private const int DxgiErrorDeviceReset   = unchecked((int)0x887A0007);
+    // D2D error code indicating the render target must be recreated.
+    private const int D2DErrorRecreateTarget = unchecked((int)0x8899000C);
 
     /// <summary>
-    /// Held by the render thread during each frame (BeginDraw → Present) and by
-    /// the UI thread during ResizeSwapChain. Prevents a resize from tearing the
-    /// render target out from under an in-progress frame.
+    /// Held by the render thread during each frame (BeginDraw → UpdateLayeredWindow)
+    /// and by the UI thread during ResizeRenderTarget. Prevents a resize from tearing
+    /// the render target out from under an in-progress frame.
     /// </summary>
     internal readonly object RenderLock = new();
 
@@ -75,11 +91,11 @@ public class OverlayWindow : IDisposable
     public string DisplayName { get; }
 
     /// <summary>
-    /// Direct2D device context for this window. Available after construction.
+    /// D2D render target for this window. Available after construction.
     /// Subclasses draw into this context inside <see cref="Render"/>.
     /// </summary>
-    protected ID2D1DeviceContext D2DContext =>
-        _d2dContext ?? throw new InvalidOperationException("Graphics not yet initialized.");
+    protected ID2D1RenderTarget D2DContext =>
+        _dcRenderTarget ?? throw new InvalidOperationException("Graphics not yet initialized.");
 
     /// <summary>
     /// When <c>true</c> (default): window is click-through (<c>WS_EX_TRANSPARENT</c>).
@@ -129,7 +145,7 @@ public class OverlayWindow : IDisposable
             lpfnWndProc   = Marshal.GetFunctionPointerForDelegate(_wndProcDelegate),
             hInstance     = _hInstance,
             lpszClassName = _className,
-            hbrBackground = nint.Zero, // D2D / DComp owns the surface — no GDI background
+            hbrBackground = nint.Zero,
         };
 
         if (NativeMethods.RegisterClassEx(ref wcex) == 0)
@@ -138,8 +154,12 @@ public class OverlayWindow : IDisposable
 
         _hwnd = NativeMethods.CreateWindowEx(
             dwExStyle:   NativeMethods.WS_EX_TOPMOST
-                       | NativeMethods.WS_EX_TRANSPARENT
-                       | NativeMethods.WS_EX_NOREDIRECTIONBITMAP,
+                       | NativeMethods.WS_EX_LAYERED       // ULW: DWM composites our bitmap above DXGI planes
+                       | NativeMethods.WS_EX_TRANSPARENT,  // click-through; overridden by WM_NCHITTEST in edit mode
+            // WS_EX_NOREDIRECTIONBITMAP is intentionally NOT used here.
+            // It tells DWM "I'm providing content via DComp — skip normal compositing."
+            // With UpdateLayeredWindow we need DWM to composite our bitmap; that flag
+            // makes DWM ignore the ULW bitmap entirely, so the window is invisible.
             lpClassName:  _className,
             lpWindowName: DisplayName,
             dwStyle:      NativeMethods.WS_POPUP,
@@ -156,99 +176,98 @@ public class OverlayWindow : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(),
                 $"CreateWindowEx failed for '{DisplayName}'");
 
+        // Do NOT call SetLayeredWindowAttributes here.
+        // SetLayeredWindowAttributes and UpdateLayeredWindow are mutually exclusive:
+        // once SetLayeredWindowAttributes is called, UpdateLayeredWindow is silently
+        // blocked until the WS_EX_LAYERED style is cleared and re-set.
+        // Per-pixel transparency is handled by UpdateLayeredWindow(ULW_ALPHA) + the
+        // premultiplied-alpha DIB. Click-through is handled by WS_EX_TRANSPARENT
+        // and WM_NCHITTEST → HTTRANSPARENT in locked mode.
+
         Interlocked.Increment(ref _windowCount);
     }
 
     // -------------------------------------------------------------------------
-    // Graphics initialization (D3D11 → DXGI → D2D → DComp)
+    // Graphics initialization (D2D DCRenderTarget → GDI DIB)
     // -------------------------------------------------------------------------
 
     private void InitializeGraphics(int width, int height)
     {
         _currentWidth  = width;
         _currentHeight = height;
-        // 1 — D3D11 device (BGRA support required for Direct2D interop)
-        D3D11.D3D11CreateDevice(
-            adapter:          null,
-            driverType:       DriverType.Hardware,
-            flags:            DeviceCreationFlags.BgraSupport,
-            featureLevels:    [Vortice.Direct3D.FeatureLevel.Level_11_1, Vortice.Direct3D.FeatureLevel.Level_11_0],
-            out var d3dDevice,
-            out _,
-            out _).CheckError();
 
-        using var dxgiDevice  = d3dDevice.QueryInterface<IDXGIDevice1>();
-        using var dxgiAdapter = dxgiDevice.GetAdapter();
-        using var dxgiFactory = dxgiAdapter.GetParent<IDXGIFactory2>();
+        // Multi-threaded factory: render loop runs on a dedicated thread.
+        _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory>(FactoryType.MultiThreaded);
 
-        // 2 — DXGI swap chain for DirectComposition
-        //     CreateSwapChainForComposition is required when using
-        //     WS_EX_NOREDIRECTIONBITMAP + DComp for per-pixel transparency.
-        var swapChainDesc = new SwapChainDescription1
+        // DC render target — software/CPU path, renders to a GDI DC.
+        // Using the software path eliminates any GPU interaction that could interfere
+        // with iRacing's DXGI flip chain or DWM's MPO hardware planes.
+        var rtProps = new RenderTargetProperties
         {
-            Width             = width,
-            Height            = height,
-            Format            = Format.B8G8R8A8_UNorm,
-            Stereo            = false,
-            SampleDescription = new SampleDescription(1, 0),
-            BufferUsage       = Usage.RenderTargetOutput,
-            BufferCount       = 2,
-            Scaling           = Scaling.Stretch,
-            SwapEffect        = SwapEffect.FlipSequential,
-            AlphaMode         = AlphaMode.Premultiplied,
-            Flags             = SwapChainFlags.None,
-        };
-
-        _swapChain = dxgiFactory.CreateSwapChainForComposition(dxgiDevice, swapChainDesc);
-
-        // 3 — Direct2D device and device context
-        //     Factory is multi-threaded: render thread and UI thread can both use D2D.
-        using var d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.MultiThreaded);
-        using var d2dDevice  = d2dFactory.CreateDevice(dxgiDevice);
-        _d2dContext = d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
-
-        // Bind the D2D context to the swap chain back-buffer.
-        BindRenderTarget();
-
-        // 4 — DirectComposition: bind the swap chain to the HWND
-        DComp.DCompositionCreateDevice(dxgiDevice, out _dcompDevice).CheckError();
-        _dcompDevice!.CreateTargetForHwnd(_hwnd, topmost: true, out _dcompTarget).CheckError();
-        _dcompDevice.CreateVisual(out _dcompVisual).CheckError();
-        _dcompVisual!.SetContent(_swapChain);
-        _dcompTarget!.SetRoot(_dcompVisual);
-        _dcompDevice.Commit().CheckError();
-
-        d3dDevice.Dispose();
-    }
-
-    private void BindRenderTarget()
-    {
-        _d2dTarget?.Dispose();
-        _d2dTarget = null;
-
-        using var backBuffer = _swapChain!.GetBuffer<IDXGISurface>(0);
-
-        var bitmapProps = new BitmapProperties1
-        {
-            BitmapOptions = BitmapOptions.Target | BitmapOptions.CannotDraw,
+            Type        = RenderTargetType.Default,
             PixelFormat = new Vortice.DCommon.PixelFormat(
                 Vortice.DXGI.Format.B8G8R8A8_UNorm,
                 Vortice.DCommon.AlphaMode.Premultiplied),
+            DpiX     = 0f,   // 0 = use system DPI
+            DpiY     = 0f,
+            Usage    = RenderTargetUsage.None,
+            MinLevel = Vortice.Direct2D1.FeatureLevel.Default,
+        };
+        _dcRenderTarget = _d2dFactory.CreateDCRenderTarget(rtProps);
+
+        // GDI memory DC + DIB section for UpdateLayeredWindow.
+        CreateDib(width, height);
+
+        AppLog.Info($"Graphics initialized for '{DisplayName}' ({width}x{height}) — software DCRenderTarget");
+    }
+
+    private void CreateDib(int width, int height)
+    {
+        DestroyDib();
+
+        _hdcMemory = NativeMethods.CreateCompatibleDC(nint.Zero);
+        if (_hdcMemory == nint.Zero)
+            throw new Win32Exception(Marshal.GetLastWin32Error(),
+                $"CreateCompatibleDC failed for '{DisplayName}'");
+
+        var bmi = new NativeMethods.BITMAPINFO
+        {
+            bmiHeader = new NativeMethods.BITMAPINFOHEADER
+            {
+                biSize        = Marshal.SizeOf<NativeMethods.BITMAPINFOHEADER>(),
+                biWidth       = width,
+                biHeight      = -height,   // negative = top-down, standard for premultiplied-alpha layered windows
+                biPlanes      = 1,
+                biBitCount    = 32,
+                biCompression = NativeMethods.BI_RGB,
+            }
         };
 
-        _d2dTarget = _d2dContext!.CreateBitmapFromDxgiSurface(backBuffer, bitmapProps);
-        _d2dContext.Target = _d2dTarget;
+        _hBitmap = NativeMethods.CreateDIBSection(
+            _hdcMemory, ref bmi, NativeMethods.DIB_RGB_COLORS, out _dibBits, nint.Zero, 0);
+        if (_hBitmap == nint.Zero)
+            throw new Win32Exception(Marshal.GetLastWin32Error(),
+                $"CreateDIBSection failed for '{DisplayName}'");
+
+        NativeMethods.SelectObject(_hdcMemory, _hBitmap);
+    }
+
+    private void DestroyDib()
+    {
+        if (_hBitmap   != nint.Zero) { NativeMethods.DeleteObject(_hBitmap);  _hBitmap   = nint.Zero; }
+        if (_hdcMemory != nint.Zero) { NativeMethods.DeleteDC(_hdcMemory);    _hdcMemory = nint.Zero; }
+        _dibBits = nint.Zero;
     }
 
     // -------------------------------------------------------------------------
-    // Device lost recovery
+    // Device recovery
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Releases all GPU resources and recreates them from scratch.
+    /// Releases all graphics resources and recreates them from scratch.
     /// Called by the render loop in <see cref="BaseOverlay"/> after a
-    /// <see cref="DeviceLostException"/>. Must be called on the render thread
-    /// (or any thread — <see cref="RenderLock"/> is acquired internally).
+    /// <see cref="DeviceLostException"/>. Safe to call from any thread;
+    /// <see cref="RenderLock"/> is acquired internally.
     /// </summary>
     public void RecoverDevice()
     {
@@ -256,15 +275,13 @@ public class OverlayWindow : IDisposable
         {
             ReleaseGraphicsResources();
             InitializeGraphics(_currentWidth, _currentHeight);
-            // Called while still holding RenderLock so subclasses can update any
-            // references to the new D2D context before the render thread runs again.
             OnDeviceRecreated();
         }
     }
 
     /// <summary>
     /// Called inside <see cref="RecoverDevice"/> while <see cref="RenderLock"/> is held,
-    /// immediately after the new D3D/D2D/DComp resources are created.
+    /// immediately after new graphics resources are created.
     /// Override to update context references (e.g. in <see cref="RenderResources"/>).
     /// </summary>
     protected virtual void OnDeviceRecreated() { }
@@ -272,26 +289,22 @@ public class OverlayWindow : IDisposable
     private void ReleaseGraphicsResources()
     {
         // Must be called inside RenderLock.
-        if (_d2dContext != null)
-            _d2dContext.Target = null;
-        _d2dTarget?.Dispose();   _d2dTarget   = null;
-        _dcompVisual?.Dispose(); _dcompVisual = null;
-        _dcompTarget?.Dispose(); _dcompTarget = null;
-        _dcompDevice?.Dispose(); _dcompDevice = null;
-        _swapChain?.Dispose();   _swapChain   = null;
-        _d2dContext?.Dispose();  _d2dContext  = null;
+        _dcRenderTarget?.Dispose(); _dcRenderTarget = null;
+        _d2dFactory?.Dispose();     _d2dFactory     = null;
+        DestroyDib();
     }
 
     private static bool IsDeviceLost(int hresult) =>
-        hresult == DxgiErrorDeviceRemoved || hresult == DxgiErrorDeviceReset;
+        hresult == D2DErrorRecreateTarget;
 
     // -------------------------------------------------------------------------
     // Rendering
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Clears the surface to fully transparent, calls <see cref="OnRender"/>,
-    /// then presents the frame. Called by the render loop in <c>BaseOverlay</c>.
+    /// Binds the DC render target to the memory DC, calls <see cref="OnRender"/>,
+    /// then presents via <c>UpdateLayeredWindow</c>.
+    /// Called by the render loop in <c>BaseOverlay</c>.
     /// </summary>
     public void Render()
     {
@@ -299,20 +312,44 @@ public class OverlayWindow : IDisposable
         {
             try
             {
-                _d2dContext!.BeginDraw();
-                _d2dContext.Clear(new Vortice.Mathematics.Color4(0f, 0f, 0f, 0f));
+                // Bind the software render target to our memory DC each frame.
+                // This is required before BeginDraw and after any resize.
+                var bounds = new Vortice.RawRect(0, 0, _currentWidth, _currentHeight);
+                _dcRenderTarget!.BindDC(_hdcMemory, bounds);
 
-                OnRender(_d2dContext);
+                _dcRenderTarget.BeginDraw();
+                _dcRenderTarget.Clear(new Vortice.Mathematics.Color4(0f, 0f, 0f, 0f));
 
-                _d2dContext.EndDraw();
+                OnRender(_dcRenderTarget);
 
-                // SyncInterval=0: don't block waiting for vsync. The render loop's
-                // Stopwatch already caps to 60 fps, and for a CreateSwapChainForComposition
-                // flip chain DWM composites at its own rate regardless.
-                var presentResult = _swapChain!.Present(0, PresentFlags.None);
-                if (IsDeviceLost(presentResult.Code))
-                    throw new DeviceLostException();
-                presentResult.CheckError();
+                _dcRenderTarget.EndDraw();
+
+                // --- Present via UpdateLayeredWindow ---
+                var size  = new NativeMethods.SIZE_GDI { cx = _currentWidth,  cy = _currentHeight };
+                var ptSrc = new NativeMethods.POINT_GDI { X = 0, Y = 0 };
+                var blend = new NativeMethods.BLENDFUNCTION
+                {
+                    BlendOp             = NativeMethods.AC_SRC_OVER,
+                    BlendFlags          = 0,
+                    SourceConstantAlpha = 255,
+                    AlphaFormat         = NativeMethods.AC_SRC_ALPHA,
+                };
+
+                var ulwOk = NativeMethods.UpdateLayeredWindow(
+                    _hwnd, nint.Zero, nint.Zero,
+                    ref size, _hdcMemory, ref ptSrc,
+                    0, ref blend, NativeMethods.ULW_ALPHA);
+
+                if (!ulwOk)
+                {
+                    var err = Marshal.GetLastWin32Error();
+                    AppLog.Warn($"UpdateLayeredWindow failed for '{DisplayName}': Win32 error {err}");
+                }
+                else if (!_ulwOkLogged)
+                {
+                    _ulwOkLogged = true;
+                    AppLog.Info($"UpdateLayeredWindow first success for '{DisplayName}'");
+                }
             }
             catch (SharpGen.Runtime.SharpGenException ex) when (IsDeviceLost(ex.HResult))
             {
@@ -325,38 +362,26 @@ public class OverlayWindow : IDisposable
     /// Override in subclasses to issue D2D draw calls.
     /// Called between <c>BeginDraw</c> and <c>EndDraw</c> on the render thread.
     /// </summary>
-    protected virtual void OnRender(ID2D1DeviceContext context) { }
+    protected virtual void OnRender(ID2D1RenderTarget context) { }
 
     // -------------------------------------------------------------------------
-    // Swap chain resize (called from OnSize override)
+    // Render target resize (called from OnSize override in BaseOverlay)
     // -------------------------------------------------------------------------
 
-    protected void ResizeSwapChain(int width, int height)
+    protected void ResizeRenderTarget(int width, int height)
     {
-        if (_swapChain is null || _d2dContext is null)
+        if (_dcRenderTarget is null)
             return;
 
         lock (RenderLock)
         {
-            _d2dContext.Target = null;
-            _d2dTarget?.Dispose();
-            _d2dTarget = null;
-
-            _swapChain.ResizeBuffers(0, width, height, Format.Unknown, SwapChainFlags.None).CheckError();
-
             _currentWidth  = width;
             _currentHeight = height;
 
-            BindRenderTarget();
-
-            // After ResizeBuffers the DComp visual's cached content extent still
-            // reflects the old swap-chain dimensions.  Re-setting the content and
-            // committing tells DWM to use the new buffer size for compositing.
-            // Without this, pixels outside the original window dimensions are
-            // composited at alpha=0 and therefore always click-through
-            // (WS_EX_LAYERED alpha hit-testing).
-            _dcompVisual?.SetContent(_swapChain);
-            _dcompDevice?.Commit();
+            // Recreate the DIB at the new size.
+            // BindDC is called at the start of each Render() frame, so the new
+            // dimensions are automatically picked up on the next draw.
+            CreateDib(width, height);
         }
     }
 
@@ -366,8 +391,6 @@ public class OverlayWindow : IDisposable
 
     private nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
     {
-        // Top-level catch: an unhandled exception escaping a WndProc into native
-        // code causes silent process termination on .NET. Log and swallow instead.
         try
         {
             switch (msg)
@@ -382,36 +405,29 @@ public class OverlayWindow : IDisposable
                     return 0;
 
                 case NativeMethods.WM_GETMINMAXINFO:
-                    // Prevent the window from being dragged smaller than the resize
-                    // grip zone so the grip is always reachable.
-                    // MINMAXINFO layout (all ints, 4 bytes each):
-                    //   ptReserved (8), ptMaxSize (8), ptMaxPosition (8),
-                    //   ptMinTrackSize (8) ← offset 24, ptMaxTrackSize (8)
-                    System.Runtime.InteropServices.Marshal.WriteInt32(lParam, 24, ResizeGripSize);
-                    System.Runtime.InteropServices.Marshal.WriteInt32(lParam, 28, ResizeGripSize);
+                    Marshal.WriteInt32(lParam, 24, ResizeGripSize);
+                    Marshal.WriteInt32(lParam, 28, ResizeGripSize);
                     return 0;
 
                 case NativeMethods.WM_SYSCOMMAND:
-                    // Swallow all minimize requests (Win+D, taskbar right-click → Minimize,
-                    // etc.). Overlay windows are not normal app windows — they should always
-                    // remain visible at their z-order position and never enter a minimized state
-                    // that requires user interaction to undo.
                     if ((wParam & 0xFFF0) == NativeMethods.SC_MINIMIZE)
+                    {
+                        AppLog.Info($"WM_SYSCOMMAND SC_MINIMIZE swallowed for '{DisplayName}'");
                         return 0;
+                    }
+                    AppLog.Info($"WM_SYSCOMMAND wParam=0x{wParam:X} for '{DisplayName}'");
                     break;
 
                 case NativeMethods.WM_EXITSIZEMOVE:
-                    // Windows may reset extended styles during a drag/resize operation.
-                    // Re-apply our lock state so hit-testing works correctly afterward.
                     ApplyTransparentStyle(_isLocked);
                     break;
 
                 case NativeMethods.WM_SIZE:
+                    if (wParam == NativeMethods.SIZE_MINIMIZED || wParam == 0)
+                        AppLog.Info($"WM_SIZE '{DisplayName}': wParam={wParam} ({LoWord(lParam)}x{HiWord(lParam)})");
                     if (wParam == NativeMethods.SIZE_MINIMIZED && _shouldBeVisible)
                     {
-                        // The system (or another process) minimized us — restore immediately.
-                        // This handles full-screen-exclusive games that call ShowWindow(SW_MINIMIZE)
-                        // on other windows; our WM_SYSCOMMAND SC_MINIMIZE guard doesn't cover that.
+                        AppLog.Info($"WM_SIZE SIZE_MINIMIZED — restoring '{DisplayName}'");
                         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
                         return 0;
                     }
@@ -427,34 +443,25 @@ public class OverlayWindow : IDisposable
         }
         catch (Exception ex)
         {
-            Core.AppLog.Exception($"WndProc exception (msg=0x{msg:X4}) in '{DisplayName}'", ex);
+            AppLog.Exception($"WndProc exception (msg=0x{msg:X4}) in '{DisplayName}'", ex);
             return 0;
         }
     }
 
-    // Size of the bottom-right resize grip hit zone in pixels.
-    // Large enough to be reliably reachable on any window size.
     protected const int ResizeGripSize = 24;
 
     protected virtual nint HandleNcHitTest(nint lParam)
     {
         var cx = LoWord(lParam);
         var cy = HiWord(lParam);
-
         NativeMethods.GetWindowRect(_hwnd, out var rect);
-
-        // Bottom-right ResizeGripSize×ResizeGripSize px hit zone → resize grip.
         if (cx >= rect.Right - ResizeGripSize && cy >= rect.Bottom - ResizeGripSize)
             return NativeMethods.HTBOTTOMRIGHT;
-
-        // Everything else is draggable.
         return NativeMethods.HTCAPTION;
     }
 
     protected virtual void OnDestroy() { }
-
     protected virtual void OnSize(int width, int height) { }
-
     protected virtual void OnMove(int x, int y) { }
 
     // -------------------------------------------------------------------------
@@ -463,37 +470,78 @@ public class OverlayWindow : IDisposable
 
     public void Show()
     {
+        AppLog.Info($"Show '{DisplayName}'");
         _shouldBeVisible = true;
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
     }
 
     public void Hide()
     {
+        AppLog.Info($"Hide '{DisplayName}'");
         _shouldBeVisible = false;
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
     }
 
+    // Log the first successful UpdateLayeredWindow call per window.
+    private bool _ulwOkLogged;
+
+    // Throttle BringToFront diagnostic logs to once per 5 seconds.
+    private DateTime _lastBtfLog = DateTime.MinValue;
+
     /// <summary>
     /// Re-asserts this window's position at the top of the TOPMOST z-order band.
-    /// If the window was minimized by the system (e.g. when a full-screen exclusive
-    /// game started), it is restored first. Safe to call from any thread.
+    /// Safe to call from any thread.
     /// </summary>
     public void BringToFront()
     {
         if (_hwnd == nint.Zero || !_shouldBeVisible) return;
 
-        // Make the window visible first — SetWindowPos on a hidden or minimized
-        // window only updates z-order metadata; it stays invisible until shown.
-        if (NativeMethods.IsIconic(_hwnd))
-            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
-        else if (!NativeMethods.IsWindowVisible(_hwnd))
-            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
+        var iconic  = NativeMethods.IsIconic(_hwnd);
+        var visible = NativeMethods.IsWindowVisible(_hwnd);
 
-        NativeMethods.SetWindowPos(
+        if (iconic)
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
+        else if (!visible)
+        {
+            AppLog.Info($"BringToFront '{DisplayName}': window not visible — calling SW_SHOW");
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
+        }
+
+        var swpOk = NativeMethods.SetWindowPos(
             _hwnd,
             NativeMethods.HWND_TOPMOST,
             0, 0, 0, 0,
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+
+        // Log every 5 s: SetWindowPos result + what's immediately above us in z-order.
+        var now = DateTime.UtcNow;
+        if ((now - _lastBtfLog).TotalSeconds >= 5)
+        {
+            _lastBtfLog = now;
+            NativeMethods.GetWindowRect(_hwnd, out var r);
+            var swpErr = swpOk ? 0 : System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+
+            // Walk up z-order to find what window is directly above ours.
+            var above = NativeMethods.GetWindow(_hwnd, NativeMethods.GW_HWNDPREV);
+            string aboveInfo = "none";
+            if (above != nint.Zero)
+            {
+                var sb  = new System.Text.StringBuilder(256);
+                var cls = new System.Text.StringBuilder(256);
+                NativeMethods.GetWindowText(above, sb, sb.Capacity);
+                NativeMethods.GetClassName(above, cls, cls.Capacity);
+                NativeMethods.GetWindowThreadProcessId(above, out var pid);
+                NativeMethods.GetWindowRect(above, out var ar);
+                var exStyle = NativeMethods.GetWindowLongPtr(above, NativeMethods.GWL_EXSTYLE).ToInt64();
+                var aboveTopmost = (exStyle & NativeMethods.WS_EX_TOPMOST) != 0;
+                aboveInfo = $"'{sb}' class='{cls}' pid={pid} topmost={aboveTopmost} hwnd=0x{above:X} rect=({ar.Left},{ar.Top},{ar.Right},{ar.Bottom})";
+            }
+
+            AppLog.Info(
+                $"BringToFront '{DisplayName}': iconic={iconic} visible={visible} " +
+                $"rect=({r.Left},{r.Top},{r.Right},{r.Bottom}) " +
+                $"swpOk={swpOk} swpErr={swpErr} | above={aboveInfo}");
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -510,17 +558,11 @@ public class OverlayWindow : IDisposable
 
         NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE, next);
 
-        // Per MSDN: after SetWindowLongPtr you MUST call SetWindowPos with
-        // SWP_FRAMECHANGED for the new extended style to be honoured by the
-        // window manager (especially for hit-test / mouse routing changes).
         NativeMethods.SetWindowPos(
-            _hwnd,
-            nint.Zero,
-            0, 0, 0, 0,
+            _hwnd, nint.Zero, 0, 0, 0, 0,
             NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE |
             NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE |
             NativeMethods.SWP_FRAMECHANGED);
-
     }
 
     // -------------------------------------------------------------------------
@@ -552,10 +594,6 @@ public class OverlayWindow : IDisposable
             lock (RenderLock)
                 ReleaseGraphicsResources();
 
-            // DestroyWindow must be called from the thread that created the window
-            // (Win32 requirement). Only call it during managed disposal (UI thread).
-            // From the finalizer thread it would silently fail and leak the HWND;
-            // process exit cleans up handles on ungraceful shutdown anyway.
             if (_hwnd != nint.Zero)
             {
                 NativeMethods.DestroyWindow(_hwnd);
