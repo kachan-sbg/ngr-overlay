@@ -53,15 +53,16 @@ internal static class Program
                 {
                     var id = (int)wParam.ToInt64();
                     if (id == hotkeyQuit)
-                        MessagePump.Quit();
+                    {
+                        // Save config synchronously, then force-exit.
+                        // IRSDKSharper may leave a foreground thread alive after Stop(),
+                        // so Environment.Exit(0) avoids the process hanging on cleanup.
+                        AppLog.Info("F10 quit — saving config and exiting.");
+                        configStore.Save(appConfig);
+                        Environment.Exit(0);
+                    }
                 }
             });
-
-            MessagePump.UnregisterHotKey(hotkeyQuit);
-
-            // Persist any final state on clean shutdown.
-            configStore.Save(appConfig);
-            AppLog.Info("Message pump exited — clean shutdown");
         }
         catch (Exception ex)
         {
