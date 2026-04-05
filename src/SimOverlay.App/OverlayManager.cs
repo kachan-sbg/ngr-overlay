@@ -110,6 +110,21 @@ public sealed class OverlayManager : IDisposable
         return defaultConfig;
     }
 
+    /// <summary>HWNDs of all overlay windows, for use with <see cref="ZOrderHook"/>.</summary>
+    public IReadOnlyList<nint> OwnedHandles =>
+        [_relative.Handle, _sessionInfo.Handle, _deltaBar.Handle];
+
+    /// <summary>
+    /// Re-asserts all overlays to the top of the TOPMOST z-order band.
+    /// Called from <see cref="ZOrderHook"/> when another topmost window changes z-order.
+    /// </summary>
+    public void BringAllToFront()
+    {
+        _relative.BringToFront();
+        _sessionInfo.BringToFront();
+        _deltaBar.BringToFront();
+    }
+
     public void Dispose()
     {
         _relative.Dispose();

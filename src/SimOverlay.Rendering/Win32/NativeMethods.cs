@@ -12,12 +12,22 @@ internal static class NativeMethods
 
     internal const int WS_EX_TOPMOST             = 0x00000008;
     internal const int WS_EX_TRANSPARENT         = 0x00000020;
+    internal const int WS_EX_LAYERED             = 0x00080000;
     internal const int WS_EX_NOREDIRECTIONBITMAP = 0x00200000;
-    // WS_EX_LAYERED is intentionally NOT used: it causes Windows to build a cached
-    // alpha hit-test mask from the first DComp frame and never expand it on resize,
-    // which permanently makes all pixels outside the initial window size click-through.
-    // Transparency is provided by WS_EX_NOREDIRECTIONBITMAP + DComp premultiplied alpha.
-    // Click-through in locked mode is handled by WM_NCHITTEST returning HTTRANSPARENT.
+    // WS_EX_LAYERED: required so DWM composites our window in the overlay tier above
+    // MPO (Multi-Plane Overlay) hardware planes used by games' DXGI flip chains.
+    // Without it, game frames rendered via DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL sit above
+    // DWM composition, making our overlays invisible even though Windows reports them
+    // as visible. WS_EX_NOREDIRECTIONBITMAP: DWM skips creating a redundant redirection
+    // surface; content comes from UpdateLayeredWindow's DIB bitmap instead.
+
+    // SetLayeredWindowAttributes dwFlags
+    internal const uint LWA_ALPHA = 0x00000002;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetLayeredWindowAttributes(
+        nint hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
     // WS_EX_TOOLWINDOW is intentionally NOT defined here.
     // Its presence would hide overlay windows from OBS's window picker.
@@ -171,6 +181,142 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool UnregisterHotKey(nint hwnd, int id);
+
+    // -------------------------------------------------------------------------
+    // Z-order diagnostics
+    // -------------------------------------------------------------------------
+
+    internal const int GW_HWNDPREV = 3;  // window above in z-order
+
+    [DllImport("user32.dll")]
+    internal static extern nint GetWindow(nint hwnd, int uCmd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int GetWindowText(nint hwnd, System.Text.StringBuilder text, int maxLength);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int GetClassName(nint hwnd, System.Text.StringBuilder className, int maxLength);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(nint hwnd, out uint lpdwProcessId);
+
+    // -------------------------------------------------------------------------
+    // GDI — UpdateLayeredWindow support
+    // -------------------------------------------------------------------------
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT_GDI { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SIZE_GDI { public int cx, cy; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BLENDFUNCTION
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BITMAPINFOHEADER
+    {
+        public int   biSize;
+        public int   biWidth;
+        public int   biHeight;   // negative = top-down bitmap (matches D3D texture coords)
+        public short biPlanes;
+        public short biBitCount;
+        public int   biCompression;
+        public int   biSizeImage;
+        public int   biXPelsPerMeter;
+        public int   biYPelsPerMeter;
+        public int   biClrUsed;
+        public int   biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+        public int              bmiColors;  // single RGBQUAD entry (unused for 32-bit BI_RGB)
+    }
+
+    internal const int  BI_RGB         = 0;
+    internal const uint DIB_RGB_COLORS = 0;
+    internal const byte AC_SRC_OVER    = 0;
+    internal const byte AC_SRC_ALPHA   = 1;
+    internal const uint ULW_ALPHA      = 2;
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    internal static extern nint CreateCompatibleDC(nint hdc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeleteDC(nint hdc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    internal static extern nint CreateDIBSection(
+        nint hdc, ref BITMAPINFO pbmi, uint iUsage,
+        out nint ppvBits, nint hSection, uint dwOffset);
+
+    [DllImport("gdi32.dll")]
+    internal static extern nint SelectObject(nint hdc, nint hgdiobj);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeleteObject(nint hObject);
+
+    /// <summary>
+    /// Updates the position, size, shape, content, and translucency of a layered window.
+    /// Pass <c>nint.Zero</c> for <paramref name="hdcDst"/> (screen DC) and
+    /// <paramref name="pptDst"/> (keep current position).
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UpdateLayeredWindow(
+        nint           hwnd,
+        nint           hdcDst,    // Zero = screen DC
+        nint           pptDst,    // Zero = keep current window position
+        ref SIZE_GDI   psize,
+        nint           hdcSrc,
+        ref POINT_GDI  pptSrc,
+        uint           crKey,
+        ref BLENDFUNCTION pblend,
+        uint           dwFlags);
+
+    // -------------------------------------------------------------------------
+    // WinEvent hook
+    // -------------------------------------------------------------------------
+
+    /// <summary>Fires when a window's z-order changes (via SetWindowPos etc.).</summary>
+    internal const uint EVENT_OBJECT_REORDER = 0x8004;
+
+    /// <summary>idObject value indicating the event is for the window itself (not a child object).</summary>
+    internal const int OBJID_WINDOW = 0;
+
+    /// <summary>
+    /// WINEVENT_OUTOFCONTEXT: callback runs on the calling thread's message pump,
+    /// not injected into the target process. Safe and no DLL injection required.
+    /// </summary>
+    internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    internal delegate void WinEventDelegate(
+        nint hWinEventHook, uint eventType, nint hwnd,
+        int idObject, int idChild, uint idEventThread, uint dwmsEventTime);
+
+    [DllImport("user32.dll")]
+    internal static extern nint SetWinEventHook(
+        uint eventMin, uint eventMax,
+        nint hmodWinEventProc,
+        WinEventDelegate lpfnWinEventProc,
+        uint idProcess, uint idThread,
+        uint dwFlags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnhookWinEvent(nint hWinEventHook);
 
     // -------------------------------------------------------------------------
     // SetWindowPos hWndInsertAfter special values

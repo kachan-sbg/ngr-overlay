@@ -41,6 +41,7 @@
 - **Description**: Extend `OverlayWindow` to create a D3D11 device with BGRA support, a `IDXGISwapChain1` via `CreateSwapChainForComposition` with `FLIP_SEQUENTIAL` / `PREMULTIPLIED` / `B8G8R8A8_UNORM`, a `ID2D1DeviceContext`, and a `IDCompositionDevice`/`Target`/`Visual`. Add `Render()` that clears to transparent and presents.
 - **Acceptance Criteria**: Window background is genuinely transparent. No DXGI errors. Can run alongside a full-screen borderless window.
 - **Dependencies**: TASK-104, TASK-002.
+- **Note (2026-04-05)**: The DComp/swap chain approach implemented here was replaced during Phase 3 debugging by `ID2D1DCRenderTarget` + `UpdateLayeredWindow`. The task is complete as originally specified; the architectural change is recorded in DECISIONS.md (2026-04-05).
 
 ---
 
@@ -49,12 +50,13 @@
 - **Description**: In `SimOverlay.Rendering`, create `BaseOverlay : OverlayWindow`. Add: `OverlayConfig Config`, abstract `OnRender(ID2D1DeviceContext, OverlayConfig)`, `Subscribe<T>` helper, 60 fps render loop on a dedicated background thread, and `RenderResources` caching `ID2D1SolidColorBrush` and `IDWriteTextFormat`.
 - **Acceptance Criteria**: `TestOverlay` subclass drawing a red rectangle renders at ~60 fps. Disposing stops the render loop and releases all D2D resources. `RenderResources` invalidated correctly on config change.
 - **Dependencies**: TASK-105, TASK-101, TASK-102.
+- **Note (2026-04-05)**: `OnRender` signature changed from `ID2D1DeviceContext` to `ID2D1RenderTarget` following the TASK-105 architecture change. `BaseOverlay` now also always draws the background fill before calling `OnRender` — see DECISIONS.md (2026-04-05).
 
 ---
 
 **TASK-107** `[x]`
 - **Title**: Lock/unlock (edit mode) — drag and resize
-- **Description**: Implement edit mode in `OverlayWindow`. When `IsLocked = false`: (1) Remove `WS_EX_TRANSPARENT` (+ `SetWindowPos(SWP_FRAMECHANGED)` to apply immediately). (2) Handle `WM_NCHITTEST`: return `HTCAPTION` for most of the client area, `HTBOTTOMRIGHT` for a 24×24 px corner hit zone. (3) Draw a 2 px accent-blue border and three diagonal grip dots in the corner. When `IsLocked = true`: re-add `WS_EX_TRANSPARENT`, remove the border. Subscribe `BaseOverlay` to `EditModeChangedEvent` on `ISimDataBus`. `OnMove`/`OnSize` keep `OverlayConfig` X/Y/Width/Height in sync. `WM_EXITSIZEMOVE` re-applies the transparent style after each drag. `WM_GETMINMAXINFO` enforces a minimum window size of `ResizeGripSize × ResizeGripSize` px. **Note**: `WS_EX_LAYERED` must NOT be used — it causes Windows to cache the alpha hit-test mask from the first DComp frame and never expand it on resize, permanently making all pixels outside the initial window size click-through. Transparency is provided by `WS_EX_NOREDIRECTIONBITMAP` + DComp premultiplied alpha.
+- **Description**: Implement edit mode in `OverlayWindow`. When `IsLocked = false`: (1) Remove `WS_EX_TRANSPARENT` (+ `SetWindowPos(SWP_FRAMECHANGED)` to apply immediately). (2) Handle `WM_NCHITTEST`: return `HTCAPTION` for most of the client area, `HTBOTTOMRIGHT` for a 24×24 px corner hit zone. (3) Draw a 2 px accent-blue border and three diagonal grip dots in the corner. When `IsLocked = true`: re-add `WS_EX_TRANSPARENT`, remove the border. Subscribe `BaseOverlay` to `EditModeChangedEvent` on `ISimDataBus`. `OnMove`/`OnSize` keep `OverlayConfig` X/Y/Width/Height in sync. `WM_EXITSIZEMOVE` re-applies the transparent style after each drag. `WM_GETMINMAXINFO` enforces a minimum window size of `ResizeGripSize × ResizeGripSize` px. **Note (2026-04-05 update)**: Window now uses `WS_EX_LAYERED + UpdateLayeredWindow`. The previous `WS_EX_NOREDIRECTIONBITMAP + DComp` approach has been replaced. Hit-test caching is no longer a concern — `WM_NCHITTEST` handles hit-testing independently of the layered bitmap.
 - **Acceptance Criteria**: In unlocked mode, overlays can be dragged and resized from the bottom-right corner in any direction including growing larger than the initial size. The blue border and grip dots are visible. In locked mode, mouse clicks pass through. Position/size values are preserved in config after re-lock. Window cannot be resized below 24×24 px.
 - **Dependencies**: TASK-106, TASK-102.
 

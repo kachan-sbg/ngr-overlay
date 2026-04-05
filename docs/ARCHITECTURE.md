@@ -137,44 +137,50 @@ Dependency on IRSDKSharper (NuGet `IRSDKSharper`): use `IRacingSdkDatum` for fie
 
 #### SimOverlay.Rendering
 
-Responsibility: all Direct2D / DirectComposition plumbing. No sim data logic. Provides base types that overlay implementations inherit.
+Responsibility: all Direct2D rendering plumbing. No sim data logic. Provides base types that overlay implementations inherit.
 
 Key types:
 
 `OverlayWindow`
 - Creates a Win32 window with styles:
   - `WS_POPUP` (no border/title)
-  - `WS_EX_TRANSPARENT | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST`
-  - `WS_EX_LAYERED` is intentionally **omitted** — Windows caches the DComp alpha hit-test mask from the first presented frame and never expands it on resize, making the window permanently unresizable beyond its original size. Transparency is achieved via `WS_EX_NOREDIRECTIONBITMAP` + DComp premultiplied alpha alone. See DECISIONS.md.
+  - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST`
+  - `WS_EX_NOREDIRECTIONBITMAP` is intentionally **omitted** — it tells DWM to skip normal window compositing and hand composition off entirely to DComp. With `UpdateLayeredWindow` we need DWM to composite our bitmap; the flag causes DWM to ignore the ULW bitmap and the window is invisible.
   - `WS_EX_TOOLWINDOW` is intentionally **omitted** — its presence hides windows from OBS's window picker. See "OBS Capture Compatibility" section below.
-- Sets up DXGI swap chain: `DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL`, `DXGI_ALPHA_MODE_PREMULTIPLIED`, format `DXGI_FORMAT_B8G8R8A8_UNORM`.
-- Creates `IDCompositionDevice`, `IDCompositionTarget`, `IDCompositionVisual`. The visual is bound to the swap chain surface.
-- Calls `IDCompositionDevice.Commit()` after each frame.
-- Exposes `ID2D1DeviceContext` for subclasses to draw into.
-- Handles `WM_NCHITTEST` returning `HTTRANSPARENT` in locked mode; returns `HTCAPTION` / `HTNOWHERE` etc. in unlocked mode (to allow drag).
-- Handles `WM_SIZE`, `WM_MOVE`, `WM_LBUTTONDOWN` (drag), `WM_SIZING` (resize).
+- **Rendering pipeline**: `ID2D1DCRenderTarget` (software/CPU) renders directly into a GDI memory DC that has a 32-bit premultiplied-alpha DIB section selected. Each frame calls `UpdateLayeredWindow(ULW_ALPHA)` to present the DIB to DWM. No GPU resources are used in the presentation path.
+- Exposes `ID2D1RenderTarget` for subclasses to draw into.
+- Handles `WM_NCHITTEST` returning `HTTRANSPARENT` in locked mode; returns `HTCAPTION` / `HTBOTTOMRIGHT` in unlocked mode (to allow drag/resize).
+- Handles `WM_SIZE`, `WM_MOVE`.
 - Exposes `IsLocked` property. When `false`, the window accepts mouse input for drag/resize.
 
 `BaseOverlay : OverlayWindow`
 - Adds `OverlayConfig` property.
-- Abstract method `OnRender(ID2D1DeviceContext context, OverlayConfig config)` — called each frame.
-- Abstract method `OnDataUpdate()` — called by the data thread (via `ISimDataBus` subscription). Stores data in thread-safe fields. Does NOT call render; the render loop reads the latest snapshot.
-- Manages a render loop (`ThreadPool` timer or dedicated thread) calling `Render()` at ~60 fps.
-- `Render()`: clears to transparent (`ClearValue = {0, 0, 0, 0}`), calls `OnRender()`, presents the swap chain.
+- Abstract method `OnRender(ID2D1RenderTarget context, OverlayConfig config)` — called each frame.
+- Always draws the overlay background fill before calling `OnRender()`, guaranteeing the window is visible even when `OnRender` draws nothing.
+- Manages a 60 fps render loop on a dedicated background thread.
+- `Render()`: `BindDC` → `BeginDraw` → clear transparent → draw background → `OnRender` (or placeholder) → `EndDraw` → `UpdateLayeredWindow`.
+- Sim-state rendering: when `SimState != InSession`, renders a placeholder ("Sim not detected" or "Waiting for session…") instead of calling `OnRender`. The background fill is drawn in all states.
 - Each overlay subscribes to relevant message types on `ISimDataBus` in its constructor. Subscriptions are unregistered on `Dispose()`.
 
-Render-data synchronization: each `BaseOverlay` subclass maintains a `volatile` reference to a snapshot object (or a simple lock-free struct copy). `OnDataUpdate()` writes a new snapshot. `OnRender()` reads the latest snapshot. No blocking between the data thread and the render thread.
+Render-data synchronization: each `BaseOverlay` subclass maintains a `volatile` reference to a snapshot object (or a simple lock-free struct copy). Data-bus callbacks write a new snapshot. `OnRender()` reads the latest snapshot. No blocking between the data thread and the render thread.
 
 `RenderResources`
 - Factory/cache for `ID2D1SolidColorBrush`, `IDWriteTextFormat`, and `IDWriteTextLayout` objects.
+- Holds `ID2D1RenderTarget` reference (accepts `ID2D1DCRenderTarget` via base type).
 - Keyed by color/font parameters from `OverlayConfig`.
-- Recreated when `OverlayConfig` changes or when the device is lost (`DXGI_ERROR_DEVICE_REMOVED`).
+- Recreated when `OverlayConfig` changes or when the render target is lost (`D2DERR_RECREATE_TARGET`).
 
 `DeviceLostException`
-- Thrown by `OverlayWindow.Render()` when `Present` or `EndDraw` returns `DXGI_ERROR_DEVICE_REMOVED` (0x887A0005) or `DXGI_ERROR_DEVICE_RESET` (0x887A0007).
-- Caught by `BaseOverlay.RenderLoop`, which calls `OverlayWindow.RecoverDevice()` to tear down and recreate all D3D11 / DXGI / D2D / DComp resources.
+- Thrown by `OverlayWindow.Render()` when `EndDraw` returns `D2DERR_RECREATE_TARGET` (0x8899000C).
+- Caught by `BaseOverlay.RenderLoop`, which calls `OverlayWindow.RecoverDevice()` to tear down and recreate the factory, DCRenderTarget, and GDI DIB.
 - `RecoverDevice()` calls the `OnDeviceRecreated()` virtual hook **while `RenderLock` is still held**, so `RenderResources.UpdateContext()` runs atomically before the render thread can execute the next frame.
 - `BaseOverlay` overrides `OnDeviceRecreated()` to call `_resources.UpdateContext(D2DContext)`.
+
+`ZOrderHook`
+- Installs a `WinEvent EVENT_OBJECT_REORDER` hook that fires on the UI message pump whenever any window's z-order changes.
+- When a TOPMOST window not owned by us reorders, calls `BringAllToFront()` to re-assert our overlay positions immediately.
+- Filters out our own `BringToFront` calls (via the owned-handles list) to prevent feedback loops.
+- This is the primary z-order mechanism; the render loop also re-asserts TOPMOST every ~2 s as a fallback.
 
 #### SimOverlay.Overlays
 
@@ -232,7 +238,7 @@ There is a single OS process. All windows (overlay windows + settings window) ru
 
 Thread model:
 - **UI Thread**: Win32 message pump for all overlay `HWND`s and the settings `Window`. All `OverlayWindow` HWNDs are created on this thread (Win32 requirement). The message pump is the standard `GetMessage` / `TranslateMessage` / `DispatchMessage` loop.
-- **Render Thread(s)**: Each `BaseOverlay` has its own render loop. These call `ID2D1DeviceContext` methods and `IDXGISwapChain.Present()`. Direct2D device contexts are not thread-safe across contexts, but each overlay has its own `ID2D1DeviceContext` created from a shared `ID2D1Device` (which is thread-safe for multi-threaded factories). The shared `ID2D1Device` is created with `D2D1_FACTORY_TYPE_MULTI_THREADED`.
+- **Render Thread(s)**: Each `BaseOverlay` has its own render loop. These call `ID2D1DCRenderTarget` methods (software rendering, CPU only). Each overlay owns its own `ID2D1Factory` + `ID2D1DCRenderTarget` — there is no shared GPU device. The factory is created with `D2D1_FACTORY_TYPE_MULTI_THREADED` for safety.
 - **Data Thread**: One thread per active `ISimProvider`. For iRacing, this is `IRacingPoller`'s dedicated thread. Runs at 60 Hz. Publishes to `ISimDataBus`.
 - **Detection Thread**: `SimDetector` timer runs on `ThreadPool`.
 
@@ -241,17 +247,25 @@ Thread model:
 Per frame, per overlay:
 
 1. Render loop fires (target: 60 fps, `Stopwatch`-based sleep).
-2. `BaseOverlay.Render()` acquires the D2D render target from the swap chain back buffer.
-3. Calls `deviceContext.BeginDraw()`.
-4. Clears to fully transparent black: `deviceContext.Clear(new Color4(0, 0, 0, 0))`.
-5. Calls `OnRender(deviceContext, config)` — overlay-specific drawing.
-6. Calls `deviceContext.EndDraw()`. Handles `D2DERR_RECREATE_TARGET` / `DXGI_ERROR_DEVICE_REMOVED` by throwing `DeviceLostException`, caught in the render loop.
-7. Calls `swapChain.Present(0, PresentFlags.None)` (uncapped — frame rate is governed by the Stopwatch-based 60 fps loop, not vsync).
-8. `dcompDevice.Commit()` is **not** called per frame. It is called once during `InitializeGraphics` (to establish the visual→swapchain binding) and once after `ResizeSwapChain`. Subsequent frames are presented directly through the swap chain without re-committing the visual tree.
+2. `OverlayWindow.Render()` acquires `RenderLock`.
+3. Calls `dcRenderTarget.BindDC(hdcMemory, bounds)` — binds the software render target to the GDI memory DC (which has the premultiplied-alpha DIB section selected). Must be called each frame; picks up any resize automatically.
+4. Calls `dcRenderTarget.BeginDraw()`.
+5. Clears to fully transparent: `dcRenderTarget.Clear(new Color4(0, 0, 0, 0))`.
+6. `BaseOverlay.OnRender(context)` executes:
+   a. Applies any pending config invalidation (`_pendingInvalidate` flag).
+   b. Resolves stream-mode-effective config via `_config.Resolve(streamModeActive)`.
+   c. **Always** fills the overlay rectangle with `OverlayConfig.BackgroundColor` (ensures the window is never fully transparent regardless of subclass behaviour).
+   d. If `SimState != InSession`: renders the sim-state placeholder ("Sim not detected" or "Waiting for session…").
+   e. If `SimState == InSession`: calls `OnRender(context, config)` — the concrete overlay's drawing code.
+   f. If edit mode active (`!IsLocked`): draws the accent-blue border and resize-grip dots on top.
+7. Calls `dcRenderTarget.EndDraw()`. `D2DERR_RECREATE_TARGET` → `DeviceLostException` → caught by render loop → `RecoverDevice()`.
+8. Calls `UpdateLayeredWindow(hwnd, hdcMemory, ULW_ALPHA)` — hands the DIB bitmap to DWM for compositing. No GPU resources used; this is a pure CPU→DWM operation.
 
-Alpha compositing: all geometry is drawn with premultiplied alpha. The overlay's background is a filled rectangle with premultiplied RGBA from `OverlayConfig.BackgroundColor`. Text and other elements are drawn on top. The DXGI surface with `DXGI_ALPHA_MODE_PREMULTIPLIED` and `WS_EX_NOREDIRECTIONBITMAP` ensures the DWM composites the overlay window correctly over the simulator.
+Alpha compositing: all geometry is drawn with premultiplied alpha into a 32-bit BGRA DIB section (`BI_RGB`, top-down, negative height). `UpdateLayeredWindow` with `AC_SRC_OVER | AC_SRC_ALPHA | SourceConstantAlpha=255` tells DWM to composite the window using per-pixel alpha from the DIB. `WS_EX_LAYERED` on the window is required for ULW.
 
-Font rendering: `IDWriteFactory` (shared, created once). Per overlay, `IDWriteTextFormat` objects are created from `OverlayConfig.FontSize` and cached in `RenderResources`. Monospaced font (Consolas or Cascadia Mono) preferred for tabular data in the Relative and Session Info overlays.
+Font rendering: `IDWriteFactory` (shared singleton, `DWriteCreateFactory(SHARED)`). Per overlay, `IDWriteTextFormat` objects are created from `OverlayConfig.FontSize` and cached in `RenderResources`. Monospaced font (Consolas or Cascadia Mono) preferred for tabular data in the Relative and Session Info overlays.
+
+Resize: `BaseOverlay.OnSize` calls `ResizeRenderTarget(w, h)` which recreates the GDI DIB at the new size and updates `_currentWidth/_currentHeight`. `BindDC` at the start of the next frame picks up the new dimensions automatically — the DCRenderTarget itself does not need to be recreated.
 
 ### 5. Data Flow
 
@@ -451,8 +465,8 @@ SimOverlay overlays are designed as first-class OBS sources. Each overlay window
 
 #### Why it works
 - OBS 28+ uses the **Windows Graphics Capture (WGC)** API by default for Window Capture on Windows 10 1903+.
-- WGC captures at the DWM compositor level, which includes DirectComposition surfaces. It works correctly with `WS_EX_NOREDIRECTIONBITMAP` windows.
-- The DXGI swap chain uses `DXGI_ALPHA_MODE_PREMULTIPLIED`. OBS Window Capture with "Allow Transparency" checked reads the alpha channel correctly — overlay backgrounds appear semi-transparent in the OBS scene without any chroma key.
+- WGC captures at the DWM compositor level. It captures `WS_EX_LAYERED` windows correctly — DWM composites the `UpdateLayeredWindow` bitmap and WGC sees the result.
+- The DIB uses premultiplied alpha (`AC_SRC_ALPHA`). OBS Window Capture with "Allow Transparency" checked reads the alpha channel correctly — overlay backgrounds appear semi-transparent in the OBS scene without any chroma key.
 
 #### Why `WS_EX_TOOLWINDOW` is not used
 `WS_EX_TOOLWINDOW` hides the window from the taskbar and from many window enumeration APIs, including the window picker OBS uses to populate its "Window" dropdown. Without it, all overlay windows appear as selectable sources in OBS. They will briefly appear in the Windows taskbar, but this is acceptable since overlay windows are typically set up once.
@@ -476,7 +490,7 @@ Add Source → Window Capture
 Each overlay becomes an independent OBS source that can be independently positioned, scaled, and shown/hidden per scene.
 
 #### Legacy OBS (BitBlt method)
-OBS's legacy BitBlt window capture does not work with `WS_EX_NOREDIRECTIONBITMAP` because there is no GDI redirection surface to copy. Users on OBS versions older than 28 or Windows versions older than 1903 should use Display Capture instead, or upgrade OBS. This is a documented limitation.
+OBS's legacy BitBlt window capture does not reliably capture `WS_EX_LAYERED` windows. The recommended method is WGC (default on OBS 28+ / Windows 10 1903+). Users on older OBS versions should upgrade, or use Display Capture as a fallback. This is a documented limitation.
 
 #### Stream Mode and OBS
 When stream mode is active, the overlay switches to its stream override profile (larger, more columns, different colors etc.). Since OBS captures the same window, it automatically captures the stream layout without any OBS reconfiguration. The driver toggles stream mode once before going live; OBS sees whatever is on screen.
@@ -488,7 +502,7 @@ A post-MVP feature could allow marking an overlay as "stream only" — visible t
 
 ### 12. Error Handling Strategy
 
-- Device lost (GPU reset, driver update): `DeviceLostRecovery` recreates all D3D/D2D resources. Overlays pause rendering during recovery, resume automatically.
+- Render target lost (`D2DERR_RECREATE_TARGET`): `RecoverDevice()` recreates the D2D factory, `ID2D1DCRenderTarget`, and GDI DIB. Overlays pause rendering during recovery (~1 render loop tick) and resume automatically.
 - Sim MMF not available: `ISimProvider.IsRunning()` returns false; `SimDetector` keeps polling.
 - Config file corrupt: `ConfigStore` catches `JsonException`, logs it, and falls back to defaults.
 - Unhandled exceptions: top-level `Application.DispatcherUnhandledException` (WPF) or equivalent logs to `%APPDATA%\SimOverlay\error.log` and displays a message box before exiting.

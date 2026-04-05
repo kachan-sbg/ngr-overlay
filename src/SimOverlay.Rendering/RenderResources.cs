@@ -13,7 +13,7 @@ namespace SimOverlay.Rendering;
 /// </summary>
 public sealed class RenderResources : IDisposable
 {
-    private ID2D1DeviceContext _context;
+    private ID2D1RenderTarget _context;
     private readonly IDWriteFactory _writeFactory;
 
     private readonly object _lock = new();
@@ -24,7 +24,7 @@ public sealed class RenderResources : IDisposable
 
     public IDWriteFactory WriteFactory => _writeFactory;
 
-    public RenderResources(ID2D1DeviceContext context)
+    public RenderResources(ID2D1RenderTarget context)
     {
         _context = context;
         _writeFactory = DWrite.DWriteCreateFactory<IDWriteFactory>(Vortice.DirectWrite.FactoryType.Shared);
@@ -91,7 +91,7 @@ public sealed class RenderResources : IDisposable
     /// subsequent <see cref="GetBrush"/> / <see cref="GetTextFormat"/> calls
     /// use the newly created context rather than the dead one.
     /// </summary>
-    public void UpdateContext(ID2D1DeviceContext context)
+    public void UpdateContext(ID2D1RenderTarget context)
     {
         lock (_lock)
         {

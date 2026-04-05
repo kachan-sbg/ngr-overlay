@@ -43,6 +43,14 @@ internal static class Program
             using var overlayManager = new OverlayManager(bus, appConfig, configStore);
             AppLog.Info("OverlayManager created — entering message pump");
 
+            // --- Z-order hook ---
+            // Reacts immediately when any other TOPMOST window (the sim) re-asserts
+            // its z-order, placing our overlays back on top. Runs on the UI message
+            // pump thread via WINEVENT_OUTOFCONTEXT — no extra threads needed.
+            using var zOrderHook = new ZOrderHook(
+                overlayManager.BringAllToFront,
+                overlayManager.OwnedHandles);
+
             // Dev hotkey: F10 = quit.
             int hotkeyQuit = MessagePump.RegisterHotKey(0, 0x79 /* F10 */);
             AppLog.Info("DEV: F10 = quit.");
@@ -58,6 +66,7 @@ internal static class Program
                         // IRSDKSharper may leave a foreground thread alive after Stop(),
                         // so Environment.Exit(0) avoids the process hanging on cleanup.
                         AppLog.Info("F10 quit — saving config and exiting.");
+                        zOrderHook.Dispose();
                         configStore.Save(appConfig);
                         Environment.Exit(0);
                     }
