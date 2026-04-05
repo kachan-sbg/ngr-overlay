@@ -36,6 +36,27 @@ public sealed class SessionInfoOverlay : BaseOverlay
     private volatile SessionData? _session;
     private volatile DriverData?  _driver;
 
+    // ── Edit-mode mock data ───────────────────────────────────────────────────
+    private static readonly SessionData MockSession = new()
+    {
+        TrackName            = "Silverstone GP",
+        SessionType          = SessionType.Race,
+        SessionTimeRemaining = TimeSpan.FromMinutes(27),
+        SessionTimeElapsed   = TimeSpan.FromMinutes(18).Add(TimeSpan.FromSeconds(34)),
+        TotalLaps            = 30,
+        AirTempC             = 22.1f,
+        TrackTempC           = 38.7f,
+        GameTimeOfDay        = new TimeOnly(14, 45, 0),
+    };
+    private static readonly DriverData MockDriver = new()
+    {
+        Position            = 5,
+        Lap                 = 12,
+        LastLapTime         = TimeSpan.FromSeconds(94.521),
+        BestLapTime         = TimeSpan.FromSeconds(93.887),
+        LapDeltaVsBestLap   = -0.034f,
+    };
+
     public SessionInfoOverlay(
         ISimDataBus bus,
         OverlayConfig config,
@@ -49,8 +70,8 @@ public sealed class SessionInfoOverlay : BaseOverlay
 
     protected override void OnRender(ID2D1RenderTarget context, OverlayConfig config)
     {
-        var session = _session;
-        var driver  = _driver;
+        var session = IsLocked ? _session : MockSession;
+        var driver  = IsLocked ? _driver  : MockDriver;
 
         var fontSize = config.FontSize;
         var charW    = fontSize * 0.615f;

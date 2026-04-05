@@ -37,6 +37,16 @@ public sealed class DeltaBarOverlay : BaseOverlay
 
     private volatile DriverData? _driver;
 
+    // ── Edit-mode mock data ───────────────────────────────────────────────────
+    private static readonly DriverData MockDriver = new()
+    {
+        Position          = 5,
+        Lap               = 12,
+        LastLapTime       = TimeSpan.FromSeconds(94.521),
+        BestLapTime       = TimeSpan.FromSeconds(93.887),
+        LapDeltaVsBestLap = -0.234f,   // green side — visually shows a filled bar
+    };
+
     // 30-sample ring buffer for 500 ms trend computation at ~60 Hz.
     private const int TrendSamples = 30;
     private readonly float[] _trendBuf = new float[TrendSamples];
@@ -55,7 +65,7 @@ public sealed class DeltaBarOverlay : BaseOverlay
 
     protected override void OnRender(ID2D1RenderTarget context, OverlayConfig config)
     {
-        var driver = _driver;
+        var driver = IsLocked ? _driver : MockDriver;
         var delta  = driver?.LapDeltaVsBestLap ?? 0f;
 
         PushTrend(delta);

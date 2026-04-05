@@ -303,3 +303,21 @@ Format per entry:
 - **Keep fallback, suppress DWM re-composition**: No known API to do this with ULW layered windows.
 
 **Consequences:** If `ZOrderHook` misses an event (e.g. a sim that uses a non-standard z-order API), overlays may end up under the sim window and only recover on the next hook event. Acceptable trade-off given no blink is the primary UX requirement.
+
+## 2026-04-05 — Edit mode shows static mock data; Settings uses preview/apply split
+
+**Decision:**
+1. In edit mode (`!IsLocked`), `BaseOverlay` always calls `OnRender` regardless of `SimState`, and each overlay substitutes its live data snapshot with a static `MockData` object. Real sim data is never shown in edit mode.
+2. `OverlayManager.PreviewConfig` pushes config changes to the live overlay without saving (called on `LostFocus` in Settings). `ApplyConfig` additionally calls `SetPosition`/`SetSize` and persists to disk (called on Apply button).
+
+**Context:** User positioning/resizing overlays in edit mode needs realistic-looking content so layout decisions can be made accurately. Showing live sim data during repositioning is distracting and unstable. Settings fields should give instant visual feedback on blur without committing to disk until the user explicitly applies.
+
+**Rationale:**
+- Static mock data is stable — no flicker or value changes while the user adjusts overlay bounds.
+- The `IsLocked ? _latest : MockData` pattern keeps mock logic entirely in each overlay with no coupling to `BaseOverlay`.
+- Preview/Apply split is the standard settings UX: blur = "see what it looks like", Apply = "I'm done".
+- `SetPosition`/`SetSize` on `OverlayWindow` route through `WM_MOVE`/`WM_SIZE` so the existing `OnMove`/`OnSize` → debounce path is reused; no duplication of config-update logic.
+
+**Alternatives considered:**
+- Show real data in edit mode: rejected — live data moves while user is repositioning, making it hard to judge layout.
+- Live-update on every keystroke: rejected — causes continuous `SetWindowPos` calls while typing; blur is the natural "commit" moment for a text field.

@@ -482,6 +482,26 @@ public class OverlayWindow : IDisposable
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
     }
 
+    /// <summary>
+    /// Moves the overlay to <paramref name="x"/>, <paramref name="y"/> (screen coords).
+    /// Triggers <c>WM_MOVE</c> → <see cref="OnMove"/> → config update + debounced save.
+    /// Safe to call from any thread.
+    /// </summary>
+    public void SetPosition(int x, int y) =>
+        NativeMethods.SetWindowPos(
+            _hwnd, nint.Zero, x, y, 0, 0,
+            NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+
+    /// <summary>
+    /// Resizes the overlay to <paramref name="width"/> × <paramref name="height"/>.
+    /// Triggers <c>WM_SIZE</c> → <see cref="OnSize"/> → render target resize + debounced save.
+    /// Safe to call from any thread.
+    /// </summary>
+    public void SetSize(int width, int height) =>
+        NativeMethods.SetWindowPos(
+            _hwnd, nint.Zero, 0, 0, width, height,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+
     // Log the first successful UpdateLayeredWindow call per window.
     private bool _ulwOkLogged;
 
