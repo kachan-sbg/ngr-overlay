@@ -482,10 +482,12 @@ public class OverlayWindow : IDisposable
     {
         if (_hwnd == nint.Zero || !_shouldBeVisible) return;
 
-        // Restore before adjusting z-order — SetWindowPos on a minimized window
-        // only updates z-order metadata; the window stays invisible until restored.
+        // Make the window visible first — SetWindowPos on a hidden or minimized
+        // window only updates z-order metadata; it stays invisible until shown.
         if (NativeMethods.IsIconic(_hwnd))
             NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
+        else if (!NativeMethods.IsWindowVisible(_hwnd))
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
 
         NativeMethods.SetWindowPos(
             _hwnd,
