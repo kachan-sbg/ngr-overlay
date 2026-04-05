@@ -5,7 +5,7 @@
         Title="SimOverlay Settings"
         Width="720" Height="560"
         MinWidth="580" MinHeight="420"
-        ShowInTaskbar="False"
+        ShowInTaskbar="True"
         WindowStartupLocation="CenterScreen"
         Closing="Window_Closing">
 

@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 
 namespace SimOverlay.App;
@@ -33,7 +34,7 @@ public sealed class TrayIconController : IDisposable
         {
             Text    = "SimOverlay",
             Visible = true,
-            Icon    = CreateFallbackIcon(),
+            Icon    = LoadAppIcon(),
         };
 
         _icon.DoubleClick += (_, _) => _openSettings();
@@ -97,9 +98,23 @@ public sealed class TrayIconController : IDisposable
     // ── Icon ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Creates a minimal 16×16 icon programmatically so no embedded resource is required.
-    /// Replace with a proper .ico by setting <c>_icon.Icon = new Icon("simoverlay.ico")</c>.
+    /// Loads the app icon from the Resources folder embedded next to the executable.
+    /// Falls back to a programmatically-generated icon if the file is not present.
     /// </summary>
+    private static Icon LoadAppIcon()
+    {
+        var exeDir  = AppContext.BaseDirectory;
+        var icoPath = Path.Combine(exeDir, "Resources", "simoverlay.ico");
+
+        if (File.Exists(icoPath))
+        {
+            try { return new Icon(icoPath, 16, 16); }
+            catch { /* fall through to generated icon */ }
+        }
+
+        return CreateFallbackIcon();
+    }
+
     private static Icon CreateFallbackIcon()
     {
         using var bmp = new Bitmap(16, 16);

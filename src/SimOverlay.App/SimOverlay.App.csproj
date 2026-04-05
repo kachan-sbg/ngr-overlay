@@ -4,7 +4,23 @@
     <OutputType>WinExe</OutputType>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Resources\simoverlay.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!-- Generate the app icon before build if it does not exist yet. -->
+  <Target Name="EnsureAppIcon" BeforeTargets="BeforeBuild">
+    <Exec
+      Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)..\..\tools\GenerateIcon\GenerateIcon.csproj&quot; -- &quot;$(MSBuildThisFileDirectory)Resources\simoverlay.ico&quot;"
+      Condition="!Exists('$(MSBuildThisFileDirectory)Resources\simoverlay.ico')"
+      ConsoleToMSBuild="true" />
+  </Target>
+
+  <ItemGroup>
+    <Content Include="Resources\simoverlay.ico" Condition="Exists('Resources\simoverlay.ico')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Resources\simoverlay.ico</Link>
+    </Content>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />

@@ -117,6 +117,22 @@ The volatile reference swap is correct (atomic publish of a new list), but the l
 
 ---
 
+### ~~ISSUE-015 · Overlay windows appear in the Windows taskbar~~ ✅ Fixed
+
+**Fixed in:** Phase 6 commit
+
+Overlay windows were created with `hWndParent: nint.Zero` (no owner), causing Win32 to assign each a taskbar button. Fixed by creating a hidden 0×0 `WS_EX_TOOLWINDOW` owner HWND for each `OverlayWindow`. Win32 does not create taskbar buttons for owned windows. The `WS_EX_TOOLWINDOW` flag is only on the invisible owner — not on the overlays themselves — so OBS WGC still enumerates them via `EnumWindows`.
+
+---
+
+### ~~ISSUE-016 · Settings window had no taskbar icon and `ShowInTaskbar=False`~~ ✅ Fixed
+
+**Fixed in:** Phase 6 commit
+
+`SettingsWindow.xaml` had `ShowInTaskbar="False"` per the original TASK-501 spec, making the window impossible to find or restore without the tray icon. Changed to `ShowInTaskbar="True"`. Icon loaded from `Resources/simoverlay.ico` at runtime (falls back gracefully if file absent). The X button correctly hides to tray (`Window_Closing` cancels and calls `Hide()`) — the only way to fully exit is via the tray menu.
+
+---
+
 ### ~~ISSUE-014 · Overlays blink every ~2 seconds~~ ✅ Fixed
 
 **Fixed in:** post-Phase-4 bugfix commit (two separate changes)
