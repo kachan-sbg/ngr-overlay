@@ -117,8 +117,11 @@ The volatile reference swap is correct (atomic publish of a new list), but the l
 
 ---
 
-### ~~ISSUE-014 · `SimDetector` stops provider on transient `IsRunning() == false`~~ ✅ Fixed
+### ~~ISSUE-014 · Overlays blink every ~2 seconds~~ ✅ Fixed
 
-**Fixed in:** post-Phase-4 bugfix commit
-Added `_disconnectStrikes` counter with `DisconnectThreshold = 2`. Provider is only stopped after 2 consecutive `false` results (~4 seconds), ignoring single-poll hiccups. `_disconnectStrikes` resets to 0 on any `true` result.
+**Fixed in:** post-Phase-4 bugfix commit (two separate changes)
+
+Root cause was **not** SimDetector — the sim was not yet started during testing. Actual cause: `BaseOverlay.RenderLoop` called `BringToFront()` every 120 frames (~2 s at 60 fps) as a z-order safety-net fallback. `BringToFront` calls `SetWindowPos(HWND_TOPMOST)`, which causes DWM to briefly re-composite the layered window — producing a 1-frame visual gap. Removed the periodic call; `ZOrderHook` (EVENT_OBJECT_REORDER) already handles z-order reactively so the fallback was redundant.
+
+The SimDetector debounce (`DisconnectThreshold = 2`) was also applied in the same session as a defensive improvement against transient `IsRunning() == false` results, even though it was not the blink cause.
 
