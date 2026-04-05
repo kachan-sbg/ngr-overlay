@@ -21,7 +21,13 @@ public sealed class SimDetector : IDisposable
     private readonly Timer _timer;
 
     private ISimProvider? _activeProvider;
+    private int  _disconnectStrikes;   // consecutive IsRunning()==false counts
     private bool _disposed;
+
+    // Stop the provider only after this many consecutive false IsRunning() results.
+    // At a 2-second poll interval this is 4 seconds — enough to ignore SDK hiccups
+    // while still reacting quickly to an actual sim exit (ISSUE-014).
+    private const int DisconnectThreshold = 2;
 
     /// <summary>
     /// Fires when the active provider changes (null = no sim running).
@@ -48,12 +54,25 @@ public sealed class SimDetector : IDisposable
         {
             if (!_activeProvider.IsRunning())
             {
+                _disconnectStrikes++;
+                if (_disconnectStrikes < DisconnectThreshold)
+                {
+                    AppLog.Info($"SimDetector: '{_activeProvider.SimId}' IsRunning()==false " +
+                                $"(strike {_disconnectStrikes}/{DisconnectThreshold}) — waiting before stopping.");
+                    return;
+                }
+
                 AppLog.Info($"SimDetector: '{_activeProvider.SimId}' stopped — resuming detection.");
                 _activeProvider.StateChanged -= OnProviderStateChanged;
                 _activeProvider.Stop();
                 _activeProvider = null;
+                _disconnectStrikes = 0;
                 _bus.Publish(new SimStateChangedEvent(SimState.Disconnected));
                 ActiveProviderChanged?.Invoke(null);
+            }
+            else
+            {
+                _disconnectStrikes = 0;
             }
 
             return; // don't switch providers mid-session
