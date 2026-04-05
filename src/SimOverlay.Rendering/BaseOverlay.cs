@@ -96,7 +96,16 @@ public abstract class BaseOverlay : OverlayWindow
                 state: null, Timeout.Infinite, Timeout.Infinite);
 
         Subscribe<EditModeChangedEvent>(e => IsLocked = e.IsLocked);
-        Subscribe<SimStateChangedEvent>(e => _simStateRaw = (int)e.State);
+        Subscribe<SimStateChangedEvent>(e =>
+        {
+            _simStateRaw = (int)e.State;
+            // Re-assert our topmost z-order position whenever the sim state changes.
+            // iRacing (and most sims) call SetWindowPos(HWND_TOPMOST) on startup, which
+            // pushes our windows beneath theirs even though both are WS_EX_TOPMOST.
+            // Calling BringToFront() here restores the correct stacking order.
+            // Also called on disconnect so overlays re-appear after the sim closes.
+            BringToFront();
+        });
         Subscribe<StreamModeChangedEvent>(_ => _pendingInvalidate = true);
 
         StartRenderLoop();

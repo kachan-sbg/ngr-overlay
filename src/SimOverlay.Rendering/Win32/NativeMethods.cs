@@ -169,6 +169,9 @@ internal static class NativeMethods
     internal static extern bool UnregisterHotKey(nint hwnd, int id);
 
     // -------------------------------------------------------------------------
+    // SetWindowPos hWndInsertAfter special values
+    internal static readonly nint HWND_TOPMOST = new(-1);
+
     // SetWindowPos flags
     // -------------------------------------------------------------------------
     internal const uint SWP_NOSIZE      = 0x0001;

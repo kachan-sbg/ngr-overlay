@@ -74,5 +74,9 @@ internal static class Program
         }
 
         AppLog.Info("Main() exiting");
+
+        // IRSDKSharper may leave a foreground thread alive after Stop().
+        // Force-exit so the process doesn't hang in the terminal.
+        Environment.Exit(0);
     }
 }
