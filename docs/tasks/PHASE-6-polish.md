@@ -4,7 +4,7 @@
 
 ---
 
-**TASK-601** `[ ]`
+**TASK-601** `[x]`
 - **Title**: `SimDetector` — automatic sim detection loop
 - **Description**: Implement `SimDetector` in `SimOverlay.App`. Run a `System.Threading.Timer` every 2000 ms. On each tick: if no provider active, iterate registered providers in priority order, call `IsRunning()`. If true, call `Start()` and mark active. If active provider's `IsRunning()` returns false, call `Stop()`, clear active, resume polling. Fire `ActiveProviderChanged` event.
 - **Acceptance Criteria**: iRacing start detected within ~2 seconds. iRacing close detected within ~2 seconds. Priority order respected. Unit-testable with simulated `IsRunning()`.
