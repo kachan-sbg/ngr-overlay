@@ -340,6 +340,12 @@ public abstract class BaseOverlay : OverlayWindow
 
     private DateTime _lastRenderErrorLog = DateTime.MinValue;
 
+    // Re-assert topmost visibility every N frames (~2 s at 60 fps).
+    // Guards against full-screen apps that hide overlay windows between
+    // SimStateChangedEvents (e.g. during iRacing's loading phase).
+    private const int BringToFrontInterval = 120;
+    private int _bringToFrontCounter;
+
     private void RenderLoop()
     {
         AppLog.Info($"Render loop started for '{DisplayName}'");
@@ -352,6 +358,12 @@ public abstract class BaseOverlay : OverlayWindow
 
             if (now >= nextFrameMs)
             {
+                if (++_bringToFrontCounter >= BringToFrontInterval)
+                {
+                    _bringToFrontCounter = 0;
+                    BringToFront();
+                }
+
                 try
                 {
                     Render();
