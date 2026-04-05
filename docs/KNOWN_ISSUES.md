@@ -114,3 +114,12 @@ Uses `File.AppendAllText` which opens and closes the file handle on every log en
 
 **File:** `src/SimOverlay.Sim.iRacing/IRacingPoller.cs:35`
 The volatile reference swap is correct (atomic publish of a new list), but the list object itself is not immutable. Currently safe because `IRacingSessionDecoder.Decode` always returns a fresh list and nobody mutates it after assignment. Consider changing to `ImmutableArray<DriverSnapshot>` to make the contract explicit.
+
+---
+
+### ISSUE-014 · `SimDetector` stops provider on transient `IsRunning() == false`
+
+**File:** `src/SimOverlay.App/SimDetector.cs:49`
+`SimDetector.Poll()` runs every 2 seconds. If `ISimProvider.IsRunning()` returns `false` for a single poll cycle (e.g., the iRacing SDK MMF momentarily reports not-connected during a session), `SimDetector` immediately stops the provider and publishes `SimStateChangedEvent(Disconnected)`. One render frame later the overlays show "Waiting for session…", then 2 seconds later the provider is re-detected and state returns to `InSession`. Observed as a brief ~1-frame blink every ~2 seconds during live iRacing sessions.
+**Fix:** Debounce `IsRunning()` in `SimDetector` — only stop the provider after N consecutive `false` returns (e.g., 2–3 polls = 4–6 seconds of actual disconnection). This avoids spurious state transitions from transient SDK hiccups.
+
