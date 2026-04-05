@@ -1,6 +1,7 @@
 using SimOverlay.Core;
 using SimOverlay.Core.Events;
 using SimOverlay.Sim.Contracts;
+using Timer = System.Threading.Timer;
 
 namespace SimOverlay.App;
 
