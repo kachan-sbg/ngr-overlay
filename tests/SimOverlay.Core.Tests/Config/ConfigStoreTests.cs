@@ -167,6 +167,45 @@ public class ConfigStoreTests : IDisposable
         Assert.Contains($"{ConfigMigrator.CurrentVersion}", json);
     }
 
+    [Fact]
+    public void RoundTrip_SimPriorityOrder_SerializesAndDeserializesCorrectly()
+    {
+        var config = new AppConfig
+        {
+            GlobalSettings = new GlobalSettings
+            {
+                SimPriorityOrder = ["iRacing", "LMU"],
+            },
+        };
+
+        _store.Save(config);
+        var loaded = _store.Load();
+
+        Assert.Equal(2, loaded.GlobalSettings.SimPriorityOrder.Count);
+        Assert.Equal("iRacing", loaded.GlobalSettings.SimPriorityOrder[0]);
+        Assert.Equal("LMU",     loaded.GlobalSettings.SimPriorityOrder[1]);
+    }
+
+    [Fact]
+    public void Load_MissingSimPriorityOrder_DefaultsToIRacing()
+    {
+        // Simulate a config file without SimPriorityOrder.
+        var json = """
+        {
+            "Version": 1,
+            "GlobalSettings": { "StreamModeActive": false },
+            "Overlays": []
+        }
+        """;
+        File.WriteAllText(_configPath, json);
+
+        var config = _store.Load();
+
+        Assert.NotNull(config.GlobalSettings.SimPriorityOrder);
+        Assert.Single(config.GlobalSettings.SimPriorityOrder);
+        Assert.Equal("iRacing", config.GlobalSettings.SimPriorityOrder[0]);
+    }
+
     // --- Integration test ---
 
     [Fact]

@@ -60,8 +60,8 @@ public static class ConfigMigrator
         // GlobalSettings: ensure object exists (defensive — should always be non-null)
         config.GlobalSettings ??= new GlobalSettings();
 
-        // Future Alpha tasks (TASK-704, TASK-705) will add fields here.
-        // For now the migration just stamps the version so the framework
-        // is exercised and tested.
+        // TASK-704 / ISSUE-011: SimPriorityOrder — default to iRacing if absent.
+        if (config.GlobalSettings.SimPriorityOrder is not { Count: > 0 })
+            config.GlobalSettings.SimPriorityOrder = ["iRacing"];
     }
 }

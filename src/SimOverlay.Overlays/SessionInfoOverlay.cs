@@ -248,13 +248,17 @@ public sealed class SessionInfoOverlay : BaseOverlay
         return $"{m}:{s:D2}.{ms:D3}";
     }
 
-    private static string FormatDelta(float delta) =>
-        delta == 0f ? " 0.000" : (delta < 0f ? $"{delta:F3}" : $"+{delta:F3}");
+    private static string FormatDelta(float delta)
+    {
+        if (delta == 0f) return " 0.000";
+        var s = delta.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+        return delta < 0f ? s : $"+{s}";
+    }
 
-    private static string FormatTemp(float tempC, TemperatureUnit unit) =>
+    internal static string FormatTemp(float tempC, TemperatureUnit unit) =>
         unit == TemperatureUnit.Fahrenheit
-            ? $"{tempC * 9f / 5f + 32f:F1}\u00b0F"
-            : $"{tempC:F1}\u00b0C";
+            ? $"{(tempC * 9f / 5f + 32f).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}\u00b0F"
+            : $"{tempC.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}\u00b0C";
 
     private static string FormatLap(DriverData? driver, SessionData? session)
     {

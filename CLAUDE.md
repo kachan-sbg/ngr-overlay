@@ -10,7 +10,7 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 
 ## Current task
 **Phase 7 — Infrastructure hardening** `[~]` In progress
-Next: **TASK-704** — Resolve remaining MVP known issues
+Next: **TASK-705** — Multi-class data model
 File: `docs/tasks/PHASE-7-infrastructure.md`
 
 ## Codebase map
@@ -23,7 +23,7 @@ No project dependencies. Domain types, config, data bus.
 - `Config/OverlayConfig.cs` — per-overlay POCO: position, size, colors, font, overlay-specific fields, StreamOverride, `Resolve(bool)`
 - `Config/StreamOverrideConfig.cs` — nullable overrides for stream/OBS mode
 - `Config/ColorConfig.cs` — RGBA float color with presets (White, Black, DarkBackground, etc.)
-- `Config/GlobalSettings.cs` — StreamModeActive, StartWithWindows
+- `Config/GlobalSettings.cs` — StreamModeActive, StartWithWindows, SimPriorityOrder (List\<string\>)
 - `Config/TemperatureUnit.cs` — enum: Celsius, Fahrenheit
 - `SimDataBus.cs` / `ISimDataBus.cs` — pub/sub bus, `Publish<T>()` / `Subscribe<T>()`
 - `SimState.cs` — enum: Disconnected, Connected, InSession
