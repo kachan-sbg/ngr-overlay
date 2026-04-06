@@ -57,7 +57,7 @@ Replace `OverlayManager.CopyConfig()` with a reliable deep-clone mechanism.
 
 ### TASK-703 · Wire up dependency injection container
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Replace manual service construction in `Program.cs` with `Microsoft.Extensions.DependencyInjection`.
 
@@ -68,11 +68,11 @@ Replace manual service construction in `Program.cs` with `Microsoft.Extensions.D
 - Register overlay types in a dictionary so new overlays are added by registration, not code changes in Program.cs
 
 **Acceptance criteria:**
-- [ ] `Program.cs` uses `ServiceProvider` instead of manual `new` calls
-- [ ] Adding a new overlay type requires only: (1) write the class, (2) register it
-- [ ] All existing functionality unchanged
-- [ ] `OverlayManager` receives overlay instances via constructor injection
-- [ ] No service locator anti-pattern (no `provider.GetService<T>()` outside composition root)
+- [x] `Program.cs` uses `ServiceProvider` instead of manual `new` calls
+- [x] Adding a new overlay type requires only: (1) write the class, (2) register it
+- [x] All existing functionality unchanged
+- [x] `OverlayManager` receives overlay instances via constructor injection
+- [x] No service locator anti-pattern (no `provider.GetService<T>()` outside composition root)
 
 **Dependencies:** None. Can be done in parallel with TASK-701/702.
 
