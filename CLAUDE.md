@@ -10,7 +10,7 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 
 ## Current task
 **Phase 7 — Infrastructure hardening** `[~]` In progress
-Next: **TASK-703** — Wire up dependency injection container
+Next: **TASK-704** — Resolve remaining MVP known issues
 File: `docs/tasks/PHASE-7-infrastructure.md`
 
 ## Codebase map
@@ -65,8 +65,9 @@ Depends: Rendering + Sim.Contracts + Core. Concrete overlay implementations.
 
 ### App (`src/SimOverlay.App/`)
 Depends: everything. Entry point, orchestration.
-- `Program.cs` — single-instance, manual DI wiring, message pump
-- `OverlayManager.cs` — owns overlays + configs, edit/stream mode, preview/apply
+- `Program.cs` — single-instance, DI container composition root, message pump
+- `IOverlayFactory.cs` / `OverlayFactory.cs` — registry-based overlay factory (add overlay = write class + register here)
+- `OverlayManager.cs` — owns overlays (via `IOverlayFactory`), edit/stream mode, preview/apply
 - `SimDetector.cs` — polls ISimProvider every 2s, manages active provider
 - `TrayIconController.cs` — NotifyIcon context menu
 - `SingleInstanceGuard.cs` — named Mutex

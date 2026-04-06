@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using Application = System.Windows.Application;
+using Microsoft.Extensions.DependencyInjection;
 using SimOverlay.App.Settings;
 using SimOverlay.Core;
 using SimOverlay.Core.Config;
@@ -61,24 +62,31 @@ internal static class Program
                 e.Handled = true;
             };
 
-            // --- Core services ---
+            // ── DI composition root ───────────────────────────────────────────
+            // Load config before building the container so we can register the instance.
             var configStore = new ConfigStore();
             var appConfig   = configStore.Load();
-            var bus         = new SimDataBus();
-            AppLog.Info("Core services created");
 
-            // --- Sim providers (priority order) ---
-            IReadOnlyList<ISimProvider> providers = [new IRacingProvider(bus)];
+            var services = new ServiceCollection();
+            services.AddSingleton(configStore);
+            services.AddSingleton(appConfig);
+            services.AddSingleton<ISimDataBus, SimDataBus>();
+            services.AddSingleton<IRacingProvider>();
+            services.AddSingleton<IReadOnlyList<ISimProvider>>(sp =>
+                new List<ISimProvider> { sp.GetRequiredService<IRacingProvider>() });
+            services.AddSingleton<SimDetector>();
+            services.AddSingleton<IOverlayFactory, OverlayFactory>();
+            services.AddSingleton<OverlayManager>();
 
-            // --- Sim detector ---
-            using var detector = new SimDetector(bus, providers);
-            AppLog.Info("SimDetector started");
+            using var provider = services.BuildServiceProvider();
+            AppLog.Info("DI container built");
 
-            // --- Overlays ---
-            using var overlayManager = new OverlayManager(bus, appConfig, configStore);
-            AppLog.Info("OverlayManager created");
+            // Resolve singletons — provider manages their lifetimes.
+            var detector       = provider.GetRequiredService<SimDetector>();
+            var overlayManager = provider.GetRequiredService<OverlayManager>();
+            AppLog.Info("Core services resolved");
 
-            // --- Settings window (lazy singleton) ---
+            // --- Settings window (lazy singleton, not in DI — requires delegate wiring) ---
             SettingsWindow? settingsWindow = null;
             SettingsWindow GetOrCreateSettings()
             {
