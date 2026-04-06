@@ -107,17 +107,19 @@ internal sealed class IRacingPoller : IDisposable
         var data       = _sdk.Data;
         var bestLapSec = data.GetFloat("LapBestLapTime");
         var lastLapSec = data.GetFloat("LapLastLapTime");
-        var delta      = data.GetFloat("LapDeltaToBestLap");
-        var position   = data.GetInt("PlayerCarPosition");
-        var lap        = data.GetInt("Lap");
+        var delta             = data.GetFloat("LapDeltaToBestLap");
+        var deltaSessionBest  = data.GetFloat("LapDeltaToSessionBestLap");
+        var position          = data.GetInt("PlayerCarPosition");
+        var lap               = data.GetInt("Lap");
 
         _bus.Publish(new DriverData
         {
-            Position          = position,
-            Lap               = lap,
-            BestLapTime       = bestLapSec > 0 ? TimeSpan.FromSeconds(bestLapSec) : TimeSpan.Zero,
-            LastLapTime       = lastLapSec > 0 ? TimeSpan.FromSeconds(lastLapSec) : TimeSpan.Zero,
-            LapDeltaVsBestLap = delta,
+            Position              = position,
+            Lap                   = lap,
+            BestLapTime           = bestLapSec > 0 ? TimeSpan.FromSeconds(bestLapSec) : TimeSpan.Zero,
+            LastLapTime           = lastLapSec > 0 ? TimeSpan.FromSeconds(lastLapSec) : TimeSpan.Zero,
+            LapDeltaVsBestLap     = delta,
+            LapDeltaVsSessionBest = deltaSessionBest,
         });
     }
 

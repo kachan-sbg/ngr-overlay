@@ -103,14 +103,19 @@ public sealed class RelativeOverlay : BaseOverlay
         float xGap  = xLic  + (licW  > 0 ? licW  + colGap : 0);
         float xLap  = xGap  + gapW  + colGap;
 
-        var dw     = Resources.WriteFactory;
-        var fmt    = Resources.GetTextFormat("Consolas", fontSize);
-        var text   = Resources.GetBrush(config.TextColor);
-        var dimmed = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
-                                         config.TextColor.B, config.TextColor.A * 0.45f);
-        var sep    = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
-                                         config.TextColor.B, 0.25f);
-        var black  = Resources.GetBrush(0f, 0f, 0f, 1f);
+        var dw       = Resources.WriteFactory;
+        var fmt      = Resources.GetTextFormat("Consolas", fontSize);
+        var text     = Resources.GetBrush(config.TextColor);
+        var dimmed   = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
+                                           config.TextColor.B, config.TextColor.A * 0.45f);
+        // Non-player rows use a slightly dimmed brush so the player row stands out clearly.
+        var otherText = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
+                                            config.TextColor.B, config.TextColor.A * 0.70f);
+        var sep      = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
+                                           config.TextColor.B, 0.25f);
+        // Subtle alternating row background for non-player rows.
+        var rowAlt   = Resources.GetBrush(1f, 1f, 1f, 0.04f);
+        var black    = Resources.GetBrush(0f, 0f, 0f, 1f);
 
         // ----- Header row -----
         float y = pad;
@@ -132,16 +137,24 @@ public sealed class RelativeOverlay : BaseOverlay
         // ----- Select visible entries centered on player -----
         var visible = SelectVisible(entries, config.MaxDriversShown);
 
+        int rowIndex = 0;
         foreach (var entry in visible)
         {
             if (y + rowH > h - pad) break;
 
-            // Player-row highlight background
+            var rowBrush = entry.IsPlayer ? text : otherText;
+
             if (entry.IsPlayer)
             {
+                // Player row: solid highlight background.
                 var hc = config.PlayerHighlightColor;
                 var hl = Resources.GetBrush(hc.R, hc.G, hc.B, hc.A);
                 context.FillRectangle(new Vortice.RawRectF(0, y - 1, w, y + rowH + 1), hl);
+            }
+            else if (rowIndex % 2 == 0)
+            {
+                // Alternating subtle background on even non-player rows.
+                context.FillRectangle(new Vortice.RawRectF(0, y, w, y + rowH), rowAlt);
             }
 
             // Player arrow marker
@@ -149,20 +162,20 @@ public sealed class RelativeOverlay : BaseOverlay
                 DrawL(context, dw, fmt, text, "\u25ba", pad - charW, y, charW + 2f, rowH);
 
             // POS
-            DrawR(context, dw, fmt, text, entry.Position.ToString(), xPos, y, posW, rowH);
+            DrawR(context, dw, fmt, rowBrush, entry.Position.ToString(), xPos, y, posW, rowH);
 
             // CAR
-            DrawR(context, dw, fmt, text, "#" + entry.CarNumber, xCar, y, carW, rowH);
+            DrawR(context, dw, fmt, rowBrush, "#" + entry.CarNumber, xCar, y, carW, rowH);
 
             // DRIVER NAME (truncated with ellipsis)
             var name = Truncate(entry.DriverName, nameW, charW);
-            DrawL(context, dw, fmt, text, name, xName, y, nameW, rowH);
+            DrawL(context, dw, fmt, rowBrush, name, xName, y, nameW, rowH);
 
             // iRTG
             if (config.ShowIRating)
             {
                 var irtgText = entry.IRating > 0 ? entry.IRating.ToString() : "----";
-                DrawR(context, dw, fmt, text, irtgText, xIrtg, y, irtgW, rowH);
+                DrawR(context, dw, fmt, rowBrush, irtgText, xIrtg, y, irtgW, rowH);
             }
 
             // LIC (colored background cell)
@@ -171,20 +184,21 @@ public sealed class RelativeOverlay : BaseOverlay
                 var (lr, lg, lb, la) = entry.LicenseClass.GetColor();
                 var licBg = Resources.GetBrush(lr, lg, lb, la);
                 context.FillRectangle(new Vortice.RawRectF(xLic, y + 1f, xLic + licW - 2f, y + rowH - 1f), licBg);
-                var licText = entry.LicenseClass.RequiresDarkText() ? black : text;
+                var licText = entry.LicenseClass.RequiresDarkText() ? black : rowBrush;
                 DrawL(context, dw, fmt, licText, entry.LicenseLevel, xLic + 2f, y, licW - 4f, rowH);
             }
 
             // GAP
-            DrawR(context, dw, fmt, text, FormatGap(entry), xGap, y, gapW, rowH);
+            DrawR(context, dw, fmt, rowBrush, FormatGap(entry), xGap, y, gapW, rowH);
 
             // LAP
             var lapText = entry.LapDifference == 0 ? "0"
                         : entry.LapDifference > 0  ? $"+{entry.LapDifference}"
                         : entry.LapDifference.ToString();
-            DrawR(context, dw, fmt, text, lapText, xLap, y, lapW, rowH);
+            DrawR(context, dw, fmt, rowBrush, lapText, xLap, y, lapW, rowH);
 
             y += rowH;
+            rowIndex++;
         }
     }
 
@@ -253,7 +267,8 @@ public sealed class RelativeOverlay : BaseOverlay
     {
         if (entry.IsPlayer) return " 0.00";
         var gap = entry.GapToPlayerSeconds;
-        return gap < 0 ? $"{gap:F2}" : $"+{gap:F2}";
+        var s   = Math.Abs(gap).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+        return gap < 0 ? $"-{s}" : $"+{s}";
     }
 
     private static string Truncate(string text, float maxPixels, float charW)

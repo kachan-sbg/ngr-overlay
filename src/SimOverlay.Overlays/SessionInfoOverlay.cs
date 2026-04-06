@@ -47,6 +47,9 @@ public sealed class SessionInfoOverlay : BaseOverlay
         AirTempC             = 22.1f,
         TrackTempC           = 38.7f,
         GameTimeOfDay        = new TimeOnly(14, 45, 0),
+        RelativeHumidity     = 0.62f,
+        WeatherDeclaredWet   = false,
+        TrackWetness         = 1, // dry
     };
     private static readonly DriverData MockDriver = new()
     {
@@ -147,6 +150,20 @@ public sealed class SessionInfoOverlay : BaseOverlay
                 session != null ? FormatTemp(session.TrackTempC, config.TemperatureUnit) : "---",
                 pad, y, labelW, valueX, valueW, rowH);
             y += rowH;
+
+            if (session != null && session.RelativeHumidity > 0f)
+            {
+                var humStr = $"{(session.RelativeHumidity * 100f).ToString("F0", System.Globalization.CultureInfo.InvariantCulture)}%";
+                DrawRow(context, dw, fmt, dimmed, text, "Humidity", humStr, pad, y, labelW, valueX, valueW, rowH);
+                y += rowH;
+            }
+
+            if (session != null && session.TrackWetness > 0)
+            {
+                var wetnessStr = FormatTrackWetness(session.TrackWetness, session.WeatherDeclaredWet);
+                DrawRow(context, dw, fmt, dimmed, text, "Condition", wetnessStr, pad, y, labelW, valueX, valueW, rowH);
+                y += rowH;
+            }
         }
 
         // ── Lap data ──────────────────────────────────────────────────
@@ -266,6 +283,22 @@ public sealed class SessionInfoOverlay : BaseOverlay
         return session?.TotalLaps > 0
             ? $"{driver.Lap} / {session.TotalLaps}"
             : driver.Lap.ToString();
+    }
+
+    private static string FormatTrackWetness(int wetness, bool declaredWet)
+    {
+        var state = wetness switch
+        {
+            1 => "Dry",
+            2 => "Mostly dry",
+            3 => "V. light wet",
+            4 => "Light wet",
+            5 => "Moderate wet",
+            6 => "Very wet",
+            7 => "Extreme wet",
+            _ => "Unknown",
+        };
+        return declaredWet ? state + " (wet declared)" : state;
     }
 
     private static string GetTimeOfDayDesc(int hour) => hour switch
