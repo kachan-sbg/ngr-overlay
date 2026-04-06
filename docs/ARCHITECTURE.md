@@ -2,6 +2,28 @@
 
 ## Racing Simulator Overlay — Technical Architecture
 
+> **Don't read this whole file.** Use the index below to read only sections relevant to your task.
+> CLAUDE.md has the codebase map, dependency rules, and key constraints — start there.
+
+### Section index
+| # | Section | Lines | Read when... |
+|---|---|---|---|
+| 1 | Solution Structure | 5–61 | Rarely — already in CLAUDE.md |
+| 2 | Project Responsibilities | 63–251 | Adding/modifying types in a project |
+| 3 | Process Model | 253–261 | Thread safety questions |
+| 4 | Rendering Pipeline | 263–286 | Touching OverlayWindow / BaseOverlay / render loop |
+| 5 | Data Flow | 288–320 | Touching SimDataBus / poller / overlay data path |
+| 6 | Configuration System | 322–431 | Touching config, settings, stream override |
+| 7 | Overlay Lifecycle | 433–442 | Adding overlays, enable/disable logic |
+| 8 | Lock / Unlock (Edit Mode) | 444–453 | Edit mode, drag/resize, WS_EX_TRANSPARENT |
+| 9 | Extensibility: Adding a New Sim | 455–465 | LMU integration (Phase 9) |
+| 10 | Dependency Injection | 467–478 | DI wiring (TASK-703) |
+| 11 | OBS Capture Compatibility | 480–518 | OBS/stream mode, window styles |
+| 12 | Error Handling Strategy | 521–528 | Error recovery, device lost |
+| 13 | Performance Benchmarks | 530–556 | Benchmark workflow, hot-path targets |
+
+---
+
 ### 1. Solution Structure
 
 ```
