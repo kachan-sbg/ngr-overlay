@@ -40,11 +40,12 @@ public sealed class DeltaBarOverlay : BaseOverlay
     // ── Edit-mode mock data ───────────────────────────────────────────────────
     private static readonly DriverData MockDriver = new()
     {
-        Position          = 5,
-        Lap               = 12,
-        LastLapTime       = TimeSpan.FromSeconds(94.521),
-        BestLapTime       = TimeSpan.FromSeconds(93.887),
-        LapDeltaVsBestLap = -0.234f,   // green side — visually shows a filled bar
+        Position              = 5,
+        Lap                   = 12,
+        LastLapTime           = TimeSpan.FromSeconds(94.521),
+        BestLapTime           = TimeSpan.FromSeconds(93.887),
+        LapDeltaVsBestLap     = -0.234f,
+        LapDeltaVsSessionBest = -0.234f,
     };
 
     // 30-sample ring buffer for 500 ms trend computation at ~60 Hz.
@@ -66,7 +67,13 @@ public sealed class DeltaBarOverlay : BaseOverlay
     protected override void OnRender(ID2D1RenderTarget context, OverlayConfig config)
     {
         var driver = IsLocked ? _driver : MockDriver;
-        var delta  = driver?.LapDeltaVsBestLap ?? 0f;
+
+        // Prefer session best (any driver's fastest lap this session).
+        // Fall back to personal best when session best isn't available yet (value is 0).
+        var sessionDelta   = driver?.LapDeltaVsSessionBest ?? 0f;
+        var personalDelta  = driver?.LapDeltaVsBestLap     ?? 0f;
+        var usingSessionBest = sessionDelta != 0f;
+        var delta = usingSessionBest ? sessionDelta : personalDelta;
 
         PushTrend(delta);
 
@@ -124,6 +131,15 @@ public sealed class DeltaBarOverlay : BaseOverlay
             textLayout.TextAlignment = TextAlignment.Center;
             context.DrawTextLayout(new Vector2(pad, y), textLayout, textBrush, DrawTextOptions.Clip);
 
+            // SB / PB label (top-right corner) so driver knows which reference is active.
+            var refLabel = driver == null ? "" : (usingSessionBest ? "SB" : "PB");
+            if (refLabel.Length > 0)
+            {
+                using var refLayout = dw.CreateTextLayout(refLabel, smallFmt, innerW, textRowH);
+                refLayout.TextAlignment = TextAlignment.Trailing;
+                context.DrawTextLayout(new Vector2(pad, y), refLayout, dimmed, DrawTextOptions.Clip);
+            }
+
             y += textRowH + 4f;
         }
 
@@ -179,6 +195,10 @@ public sealed class DeltaBarOverlay : BaseOverlay
 
     // ── Formatting helper ─────────────────────────────────────────────────
 
-    private static string FormatDelta(float delta) =>
-        delta == 0f ? " 0.000" : (delta < 0f ? $"{delta:F3}" : $"+{delta:F3}");
+    private static string FormatDelta(float delta)
+    {
+        if (delta == 0f) return " 0.000";
+        var s = delta.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+        return delta < 0f ? s : $"+{s}";
+    }
 }

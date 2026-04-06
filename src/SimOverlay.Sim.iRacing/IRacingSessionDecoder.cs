@@ -62,6 +62,11 @@ internal static class IRacingSessionDecoder
             totalLaps            = ParseSessionLaps(s?.SessionLaps);
         }
 
+        // ── Live weather telemetry ────────────────────────────────────────────
+        var humidity          = data.GetFloat("RelativeHumidity");
+        var weatherDeclaredWet = data.GetInt("WeatherDeclaredWet") != 0;
+        var trackWetness      = data.GetInt("TrackWetness");
+
         var session = new SessionData
         {
             TrackName            = trackName,
@@ -70,6 +75,9 @@ internal static class IRacingSessionDecoder
             TotalLaps            = totalLaps,
             AirTempC             = airTempC,
             TrackTempC           = trackTempC,
+            RelativeHumidity     = humidity,
+            WeatherDeclaredWet   = weatherDeclaredWet,
+            TrackWetness         = trackWetness,
         };
 
         return (drivers, session);
