@@ -111,5 +111,6 @@ After completing every task, before committing:
 2. **Update docs in the same commit:** ARCHITECTURE.md (if changed), DECISIONS.md summary table + `docs/decisions/alpha.md` full entry (if non-trivial decision), INDEX.md + TASKS.md (phase status)
 3. **Ask user to run tests** — `dotnet test`
 4. **Ask user to run benchmarks** for hot-path changes (SimDataBus, OverlayConfig.Resolve, IRacingRelativeCalculator)
-5. **Update "Current task" section above** to point to the next task
-6. **Commit** code + docs + task status together
+5. **Verify acceptance criteria** — after tests pass, review each criterion in the task and confirm it is met before committing
+6. **Update "Current task" section above** to point to the next task
+7. **Commit** code + docs + task status together
