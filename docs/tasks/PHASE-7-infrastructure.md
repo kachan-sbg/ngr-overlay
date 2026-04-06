@@ -34,7 +34,7 @@ Add `Version` field to `AppConfig` and a migration pipeline in `ConfigStore.Load
 
 ### TASK-702 · Replace manual config cloning with deep copy
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Replace `OverlayManager.CopyConfig()` with a reliable deep-clone mechanism.
 
@@ -45,11 +45,11 @@ Replace `OverlayManager.CopyConfig()` with a reliable deep-clone mechanism.
 - Also fix ISSUE-009: `OverlayConfig.Resolve()` should deep-clone `StreamOverride` (or exclude it from the resolved copy)
 
 **Acceptance criteria:**
-- [ ] `CopyConfig()` method removed
-- [ ] All Settings preview/apply flows still work identically
-- [ ] Unit test: clone produces independent object (mutating clone doesn't affect original)
-- [ ] Unit test: all fields survive round-trip (including nested ColorConfig, StreamOverrideConfig)
-- [ ] ISSUE-009 resolved — resolved config has no shared mutable references
+- [x] `CopyConfig()` method removed
+- [x] All Settings preview/apply flows still work identically
+- [x] Unit test: clone produces independent object (mutating clone doesn't affect original)
+- [x] Unit test: all fields survive round-trip (including nested ColorConfig, StreamOverrideConfig)
+- [x] ISSUE-009 resolved — resolved config has no shared mutable references
 
 **Dependencies:** None.
 

@@ -54,3 +54,24 @@ Full decision entries from the Alpha milestone. For the brief summary, see [DECI
 **Consequences:**
 - Every new config shape change requires bumping `ConfigMigrator.CurrentVersion` and adding a migration method.
 - Later tasks (TASK-704 SimPriorityOrder, TASK-705 class colors) will add real migration logic to the v1->v2 or v2->v3 methods.
+
+---
+
+## 2026-04-06 — JSON round-trip for OverlayConfig deep clone
+
+**Decision:** Use `JsonSerializer.Serialize` → `JsonSerializer.Deserialize` for `OverlayConfig.DeepClone()`, replacing the manual field-by-field `CopyConfig` in `OverlayManager`. Also fix `Resolve()` to set `StreamOverride = null` on the resolved copy (ISSUE-009).
+
+**Context:** `OverlayManager.CopyConfig()` manually copied 24 fields but shallow-copied reference types (`ColorConfig`, `StreamOverrideConfig`). This shared mutable state between Settings ViewModel and live config. `Resolve()` also preserved a shared `StreamOverride` reference on the resolved snapshot.
+
+**Rationale:**
+- JSON round-trip covers all fields automatically — no maintenance burden as fields are added.
+- `System.Text.Json` is already a dependency (used by `ConfigStore`).
+- `Resolve()` returns a snapshot for rendering; it should never carry a `StreamOverride` reference since it's already the "final" effective config.
+
+**Alternatives considered:**
+- **MemberwiseClone + explicit new for reference types:** Faster, but requires manually listing every reference-type field — same maintenance problem as the old `CopyConfig`.
+- **Source-generated clone:** Avoids reflection overhead but adds build complexity for a non-hot-path operation.
+
+**Consequences:**
+- `ApplyConfig` now replaces the `OverlayConfig` reference in `AppConfig.Overlays` (and updates the overlay) rather than mutating the existing reference in place.
+- Slight allocation overhead from serialization, acceptable since `ApplyConfig` is user-triggered (not per-frame).

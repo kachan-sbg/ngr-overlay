@@ -1,7 +1,23 @@
+using System.Text.Json;
+
 namespace SimOverlay.Core.Config;
 
 public sealed class OverlayConfig
 {
+    private static readonly JsonSerializerOptions CloneOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
+    /// <summary>
+    /// Returns an independent deep copy. All reference-type fields (ColorConfig,
+    /// StreamOverrideConfig) are new instances — mutating the clone cannot affect
+    /// the original.
+    /// </summary>
+    public OverlayConfig DeepClone() =>
+        JsonSerializer.Deserialize<OverlayConfig>(
+            JsonSerializer.Serialize(this, CloneOptions), CloneOptions)!;
+
     public string Id { get; set; } = "";
     public bool Enabled { get; set; } = true;
 
@@ -80,7 +96,7 @@ public sealed class OverlayConfig
             SlowerColor = o.SlowerColor ?? SlowerColor,
             ShowTrendArrow = o.ShowTrendArrow ?? ShowTrendArrow,
             ShowDeltaText = o.ShowDeltaText ?? ShowDeltaText,
-            StreamOverride = StreamOverride,
+            StreamOverride = null, // Resolved config is a snapshot; no shared mutable refs
         };
     }
 }
