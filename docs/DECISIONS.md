@@ -481,3 +481,24 @@ Format per entry:
 - `Sim.Contracts` DTOs must define sentinel values for unavailable data (e.g., iRating = 0, LicenseClass.Unknown).
 - New project `SimOverlay.Sim.LMU` with rFactor 2 shared memory reader.
 - All overlays must render gracefully when data fields are missing.
+
+---
+
+## 2026-04-06 — Config versioning with sequential migration pipeline
+
+**Decision:** Add an `int Version` field to `AppConfig` and a `ConfigMigrator` class that runs sequential migrations (v1→v2, v2→v3, etc.) on every config load.
+
+**Context:** Alpha will add new config fields across multiple phases (SimPriorityOrder, class colors, new overlay defaults). Existing MVP configs on disk won't have these fields — we need a reliable way to populate defaults without losing user settings.
+
+**Rationale:**
+- Sequential numbered migrations are simple, predictable, and easy to test — each migration is a pure function that mutates `AppConfig`.
+- Running migrations on every load (including fresh/default configs) means `ConfigStore` always returns a config at `CurrentVersion`.
+- `Version=0` (absent field in old JSON) is treated as v1 so pre-versioning MVP configs migrate correctly.
+
+**Alternatives considered:**
+- **No versioning, rely on C# default values:** Works for adding fields but can't handle renames, removals, or type changes. Rejected — too fragile for a multi-phase Alpha.
+- **JSON patching / JObject manipulation:** More flexible for schema changes but adds Newtonsoft/JObject dependency and makes migrations harder to test with typed objects. Rejected.
+
+**Consequences:**
+- Every new config shape change requires bumping `ConfigMigrator.CurrentVersion` and adding a migration method.
+- Later tasks (TASK-704 SimPriorityOrder, TASK-705 class colors) will add real migration logic to the v1→v2 or v2→v3 methods.

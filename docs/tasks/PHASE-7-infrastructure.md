@@ -3,13 +3,13 @@
 > **Goal:** Resolve MVP technical debt and build the foundation needed before adding new overlays.
 > All blocking issues from [REVIEW-MVP.md](../REVIEW-MVP.md) are addressed here.
 
-## Status: `[ ]` Not started
+## Status: `[~]` In progress
 
 ---
 
 ### TASK-701 · Config versioning and migration framework
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Add `Version` field to `AppConfig` and a migration pipeline in `ConfigStore.Load()`.
 
@@ -22,11 +22,11 @@ Add `Version` field to `AppConfig` and a migration pipeline in `ConfigStore.Load
 - Log migration steps via `AppLog`
 
 **Acceptance criteria:**
-- [ ] Existing MVP config files load correctly (version defaults to 1)
-- [ ] New config files are created with the current version number
-- [ ] Missing fields from old configs get sensible defaults after migration
-- [ ] Unit test: v1 config → load → migrated to v2 with correct defaults
-- [ ] Unit test: current version config → no migration runs
+- [x] Existing MVP config files load correctly (version defaults to 1)
+- [x] New config files are created with the current version number
+- [x] Missing fields from old configs get sensible defaults after migration
+- [x] Unit test: v1 config → load → migrated to v2 with correct defaults
+- [x] Unit test: current version config → no migration runs
 
 **Dependencies:** None — do this first.
 

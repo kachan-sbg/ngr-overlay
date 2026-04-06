@@ -108,6 +108,65 @@ public class ConfigStoreTests : IDisposable
         Assert.True(loaded.GlobalSettings.StreamModeActive);
     }
 
+    // --- Version / migration tests ---
+
+    [Fact]
+    public void Load_MvpConfigWithoutVersion_MigratesToCurrentVersion()
+    {
+        // Simulate an MVP-era config file that has no Version field.
+        var mvpJson = """
+        {
+            "GlobalSettings": { "StreamModeActive": false },
+            "Overlays": [
+                { "Id": "Relative", "X": 100, "Y": 200, "Width": 500, "Height": 380 }
+            ]
+        }
+        """;
+        File.WriteAllText(_configPath, mvpJson);
+
+        var config = _store.Load();
+
+        Assert.Equal(ConfigMigrator.CurrentVersion, config.Version);
+        Assert.Single(config.Overlays);
+        Assert.Equal("Relative", config.Overlays[0].Id);
+        Assert.Equal(100, config.Overlays[0].X);
+    }
+
+    [Fact]
+    public void Load_CurrentVersionConfig_NoMigrationRuns()
+    {
+        // Save a config at current version, then reload — version stays the same.
+        var config = new AppConfig { Version = ConfigMigrator.CurrentVersion };
+        config.Overlays.Add(new OverlayConfig { Id = "SessionInfo", X = 10 });
+        _store.Save(config);
+
+        var loaded = _store.Load();
+
+        Assert.Equal(ConfigMigrator.CurrentVersion, loaded.Version);
+        Assert.Single(loaded.Overlays);
+        Assert.Equal("SessionInfo", loaded.Overlays[0].Id);
+    }
+
+    [Fact]
+    public void Load_NewConfig_CreatedAtCurrentVersion()
+    {
+        // No file on disk — fresh config should be at current version.
+        var config = _store.Load();
+
+        Assert.Equal(ConfigMigrator.CurrentVersion, config.Version);
+    }
+
+    [Fact]
+    public void Save_PersistsVersionField()
+    {
+        var config = new AppConfig { Version = ConfigMigrator.CurrentVersion };
+        _store.Save(config);
+
+        var json = File.ReadAllText(_configPath);
+        Assert.Contains("\"Version\"", json);
+        Assert.Contains($"{ConfigMigrator.CurrentVersion}", json);
+    }
+
     // --- Integration test ---
 
     [Fact]
