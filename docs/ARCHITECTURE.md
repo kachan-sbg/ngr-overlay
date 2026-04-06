@@ -16,7 +16,8 @@ SimOverlay.sln
 ├── tests/
 │   ├── SimOverlay.Core.Tests/
 │   ├── SimOverlay.Sim.iRacing.Tests/
-│   └── SimOverlay.Overlays.Tests/
+│   ├── SimOverlay.Overlays.Tests/
+│   └── SimOverlay.Benchmarks/      — BenchmarkDotNet suite (not a test runner)
 └── docs/
     ├── README.md
     ├── ARCHITECTURE.md
@@ -522,5 +523,34 @@ A post-MVP feature could allow marking an overlay as "stream only" — visible t
 - Sim MMF not available: `ISimProvider.IsRunning()` returns false; `SimDetector` keeps polling.
 - Config file corrupt: `ConfigStore` catches `JsonException`, logs it, and falls back to defaults.
 - Unhandled exceptions: top-level `Application.DispatcherUnhandledException` (WPF) or equivalent logs to `%APPDATA%\SimOverlay\error.log` and displays a message box before exiting.
+
+---
+
+### 13. Performance Benchmarks
+
+`tests/SimOverlay.Benchmarks/` is a BenchmarkDotNet executable project. It uses synthetic mock data — no running sim or GPU required.
+
+**Run:**
+```
+dotnet run -c Release --project tests/SimOverlay.Benchmarks
+```
+
+Results are written to `BenchmarkDotNet.Artifacts/results/` (JSON + markdown). To filter a single class:
+```
+dotnet run -c Release --project tests/SimOverlay.Benchmarks -- --filter *Relative*
+```
+
+**Covered hot paths and targets:**
+
+| Benchmark | Frequency | Target mean | Target alloc |
+|---|---|---|---|
+| `RelativeCalculatorBenchmarks.Compute40Cars` | ~10 Hz | < 50 µs | measured |
+| `SimDataBusBenchmarks.Publish1Subscriber` | ~60 Hz | < 1 µs (measured: 9.3 ns) | 0 B |
+| `ConfigResolveBenchmarks.ResolveNoOverride` | 60 Hz × overlays | — | 0 B |
+| `ConfigResolveBenchmarks.ResolveWithOverride` | 60 Hz × overlays | — | < 500 B |
+
+`RelativeCalculator.Compute` allocates (builds a `Dictionary` + `List` per call) — acceptable at 10 Hz. The render loop itself (`OnRender`) cannot be benchmarked without a real D2D context; measure it manually under a live session if stuttering is suspected.
+
+**Baseline workflow:** after a significant feature lands, run the benchmarks, commit the JSON from `BenchmarkDotNet.Artifacts/results/` to `benchmarks/baseline/` on the reference machine. Future runs on the same machine can be compared against it to detect regressions.
 
 ---

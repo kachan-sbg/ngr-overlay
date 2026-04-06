@@ -17,6 +17,9 @@ packages/
 # Rider
 .idea/
 
+# Benchmark artifacts (generated output — commit selectively to benchmarks/baseline/ instead)
+BenchmarkDotNet.Artifacts/
+
 # OS
 Thumbs.db
 .DS_Store

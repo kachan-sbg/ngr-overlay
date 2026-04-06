@@ -429,3 +429,23 @@ Format per entry:
 - Settings window appears in taskbar while open; disappears when closed or hidden.
 - No architectural change — `Window_Closing` cancellation was already present from Phase 5.
 
+
+## 2026-04-06 — BenchmarkDotNet for automated performance regression detection
+
+**Decision:** Add `tests/SimOverlay.Benchmarks/` (BenchmarkDotNet, not xUnit) to measure the three non-rendering hot paths: `IRacingRelativeCalculator.Compute`, `SimDataBus.Publish<T>`, and `OverlayConfig.Resolve`. Results include per-call heap allocation counts.
+
+**Context:** TASK-605 originally called for manual profiling with a live iRacing session (40 AI cars, Task Manager observation). This is unreproducible, hard to compare across builds, and catches regressions only after they ship.
+
+**Rationale:**
+- BenchmarkDotNet is the .NET standard for micro-benchmarking; it controls JIT warmup, measures allocations precisely, and exports JSON for diffing.
+- The three chosen paths are pure in-memory (no D2D, no Win32) so they run on any machine without a sim or GPU.
+- The render loop (`OnRender`) cannot be benchmarked this way — it requires a real `ID2D1DCRenderTarget`. Manual profiling remains the fallback for render-path regressions.
+
+**Alternatives considered:**
+- `System.Diagnostics.Stopwatch` in a test — too noisy, no allocation measurement.
+- Performance counters / ETW — correct data, but requires admin rights and complex tooling.
+
+**Consequences:**
+- `SimOverlay.Sim.iRacing/Properties/AssemblyInfo.cs` gains `InternalsVisibleTo("SimOverlay.Benchmarks")` alongside the existing test entry.
+- Benchmark project is excluded from the `dotnet publish` output (it's an Exe, but not the App project).
+- Baseline JSON should be committed after running on a reference machine; future runs on the same machine are comparable.

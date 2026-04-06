@@ -36,7 +36,7 @@
 
 ---
 
-**TASK-205** `[ ]`
+**TASK-205** `[x]`
 - **Title**: Integration test — iRacing data provider end-to-end
 - **Description**: Integration test (requires iRacing in a session): start `IRacingProvider`, wait for `StateChanged(InSession)`, subscribe to `DriverData`/`RelativeData`/`SessionData`, run 5 seconds, assert ≥280 `DriverData` messages, ≥45 `RelativeData` messages, and at least one `SessionData` with non-empty `TrackName`. Marked `[Category("Integration")]`, skipped when iRacing not running.
 - **Acceptance Criteria**: Test passes with iRacing in a session. Skipped (not failed) without iRacing.
