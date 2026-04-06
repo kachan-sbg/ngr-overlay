@@ -11,7 +11,7 @@
   </ItemGroup>
 
   <ItemGroup Label="iRacing SDK">
-    <PackageVersion Include="IRSDKSharper" Version="1.0.3" />
+    <PackageVersion Include="IRSDKSharper" Version="1.1.6" />
   </ItemGroup>
 
   <ItemGroup Label="DI / Hosting">

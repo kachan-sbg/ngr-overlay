@@ -151,7 +151,7 @@ Responsibility: implement `ISimProvider` for iRacing using the `Local\IRSDKMemMa
 
 Key types:
 - `IRacingProvider : ISimProvider` — wraps IRSDKSharper (preferred) or a raw MMF reader. Manages connection lifecycle.
-- `IRacingPoller` — wraps `IRSDKSharper` (HerboldRacing NuGet). IRSDKSharper owns its own background thread and fires `OnTelemetryData` at ~60 Hz and `OnSessionInfo` when the YAML session string changes. `IRacingPoller` handles these events, builds domain snapshots, and publishes to `ISimDataBus`. `RelativeData` is published every 6th telemetry tick (~10 Hz).
+- `IRacingPoller` — wraps `IRacingSdk` (IRSDKSharper NuGet v1.1.6, namespace `IRSDKSharper`). IRacingSdk owns its own background thread and fires `OnTelemetryData` at ~60 Hz and `OnSessionInfo` when the YAML session string changes. `IRacingPoller` handles these events, builds domain snapshots, and publishes to `ISimDataBus`. `RelativeData` is published every 6th telemetry tick (~10 Hz).
 - `IRacingSessionDecoder` — static decoder called from `IRacingPoller.OnSessionInfo`. Converts the typed `IRacingSdkSessionInfo` YAML model into `SessionData` + `List<DriverSnapshot>`.
 - `IRacingRelativeCalculator` — computes gap-to-player from track position (`LapDistPct` for each car) and constructs `RelativeData`. Run at 10 Hz (every 6th 60 Hz tick).
 

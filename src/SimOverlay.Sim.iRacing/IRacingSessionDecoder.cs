@@ -3,7 +3,7 @@ using SimOverlay.Sim.Contracts;
 namespace SimOverlay.Sim.iRacing;
 
 /// <summary>
-/// Stateless decoder that converts an <see cref="HerboldRacing.IRacingSdkSessionInfo"/>
+/// Stateless decoder that converts an <see cref="IRSDKSharper.IRacingSdkSessionInfo"/>
 /// (the parsed YAML from the iRacing SDK) into our domain types: a driver snapshot list
 /// and a <see cref="SessionData"/>.  No SDK start/stop logic here — fully unit-testable.
 /// </summary>
@@ -13,7 +13,7 @@ internal static class IRacingSessionDecoder
     /// Decodes session info and returns both the driver list and the current session summary.
     /// </summary>
     public static (IReadOnlyList<DriverSnapshot> Drivers, SessionData Session) Decode(
-        HerboldRacing.IRacingSdkData data)
+        IRSDKSharper.IRacingSdkData data)
     {
         var info = data.SessionInfo;
 
