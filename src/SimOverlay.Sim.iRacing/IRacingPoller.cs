@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using HerboldRacing;
 using SimOverlay.Core;
 using SimOverlay.Sim.Contracts;
@@ -25,8 +26,8 @@ internal sealed class IRacingPoller : IDisposable
     private readonly Action<SimState> _onStateChanged;
 
     // Cached driver list, updated each time OnSessionInfo fires.
-    private volatile IReadOnlyList<DriverSnapshot> _cachedDrivers =
-        Array.Empty<DriverSnapshot>();
+    private ImmutableArray<DriverSnapshot> _cachedDrivers =
+        ImmutableArray<DriverSnapshot>.Empty;
 
     private int  _telemetryFrameCount;
     private bool _disposed;
@@ -71,7 +72,7 @@ internal sealed class IRacingPoller : IDisposable
         try
         {
             var (drivers, session) = IRacingSessionDecoder.Decode(_sdk.Data);
-            _cachedDrivers = drivers;
+            _cachedDrivers = drivers.ToImmutableArray();
             _bus.Publish(session);
             AppLog.Info($"Session info updated: {session.TrackName} / {session.SessionType}");
         }

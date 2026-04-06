@@ -61,6 +61,19 @@ public class ConfigMigratorTests
     }
 
     [Fact]
+    public void MigrateV1ToV2_SetsSimPriorityOrderDefault()
+    {
+        var config = new AppConfig { Version = 1 };
+        config.GlobalSettings.SimPriorityOrder = null!; // simulate missing field
+
+        ConfigMigrator.MigrateToLatest(config);
+
+        Assert.NotNull(config.GlobalSettings.SimPriorityOrder);
+        Assert.Single(config.GlobalSettings.SimPriorityOrder);
+        Assert.Equal("iRacing", config.GlobalSettings.SimPriorityOrder[0]);
+    }
+
+    [Fact]
     public void MigrateV1ToV2_PreservesExistingOverlays()
     {
         var config = new AppConfig

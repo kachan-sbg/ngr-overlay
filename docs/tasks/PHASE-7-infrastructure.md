@@ -80,7 +80,7 @@ Replace manual service construction in `Program.cs` with `Microsoft.Extensions.D
 
 ### TASK-704 · Resolve remaining MVP known issues
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Fix the 4 remaining low-priority issues from MVP.
 
@@ -91,11 +91,11 @@ Fix the 4 remaining low-priority issues from MVP.
 - **Fix** `TemperatureUnit` not applied: `SessionInfoOverlay` should convert C→F when `config.TemperatureUnit == Fahrenheit`
 
 **Acceptance criteria:**
-- [ ] `SimPriorityOrder` serializes/deserializes correctly in config
-- [ ] `AppLog` keeps file handle open; rotates cleanly at 5 MB; disposes on shutdown
-- [ ] `_cachedDrivers` is `ImmutableArray<DriverSnapshot>`
-- [ ] Temperature displays in Fahrenheit when configured
-- [ ] Unit test for C→F conversion
+- [x] `SimPriorityOrder` serializes/deserializes correctly in config
+- [x] `AppLog` keeps file handle open; rotates cleanly at 5 MB; disposes on shutdown
+- [x] `_cachedDrivers` is `ImmutableArray<DriverSnapshot>`
+- [x] Temperature displays in Fahrenheit when configured
+- [x] Unit test for C→F conversion
 
 **Dependencies:** TASK-701 (config migration handles new `SimPriorityOrder` field).
 
