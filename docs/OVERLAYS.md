@@ -12,170 +12,154 @@ All overlays follow the TinyPedal aesthetic:
 - Padding: 8px internal padding on all sides.
 - Row height: font size + 6px (e.g., 19px rows at 13px font).
 
+---
+
+## MVP Overlays (Implemented)
+
 ### Overlay 1: Relative
 
 **Purpose**: Show approximately 15 drivers positioned relative to the player on track (by track position percentage), with the player's row highlighted.
 
+**Window title:** `SimOverlay — Relative`
 **Window defaults**: 500 × 380 px. Minimum 300 × 200 px. Maximum 1200 × 900 px.
+**Update frequency**: 10 Hz.
 
-**Update frequency**: 10 Hz (every 100 ms). Sufficient for relative gaps and position changes.
+**Columns**: POS | CAR | DRIVER NAME | iRTG | LIC | GAP | LAP
 
-**Layout**:
+**Config fields:** enabled, x, y, width, height, opacity, backgroundColor, textColor, fontSize, showIRating, showLicense, maxDriversShown (5–21), playerHighlightColor.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  POS  CAR   DRIVER NAME         iRTG  LIC    GAP    LAP │
-│───────────────────────────────────────────────────────── │
-│   1   #12   J. Villeneuve       4521  A 3.2  -4.23   0  │
-│   2   #7    M. Schumacher       6103  A 4.8  -2.10   0  │
-│   3   #44   L. Hamilton         7892  Pro    -0.88   0  │
-│ ► 4   #33   M. Verstappen       5234  A 2.1   0.00   0  │  ← player row (highlighted)
-│   5   #11   S. Perez            4891  B 4.1  +1.45   0  │
-│   6   #55   C. Sainz            4102  B 2.7  +3.12   0  │
-└─────────────────────────────────────────────────────────┘
-```
-
-**Column definitions**:
-
-| Column | Field | Width | Alignment | Notes |
-|--------|-------|-------|-----------|-------|
-| POS | `RelativeEntry.Position` | 4 chars | Right | Overall position in session |
-| CAR | `RelativeEntry.CarNumber` | 4 chars | Right | Car number with `#` prefix |
-| DRIVER NAME | `RelativeEntry.DriverName` | 20 chars | Left | Truncated with ellipsis if longer |
-| iRTG | `RelativeEntry.IRating` | 5 chars | Right | Show `----` if unavailable |
-| LIC | `RelativeEntry.LicenseLevel` | 6 chars | Left | Colored background cell matching license class color |
-| GAP | `RelativeEntry.GapToPlayerSeconds` | 7 chars | Right | `±X.XX` format. "LEADER" for P1 player row in race |
-| LAP | `RelativeEntry.LapDifference` | 4 chars | Right | `0`, `+1`, `-1`, etc. |
-
-**License class colors** (background of the LIC cell):
-- R (Rookie): `#FF4444`
-- D: `#FF8800`
-- C: `#FFFF00` (text black)
-- B: `#00BB00`
-- A: `#0088FF`
-- Pro: `#9944FF`
-- WC: `#FF44FF`
-
-**Player row**: highlighted with a subtly brighter background fill, e.g., the overlay background color lightened by 30%, or a distinct accent color configurable by the user. A `►` marker in a leading column.
-
-**Driver selection**: The list is centered on the player. If there are N slots available:
-- Show `floor(N/2)` drivers ahead of the player (by track position).
-- Show `ceil(N/2) - 1` drivers behind.
-- If fewer drivers exist ahead/behind, fill from the other direction.
-- In race mode, "ahead/behind" is by track position percentage gap, not overall position.
-
-**Configurable per overlay**:
-- `enabled` (bool)
-- `x`, `y` (position)
-- `width`, `height`
-- `opacity` (0.0–1.0)
-- `backgroundColor` (RGBA)
-- `textColor` (RGBA)
-- `fontSize` (10–48 px)
-- `showIRating` (bool) — hide iRTG column to save space
-- `showLicense` (bool) — hide LIC column
-- `maxDriversShown` (int, 5–21, default 15)
-- `playerHighlightColor` (RGBA)
+Full MVP spec: [archive/mvp/OVERLAYS-MVP.md](archive/mvp/OVERLAYS-MVP.md)
 
 ---
 
 ### Overlay 2: Session Info
 
-**Purpose**: Display static-ish session metadata and driver summary statistics in a compact panel.
+**Purpose**: Display session metadata and driver summary statistics.
 
-**Window defaults**: 260 × 280 px. Minimum 180 × 150 px. Maximum 800 × 600 px.
+**Window title:** `SimOverlay — Session Info`
+**Window defaults**: 260 × 280 px. Min 180 × 150. Max 800 × 600.
+**Update frequency**: 1 Hz (session) + 60 Hz (lap times/delta).
 
-**Update frequency**: 1 Hz for session/weather data; 60 Hz for lap times and delta (lap times are read from `DriverData`).
+**Fields**: Track name, session type + time, elapsed, clock, game time, air/track temps, lap count, last/best lap, delta.
 
-**Layout**:
+**Config fields:** showWeather, showDelta, showGameTime, use12HourClock, temperatureUnit.
 
-```
-┌────────────────────────────────┐
-│ Silverstone GP                 │
-│ Race · 25 laps remaining       │
-│ Session  01:23:45              │
-│ Clock    14:32:07              │
-│ Game     14:45 (afternoon)     │
-│ ────────────────────────────── │
-│ Air      22.1°C                │
-│ Track    38.7°C                │
-│ ────────────────────────────── │
-│ Lap      12 / 50               │
-│ Last     1:34.521              │
-│ Best     1:33.887              │
-│ Delta   -0.034                 │
-└────────────────────────────────┘
-```
-
-**Field definitions**:
-
-| Label | Source | Update Rate | Notes |
-|-------|--------|-------------|-------|
-| Track name | `SessionData.TrackName` | On change | e.g., "Silverstone GP" |
-| Session type + remaining | `SessionData.SessionType`, `SessionData.SessionTimeRemaining` | 1 Hz | Time-based: "MM:SS remaining". Lap-based: "N laps remaining" |
-| Session elapsed | `SessionData.SessionTimeElapsed` | 1 Hz | "HH:MM:SS" |
-| Clock | `DateTime.Now` | 1 Hz | Local wall clock, "HH:mm:ss" |
-| Game time of day | `SessionData.GameTimeOfDay` | 1 Hz | "HH:mm" + descriptor ("morning", "afternoon", etc.) |
-| Air temp | `SessionData.AirTempC` | On change | "XX.X°C" |
-| Track temp | `SessionData.TrackTempC` | On change | "XX.X°C" |
-| Lap number | `DriverData.Lap` | 60 Hz | "current / total" if total known |
-| Last lap | `DriverData.LastLapTime` | On new lap | "M:SS.mmm" or "--:--.---" if no lap completed |
-| Best lap | `DriverData.BestLapTime` | On improvement | "M:SS.mmm" |
-| Delta | `DriverData.LapDeltaVsBestLap` | 60 Hz | "±X.XXX" seconds. Colored: green if negative (faster), red if positive (slower) |
-
-**Configurable per overlay**: same base set. Additionally:
-- `showWeather` (bool)
-- `showDelta` (bool, default true — delta row)
-- `showGameTime` (bool)
-- `use12HourClock` (bool)
-- `temperatureUnit` (enum: Celsius, Fahrenheit)
+Full MVP spec: [archive/mvp/OVERLAYS-MVP.md](archive/mvp/OVERLAYS-MVP.md)
 
 ---
 
 ### Overlay 3: Delta Bar
 
-**Purpose**: A focused, large-format real-time delta display showing how the current lap compares to the player's best lap. Intended to be placed near the center of the screen for quick glances.
+**Purpose**: Real-time delta vs best lap with animated bar.
 
-**Window defaults**: 300 × 80 px. Minimum 150 × 50 px. Maximum 800 × 200 px.
-
+**Window title:** `SimOverlay — Delta`
+**Window defaults**: 300 × 80 px. Min 150 × 50. Max 800 × 200.
 **Update frequency**: 60 Hz.
 
-**Layout**:
+**Config fields:** deltaBarMaxSeconds (0.5–5.0), fasterColor, slowerColor, showTrendArrow, showDeltaText.
 
-```
-┌──────────────────────────────────────┐
-│              -0.234                  │
-│   ◄ ■■■■■■▓▓▓▓|                     │  ← bar centered on midpoint; fill direction indicates delta sign
-└──────────────────────────────────────┘
-```
+Full MVP spec: [archive/mvp/OVERLAYS-MVP.md](archive/mvp/OVERLAYS-MVP.md)
 
-Detailed layout description:
+---
 
-1. **Delta value text**: Centered horizontally above (or overlaid on) the bar. Format: `+X.XXX` or `-X.XXX` seconds. Font: larger than base (default 20px). Color: green (`#00DD00`) if delta is negative (faster than best), red (`#DD2222`) if positive (slower).
+## Alpha Overlays (Planned)
 
-2. **Delta bar**:
-   - A horizontal bar spanning the full width of the overlay's inner content area.
-   - A vertical center line marks zero delta.
-   - When delta is negative (faster): bar fills to the LEFT of center, colored green. Fill width is proportional to the delta magnitude.
-   - When delta is positive (slower): bar fills to the RIGHT of center, colored red.
-   - Maximum visible bar fill corresponds to a configurable `deltaBarMaxSeconds` (default: ±2.0 seconds). Beyond this, the bar is clamped at full width.
-   - The fill is drawn with a slight gradient: brighter at the zero-crossing edge, slightly dimmer at the outer edge.
-   - The bar itself has a dark background (slightly lighter than the overlay background) to show the empty portion.
+### Overlay 4: Input Telemetry
 
-3. **Delta trend indicator** (optional, configurable):
-   - A small triangle or arrow beside the delta value indicating whether the delta is increasing or decreasing in magnitude over the last 500 ms.
-   - ▲ = gap is increasing (getting slower relative to best); ▼ = gap is decreasing (getting faster).
+**Purpose**: Real-time driver input visualization — throttle, brake, clutch, steering, gear, speed.
 
-**Delta calculation note**: `LapDeltaVsBestLap` from iRacing SDK is a direct value from the sim. It represents the real-time delta between the player's current position on-track (by distance) and the time they crossed that same point on their best lap. A negative value means they are ahead of their best lap pace at this point.
+**Window title:** `SimOverlay — Input`
+**Window defaults:** 200 × 300 px. Min 120 × 180. Max 500 × 600.
+**Update frequency**: 60 Hz.
 
-**Bar animation**: because `LapDeltaVsBestLap` updates at 60 Hz from the sim, no additional interpolation is needed. The bar position directly maps from the current value. The color transition (green/red) updates instantly when the sign changes.
+**Components:**
+- Vertical pedal bars: throttle (green), brake (red), clutch (blue)
+- Gear + speed display (large, centered)
+- Scrolling input trace graph (5-second history, optional)
 
-**Configurable per overlay**:
-- Standard base set.
-- `deltaBarMaxSeconds` (float, 0.5–5.0, default 2.0) — value at which bar is fully filled.
-- `fasterColor` (RGBA, default green) — bar and text color when faster than best.
-- `slowerColor` (RGBA, default red) — bar and text color when slower.
-- `showTrendArrow` (bool, default true).
-- `showDeltaText` (bool, default true).
+**Config fields:** showThrottle, showBrake, showClutch, showInputTrace, showGearSpeed, speedUnit (Kph/Mph), throttleColor, brakeColor, clutchColor.
+
+Full spec: [tasks/PHASE-10-overlays-part1.md](tasks/PHASE-10-overlays-part1.md#task-901)
+
+---
+
+### Overlay 5: Fuel Calculator
+
+**Purpose**: Fuel management — consumption tracking, laps remaining, fuel-to-add calculation.
+
+**Window title:** `SimOverlay — Fuel`
+**Window defaults:** 240 × 200 px. Min 180 × 150. Max 500 × 400.
+**Update frequency**: 60 Hz (fuel level) + per-lap (averages).
+
+**Fields:** Fuel level, avg consumption per lap, laps remaining, fuel needed to finish, fuel to add, safety margin, total pit add.
+
+**Config fields:** fuelUnit (Liters/Gallons), fuelSafetyMarginLaps (0.0–5.0), showFuelMargin.
+
+Full spec: [tasks/PHASE-10-overlays-part1.md](tasks/PHASE-10-overlays-part1.md#task-902)
+
+---
+
+### Overlay 6: Standings
+
+**Purpose**: Full-field leaderboard with multi-class support.
+
+**Window title:** `SimOverlay — Standings`
+**Window defaults:** 520 × 500 px. Min 300 × 200. Max 1200 × 1000.
+**Update frequency**: 10 Hz.
+
+**Columns:** POS | CLS | CAR | DRIVER NAME | iRTG | GAP | BEST
+**Modes:** Combined (all cars by overall position) or Class-grouped (separated by class).
+
+**Config fields:** standingsDisplayMode (Combined/ClassGrouped), showClassBadge, showBestLap, maxStandingsRows (10–60).
+
+Full spec: [tasks/PHASE-10-overlays-part1.md](tasks/PHASE-10-overlays-part1.md#task-903)
+
+---
+
+### Overlay 7: Pit Helper
+
+**Purpose**: Pit road assistance — speed compliance, service indicators, pit stop counter.
+
+**Window title:** `SimOverlay — Pit`
+**Window defaults:** 280 × 180 px. Min 200 × 120. Max 500 × 300.
+**Update frequency**: 10 Hz.
+
+**Modes:** Full layout on pit road (speed limit, current speed, service list, fuel amount); compact off pit road (pit count, next stop estimate).
+
+**Config fields:** pitSpeedUnit, showPitServices, showNextPitEstimate.
+
+Full spec: [tasks/PHASE-11-overlays-part2.md](tasks/PHASE-11-overlays-part2.md#task-1001)
+
+---
+
+### Overlay 8: Weather
+
+**Purpose**: Current weather conditions and forecast.
+
+**Window title:** `SimOverlay — Weather`
+**Window defaults:** 220 × 180 px. Min 160 × 120. Max 400 × 300.
+**Update frequency**: 1 Hz.
+
+**Fields:** Air temp, track temp, wind speed + direction, humidity, sky condition, track wetness, forecast (if available).
+
+**Config fields:** showForecast, showHumidity, windSpeedUnit (Kph/Mph/Ms).
+
+Full spec: [tasks/PHASE-11-overlays-part2.md](tasks/PHASE-11-overlays-part2.md#task-1002)
+
+---
+
+### Overlay 9: Flat Track Map
+
+**Purpose**: Linearized "flat" track map — a horizontal bar with car position markers.
+
+**Window title:** `SimOverlay — Track Map`
+**Window defaults:** 400 × 60 px. Min 200 × 40. Max 800 × 100.
+**Update frequency**: 10 Hz.
+
+**Components:** Horizontal track bar (0.0–1.0), start/finish marker, car markers (car number or position labels), player marker (larger/distinct), multi-class coloring, pit car dimming.
+
+**Config fields:** flatMapLabelMode (CarNumber/Position/None), playerMarkerSize, carMarkerSize, showPitCars.
+
+Full spec: [tasks/PHASE-11-overlays-part2.md](tasks/PHASE-11-overlays-part2.md#task-1103)
 
 ---
