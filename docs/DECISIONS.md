@@ -36,3 +36,4 @@ Brief summary of every significant design decision. Full entries with rationale,
 |---|---|---|
 | 04-06 | OBS Mode toggle (not dual-window), LMU before overlays, flat track map, read-only fuel, current weather only | 90/10 pragmatism; LMU surfaces DTO gaps early; flat map avoids track DB |
 | 04-06 | Config versioning with sequential migration pipeline | Alpha adds fields across phases; numbered migrations are simple and testable |
+| 04-06 | JSON round-trip for OverlayConfig deep clone | Covers all fields automatically; no manual field list to maintain as fields are added |

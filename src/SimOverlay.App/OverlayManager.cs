@@ -72,50 +72,23 @@ public sealed class OverlayManager : IDisposable
     /// </summary>
     public void ApplyConfig(string overlayId, OverlayConfig config)
     {
-        var existing = FindConfig(overlayId);
-        if (existing is null) return;
+        var index = _appConfig.Overlays.FindIndex(c => c.Id == overlayId);
+        if (index < 0) return;
 
-        // Copy all fields from the incoming config into the live AppConfig entry
-        // so the reference held by the overlay and the config file stay in sync.
-        CopyConfig(config, existing);
+        // Deep-clone breaks shared references with the Settings ViewModel.
+        // Replace in the list so overlay and list share the same new instance.
+        var cloned = config.DeepClone();
+        _appConfig.Overlays[index] = cloned;
 
         var overlay = GetOverlay(overlayId);
         if (overlay is null) return;
 
-        overlay.UpdateConfig(existing);
-        overlay.SetPosition(existing.X, existing.Y);
-        overlay.SetSize(existing.Width, existing.Height);
-        ApplyVisibility(overlay, existing);
+        overlay.UpdateConfig(cloned);
+        overlay.SetPosition(cloned.X, cloned.Y);
+        overlay.SetSize(cloned.Width, cloned.Height);
+        ApplyVisibility(overlay, cloned);
 
         _configStore.Save(_appConfig);
-    }
-
-    private static void CopyConfig(OverlayConfig src, OverlayConfig dst)
-    {
-        dst.Enabled              = src.Enabled;
-        dst.X                    = src.X;
-        dst.Y                    = src.Y;
-        dst.Width                = src.Width;
-        dst.Height               = src.Height;
-        dst.Opacity              = src.Opacity;
-        dst.BackgroundColor      = src.BackgroundColor;
-        dst.TextColor            = src.TextColor;
-        dst.FontSize             = src.FontSize;
-        dst.ShowIRating          = src.ShowIRating;
-        dst.ShowLicense          = src.ShowLicense;
-        dst.MaxDriversShown      = src.MaxDriversShown;
-        dst.PlayerHighlightColor = src.PlayerHighlightColor;
-        dst.ShowWeather          = src.ShowWeather;
-        dst.ShowDelta            = src.ShowDelta;
-        dst.ShowGameTime         = src.ShowGameTime;
-        dst.Use12HourClock       = src.Use12HourClock;
-        dst.TemperatureUnit      = src.TemperatureUnit;
-        dst.DeltaBarMaxSeconds   = src.DeltaBarMaxSeconds;
-        dst.FasterColor          = src.FasterColor;
-        dst.SlowerColor          = src.SlowerColor;
-        dst.ShowTrendArrow       = src.ShowTrendArrow;
-        dst.ShowDeltaText        = src.ShowDeltaText;
-        dst.StreamOverride       = src.StreamOverride;
     }
 
     // -------------------------------------------------------------------------

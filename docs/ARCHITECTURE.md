@@ -442,7 +442,9 @@ public class StreamOverrideConfig
 }
 ```
 
-`Resolve(bool streamModeActive)` returns a new `OverlayConfig` where each field is taken from the stream override (if `streamModeActive && StreamOverride?.Enabled == true` and the field is non-null) or from `this`. X and Y are always from `this`.
+`Resolve(bool streamModeActive)` returns a new `OverlayConfig` where each field is taken from the stream override (if `streamModeActive && StreamOverride?.Enabled == true` and the field is non-null) or from `this`. X and Y are always from `this`. The resolved copy has `StreamOverride = null` — it is a snapshot with no shared mutable references back to the original.
+
+`DeepClone()` returns an independent deep copy via JSON round-trip. Used by `OverlayManager.ApplyConfig()` to break shared references between the Settings ViewModel and the live config.
 
 #### ConfigStore
 

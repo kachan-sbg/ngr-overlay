@@ -112,13 +112,13 @@ public class OverlayConfigResolveTests
     }
 
     [Fact]
-    public void Resolve_StreamOverridePropertyIsPreservedOnResult()
+    public void Resolve_StreamOverrideIsNullOnResolvedCopy()
     {
         var config = BaseConfig();
         config.StreamOverride = new StreamOverrideConfig { Enabled = true, Width = 700 };
 
         var resolved = config.Resolve(streamModeActive: true);
 
-        Assert.Same(config.StreamOverride, resolved.StreamOverride);
+        Assert.Null(resolved.StreamOverride);
     }
 }

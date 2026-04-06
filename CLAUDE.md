@@ -10,7 +10,7 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 
 ## Current task
 **Phase 7 — Infrastructure hardening** `[~]` In progress
-Next: **TASK-702** — Replace manual config cloning with deep copy
+Next: **TASK-703** — Wire up dependency injection container
 File: `docs/tasks/PHASE-7-infrastructure.md`
 
 ## Codebase map
