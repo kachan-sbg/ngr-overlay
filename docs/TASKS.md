@@ -21,7 +21,7 @@ MVP phases (0–6) are archived in [`docs/archive/mvp/tasks/`](archive/mvp/tasks
 
 | Phase | Status | File |
 |---|---|---|
-| 7 — Infrastructure hardening | `[ ]` | [PHASE-7-infrastructure.md](tasks/PHASE-7-infrastructure.md) |
+| 7 — Infrastructure hardening | `[~]` | [PHASE-7-infrastructure.md](tasks/PHASE-7-infrastructure.md) |
 | 8 — Data pipeline extensions | `[ ]` | [PHASE-8-data-pipeline.md](tasks/PHASE-8-data-pipeline.md) |
 | 9 — LMU integration | `[ ]` | [PHASE-9-lmu.md](tasks/PHASE-9-lmu.md) |
 | 10 — New overlays (Part 1) | `[ ]` | [PHASE-10-overlays-part1.md](tasks/PHASE-10-overlays-part1.md) |

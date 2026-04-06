@@ -26,7 +26,7 @@ All MVP phases (0–6) are complete. Task files archived to `docs/archive/mvp/ta
 
 | Phase | Status | File | Tasks |
 |---|---|---|---|
-| 7 — Infrastructure hardening | `[ ]` | [PHASE-7-infrastructure.md](PHASE-7-infrastructure.md) | TASK-701 to TASK-706 |
+| 7 — Infrastructure hardening | `[~]` | [PHASE-7-infrastructure.md](PHASE-7-infrastructure.md) | TASK-701 to TASK-706 |
 | 8 — Data pipeline extensions | `[ ]` | [PHASE-8-data-pipeline.md](PHASE-8-data-pipeline.md) | TASK-801 to TASK-804 |
 | 9 — LMU integration | `[ ]` | [PHASE-9-lmu.md](PHASE-9-lmu.md) | TASK-901 to TASK-905 |
 | 10 — New overlays (Part 1) | `[ ]` | [PHASE-10-overlays-part1.md](PHASE-10-overlays-part1.md) | TASK-1001 to TASK-1003 |

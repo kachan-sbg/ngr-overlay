@@ -27,16 +27,26 @@ public sealed class ConfigStore
     {
         try
         {
+            AppConfig config;
             if (!File.Exists(_path))
-                return new AppConfig();
+            {
+                config = new AppConfig();
+            }
+            else
+            {
+                var json = File.ReadAllText(_path);
+                config = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
+            }
 
-            var json = File.ReadAllText(_path);
-            return JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
+            ConfigMigrator.MigrateToLatest(config);
+            return config;
         }
         catch (Exception ex)
         {
             AppLog.Exception("Failed to load config, using defaults", ex);
-            return new AppConfig();
+            var fallback = new AppConfig();
+            ConfigMigrator.MigrateToLatest(fallback);
+            return fallback;
         }
     }
 

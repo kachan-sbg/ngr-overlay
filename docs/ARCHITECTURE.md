@@ -68,8 +68,9 @@ Responsibility: domain types, configuration schema, and the in-process data bus.
 
 Key types:
 - `OverlayConfig` — POCO: position, size, opacity, colors, font size, enabled flag.
-- `AppConfig` — root configuration object: sim priority list, list of `OverlayConfig`, global flags.
-- `ConfigStore` — reads and writes `AppConfig` to `%APPDATA%\SimOverlay\config.json` using `System.Text.Json`.
+- `AppConfig` — root configuration object: `Version` (int, schema version), list of `OverlayConfig`, global flags.
+- `ConfigMigrator` — sequential migration pipeline. On load, migrates config from its persisted `Version` up to `ConfigMigrator.CurrentVersion`. Each version bump has a corresponding `MigrateVxToVy` method.
+- `ConfigStore` — reads and writes `AppConfig` to `%APPDATA%\SimOverlay\config.json` using `System.Text.Json`. Calls `ConfigMigrator.MigrateToLatest()` after every load.
 - `ISimDataBus` / `SimDataBus` — thin publish/subscribe bus. Producers call `Publish<T>(T data)`. Consumers call `Subscribe<T>(Action<T> handler)`. Backed by `Channel<object>` or direct delegate dispatch on the data thread. Thread-safe.
 - `SimState` — enum: `Disconnected`, `Connected`, `InSession`.
 
