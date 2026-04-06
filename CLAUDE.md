@@ -1,134 +1,115 @@
 # SimOverlay — Claude Code Context
 
 ## What this is
-A Windows racing simulator overlay app. Renders transparent HUD overlays on top of racing sims (iRacing, LMU) using Direct2D + UpdateLayeredWindow. Performance is the primary design constraint — no WPF/Electron/Qt in the rendering path.
+Windows racing simulator overlay app. Transparent HUD overlays on top of racing sims (iRacing, LMU) using Direct2D + UpdateLayeredWindow. Performance is the primary design constraint.
 
 ## Collaboration model
 - User drives product direction, priorities, and review
-- Claude writes all code
-- Always check `docs/TASKS.md` for what to implement next and current status
+- Claude writes all code — never run `dotnet` or `msbuild` locally
+- Target: `net8.0-windows`, x64 only
 
-## Platform
-**Windows only.** Target framework is `net8.0-windows`. Never run `dotnet` or `msbuild` commands locally — the user builds and verifies on a Windows machine. Just write the files.
+## Current task
+**Phase 7 — Infrastructure hardening** `[~]` In progress
+Next: **TASK-702** — Replace manual config cloning with deep copy
+File: `docs/tasks/PHASE-7-infrastructure.md`
 
-## Full documentation
-All design docs live in `docs/`:
-- `README.md` — master index and key constraints
-- `ARCHITECTURE.md` — full technical architecture, dependency rules, config schema, thread model
-- `OVERLAYS.md` — per-overlay layout specs (column widths, colors, field list)
-- `TASKS.md` — phased task breakdown with acceptance criteria (source of truth for what to build)
-- `DECISIONS.md` — chronological decision log with rationale
-- `REVIEW-MVP.md` — post-MVP code and architecture review; blocking issues for Alpha
+## Codebase map
 
-MVP-era docs are archived in `docs/archive/mvp/`.
+### Core (`src/SimOverlay.Core/`)
+No project dependencies. Domain types, config, data bus.
+- `Config/AppConfig.cs` — root: Version (int), GlobalSettings, List\<OverlayConfig\>
+- `Config/ConfigStore.cs` — load/save JSON to `%APPDATA%\SimOverlay\config.json`, atomic write
+- `Config/ConfigMigrator.cs` — sequential version migration pipeline (CurrentVersion=2)
+- `Config/OverlayConfig.cs` — per-overlay POCO: position, size, colors, font, overlay-specific fields, StreamOverride, `Resolve(bool)`
+- `Config/StreamOverrideConfig.cs` — nullable overrides for stream/OBS mode
+- `Config/ColorConfig.cs` — RGBA float color with presets (White, Black, DarkBackground, etc.)
+- `Config/GlobalSettings.cs` — StreamModeActive, StartWithWindows
+- `Config/TemperatureUnit.cs` — enum: Celsius, Fahrenheit
+- `SimDataBus.cs` / `ISimDataBus.cs` — pub/sub bus, `Publish<T>()` / `Subscribe<T>()`
+- `SimState.cs` — enum: Disconnected, Connected, InSession
+- `Events/` — EditModeChangedEvent, SimStateChangedEvent, StreamModeChangedEvent
+- `AppLog.cs` — file logger to `%APPDATA%\SimOverlay\sim-overlay.log`
 
-**Read `ARCHITECTURE.md` and the relevant task from `docs/tasks/` before writing any code.**
+### Sim.Contracts (`src/SimOverlay.Sim.Contracts/`)
+Depends: Core. Sim-agnostic DTOs.
+- `ISimProvider.cs` — SimId, IsRunning(), Start(), Stop(), StateChanged event
+- `SessionData.cs` — track, session type, temps, time (published ~1 Hz)
+- `DriverData.cs` — position, laps, delta (published 60 Hz)
+- `RelativeData.cs` / `RelativeEntry.cs` — relative list with gaps (published 10 Hz)
+- `LicenseClass.cs` — enum: R, D, C, B, A, Pro, WC
+- `SessionType.cs` — Practice, Qualify, Race, etc.
 
-## Solution structure
+### Sim.iRacing (`src/SimOverlay.Sim.iRacing/`)
+Depends: Sim.Contracts + Core. Uses `IRSDKSharper` NuGet.
+- `IRacingProvider.cs` — ISimProvider implementation, connection lifecycle
+- `IRacingPoller.cs` — wraps IRSDKSharper, 60 Hz events → bus publishing
+- `IRacingSessionDecoder.cs` — YAML session info → SessionData + DriverSnapshot
+- `IRacingRelativeCalculator.cs` — LapDistPct gap calc → RelativeData (10 Hz)
+- `DriverSnapshot.cs` / `TelemetrySnapshot.cs` — intermediate data types
 
-```
-SimOverlay.sln
-├── src/
-│   ├── SimOverlay.Core/          — domain types, config schema, ISimDataBus
-│   ├── SimOverlay.Rendering/     — Direct2D + UpdateLayeredWindow, OverlayWindow, BaseOverlay
-│   ├── SimOverlay.Sim.Contracts/ — ISimProvider, normalized DTOs (SessionData, DriverData, RelativeData)
-│   ├── SimOverlay.Sim.iRacing/   — iRSDK MMF reader, 60 Hz polling thread
-│   ├── SimOverlay.Sim.LMU/       — rFactor 2 shared memory reader (Alpha Phase 9)
-│   ├── SimOverlay.Overlays/      — RelativeOverlay, SessionInfoOverlay, DeltaBarOverlay, + Alpha overlays
-│   └── SimOverlay.App/           — entry point, tray icon, SimDetector, settings window
-└── tests/
-    ├── SimOverlay.Core.Tests/
-    ├── SimOverlay.Sim.iRacing.Tests/
-    ├── SimOverlay.Overlays.Tests/
-    └── SimOverlay.Benchmarks/    — BenchmarkDotNet (not a test runner)
-```
+### Rendering (`src/SimOverlay.Rendering/`)
+Depends: Core. Direct2D + Win32 plumbing.
+- `OverlayWindow.cs` — Win32 HWND: WS_EX_LAYERED|TRANSPARENT|TOPMOST, ULW presentation
+- `BaseOverlay.cs` — render loop (60fps), config, sim state, data subscriptions
+- `RenderResources.cs` — brush/font/layout cache keyed by config
+- `ZOrderHook.cs` — WinEvent hook to re-assert TOPMOST z-order
+- `MessagePump.cs` — GetMessage/DispatchMessage loop
+- `DeviceLostException.cs` — D2DERR_RECREATE_TARGET handling
+- `Win32/NativeMethods.cs` — P/Invoke declarations
 
-### Dependency rules (strict — no exceptions)
-- `Core` has zero project dependencies
-- `Sim.Contracts` depends only on `Core`
-- `Sim.iRacing` depends on `Sim.Contracts` + `Core`
-- `Sim.LMU` depends on `Sim.Contracts` + `Core`
-- `Rendering` depends only on `Core`
-- `Overlays` depends on `Rendering` + `Sim.Contracts` + `Core`
-- `App` depends on everything; nothing depends on `App`
-- `Sim.*` projects must NOT depend on `Rendering` or `Overlays`
+### Overlays (`src/SimOverlay.Overlays/`)
+Depends: Rendering + Sim.Contracts + Core. Concrete overlay implementations.
+- `RelativeOverlay.cs` — relative position board
+- `SessionInfoOverlay.cs` — session/track/weather info
+- `DeltaBarOverlay.cs` — lap delta visualization
+
+### App (`src/SimOverlay.App/`)
+Depends: everything. Entry point, orchestration.
+- `Program.cs` — single-instance, manual DI wiring, message pump
+- `OverlayManager.cs` — owns overlays + configs, edit/stream mode, preview/apply
+- `SimDetector.cs` — polls ISimProvider every 2s, manages active provider
+- `TrayIconController.cs` — NotifyIcon context menu
+- `SingleInstanceGuard.cs` — named Mutex
+- `Settings/SettingsWindow.xaml.cs` — WPF settings, lazy singleton
+- `Settings/OverlaySettingsPanel.xaml.cs` — per-overlay settings (Screen + Stream Override tabs)
+- `Settings/GlobalSettingsPanel.xaml.cs` — edit mode, stream mode, start with windows
+- `Settings/OverlayConfigViewModel.cs` / `StreamOverrideViewModel.cs` — WPF ViewModels
+- `Settings/ColorEditor.xaml.cs` / `ColorViewModel.cs` — RGBA editor
+- `Settings/FieldRow.xaml.cs` / `OverrideRow.xaml.cs` / `EnumBoolConverter.cs` — helpers
+
+### Tests (`tests/`)
+- `SimOverlay.Core.Tests/` — ConfigStore, ConfigMigrator, OverlayConfig.Resolve, SimDataBus, LicenseClass
+- `SimOverlay.Sim.iRacing.Tests/` — IRacingRelativeCalculator, IRacingSessionDecoder
+- `SimOverlay.Overlays.Tests/` — overlay rendering tests
+- `SimOverlay.Benchmarks/` — BenchmarkDotNet (not a test runner)
+
+## Dependency rules (strict)
+Core → (nothing) | Sim.Contracts → Core | Sim.iRacing → Sim.Contracts+Core | Rendering → Core | Overlays → Rendering+Sim.Contracts+Core | App → everything. Sim.* must NOT depend on Rendering or Overlays.
+
+## Key constraints
+- **Window styles:** `WS_EX_LAYERED` required (ULW). `WS_EX_NOREDIRECTIONBITMAP` omitted (makes ULW invisible). `WS_EX_TOOLWINDOW` omitted (hides from OBS picker).
+- **Rendering:** software `ID2D1DCRenderTarget` → 32-bit premultiplied-alpha DIB → `UpdateLayeredWindow(ULW_ALPHA)`. No GPU in presentation path.
+- **Threads:** UI (message pump) + render (one per overlay, 60fps) + data (one per sim, 60Hz) + detection (ThreadPool, 2s). D2D factory is `MULTI_THREADED`.
+- **Data flow:** Poller (60Hz) → `ISimDataBus.Publish<T>()` → overlay `OnDataUpdate()` stores snapshot → render loop reads → `OnRender()`. OnDataUpdate must be fast (field store only).
+- **Config:** `%APPDATA%\SimOverlay\config.json`. Atomic save. Position/size debounced 500ms. Version migration on load.
+- **OBS:** Window Capture (WGC) + "Allow Transparency". BitBlt doesn't work (documented limitation).
+
+## Docs reference (read only sections relevant to your task)
+- `docs/ARCHITECTURE.md` — full architecture with section index at top
+- `docs/OVERLAYS.md` — per-overlay layout specs (column widths, colors, field list)
+- `docs/DECISIONS.md` — brief decision summary table (full entries in `docs/decisions/mvp.md` and `docs/decisions/alpha.md`)
+- `docs/tasks/PHASE-N-*.md` — task details with acceptance criteria
+- `docs/REVIEW-MVP.md` — post-MVP review; blocking issues for Alpha
+- MVP-era docs archived in `docs/archive/mvp/`
 
 ## Tech stack
-- C# / .NET 8 (`net8.0-windows`), x64 only
-- **Rendering:** `Vortice.Direct2D1` — software `ID2D1DCRenderTarget` + `UpdateLayeredWindow`
-- **iRacing SDK:** `IRSDKSharper` NuGet package
-- **LMU/rF2 SDK:** rFactor 2 shared memory (raw P/Invoke or community library — see TASK-901)
-- **DI:** `Microsoft.Extensions.DependencyInjection`
-- **Config:** `System.Text.Json` (BCL, no extra package)
-- **Settings UI:** WPF (`net8.0-windows`)
-- **Tests:** xUnit
-- **Benchmarks:** BenchmarkDotNet
-
-## Key architectural decisions
-
-### Window setup
-- `WS_POPUP` + `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST`
-- `WS_EX_LAYERED` is **required** — rendering uses `UpdateLayeredWindow`
-- `WS_EX_NOREDIRECTIONBITMAP` is **intentionally omitted** — makes ULW windows invisible
-- **`WS_EX_TOOLWINDOW` is intentionally omitted** — hides windows from OBS's window picker
-- Fixed window titles: `SimOverlay — Relative`, `SimOverlay — Session Info`, `SimOverlay — Delta`, etc.
-
-### Rendering pipeline
-- `ID2D1DCRenderTarget` (software/CPU) renders into a 32-bit premultiplied-alpha GDI DIB
-- `UpdateLayeredWindow(ULW_ALPHA)` presents to DWM each frame
-- No GPU resources in the presentation path — avoids interference with game DXGI flip chains
-
-### Thread model
-- **UI thread:** Win32 message pump, all HWNDs created here
-- **Render thread(s):** one per overlay, 60 fps `Stopwatch`-based loop
-- **Data thread:** one per active `ISimProvider` (iRacing: 60 Hz)
-- **Detection thread:** `ThreadPool` timer, 2 s interval
-- `ID2D1Factory` created with `D2D1_FACTORY_TYPE_MULTI_THREADED`
-
-### Data flow
-`IRacingPoller` / `LmuPoller` (60 Hz) → `ISimDataBus.Publish<T>()` → overlay `OnDataUpdate()` stores snapshot → render loop reads snapshot → `OnRender()`
-
-`OnDataUpdate()` must be fast (just a field store — no rendering, no heavy locking).
-
-### OBS Mode / Stream override system
-- Each overlay has a base `OverlayConfig` + optional stream override ("OBS Profile")
-- Override has all visual fields as `nullable` — `null` = inherit from base
-- X/Y position is **never** overridable (shared between profiles)
-- `OverlayConfig.Resolve(bool obsModeActive)` returns effective config
-- Single window — OBS Mode toggle changes appearance instantly. No dual-window needed for Alpha.
-
-### Config file
-- Location: `%APPDATA%\SimOverlay\config.json`
-- Atomic save: serialize → write to `.tmp` → `File.Move(overwrite: true)`
-- Position/size debounced 500 ms on `WM_MOVE`/`WM_SIZE`
-- Config versioning: `AppConfig.Version` field — migration runs on load (TASK-701)
-
-### OBS capture
-- OBS Window Capture (WGC method) + "Allow Transparency" → correct alpha without chroma key
-- WGC captures at DWM compositor level — works with `WS_EX_LAYERED` + ULW
-- BitBlt/legacy OBS does not work — documented limitation
-
-## Current status
-- MVP (Phases 0–6): **complete**
-- Alpha (Phases 7–12): not started — start with TASK-701 in `docs/tasks/PHASE-7-infrastructure.md`
+C# .NET 8 (`net8.0-windows`) | `Vortice.Direct2D1` | `IRSDKSharper` | `Microsoft.Extensions.DependencyInjection` | `System.Text.Json` | WPF (settings only) | xUnit | BenchmarkDotNet
 
 ## Task completion checklist
-
 After completing every task, before committing:
-
 1. **Mark the task `[x]`** in its phase file (`docs/tasks/PHASE-N-*.md`)
-2. **Update docs in the same commit:**
-   - `ARCHITECTURE.md` — any section whose description no longer matches the code
-   - `DECISIONS.md` — add an entry for any non-trivial design decision made during the task
-   - `docs/tasks/INDEX.md` — update phase status (`[ ]` → `[~]` → `[x]`) as phases progress
-   - `docs/TASKS.md` — update phase status line if a phase completes
-   - `docs/README.md` — update implementation status table if a phase completes
-3. **Ask the user to run tests** — do not commit if tests are expected to fail:
-   - `dotnet test` across all test projects
-   - For data pipeline / calculator changes: confirm unit tests pass
-4. **Ask the user to run benchmarks** for any changes to hot paths:
-   - `SimDataBus`, `OverlayConfig.Resolve`, `IRacingRelativeCalculator`, or any new 60 Hz path
-   - Compare against baseline in `benchmarks/baseline/`
-5. **Commit** everything together (code + docs + updated task status) in one commit
-
-Never let "I'll update docs later" happen. The post-Phase-2 audit showed that stale docs cost a full session to recover from.
+2. **Update docs in the same commit:** ARCHITECTURE.md (if changed), DECISIONS.md summary table + `docs/decisions/alpha.md` full entry (if non-trivial decision), INDEX.md + TASKS.md (phase status)
+3. **Ask user to run tests** — `dotnet test`
+4. **Ask user to run benchmarks** for hot-path changes (SimDataBus, OverlayConfig.Resolve, IRacingRelativeCalculator)
+5. **Update "Current task" section above** to point to the next task
+6. **Commit** code + docs + task status together
