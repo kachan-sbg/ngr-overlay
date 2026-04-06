@@ -181,7 +181,7 @@ Render-data synchronization: each `BaseOverlay` subclass maintains a `volatile` 
 - Installs a `WinEvent EVENT_OBJECT_REORDER` hook that fires on the UI message pump whenever any window's z-order changes.
 - When a TOPMOST window not owned by us reorders, calls `BringAllToFront()` to re-assert our overlay positions immediately.
 - Filters out our own `BringToFront` calls (via the owned-handles list) to prevent feedback loops.
-- This is the primary z-order mechanism; the render loop also re-asserts TOPMOST every ~2 s as a fallback.
+- This is the sole z-order mechanism. (The render loop's periodic BringToFront fallback was removed — it caused DWM re-composition blinks. See DECISIONS.md.)
 
 #### SimOverlay.Overlays
 
@@ -224,7 +224,7 @@ Key types:
 - Edit/stream mode changes delegated to `OverlayManager.SetEditMode` / `SetStreamMode`.
 
 `SettingsWindow`
-- WPF `Window`, `ShowInTaskbar=false`, lazy singleton (hidden on close, not destroyed).
+- WPF `Window`, `ShowInTaskbar=true`, lazy singleton (hidden on close, not destroyed).
 - Sidebar: `OverlayNavList` (per-overlay name + enable/disable checkbox) + `GlobalNavList`.
 - `ContentArea` (`ContentControl`) swaps between `OverlaySettingsPanel` (reused instance) and `GlobalSettingsPanel`.
 - Per-overlay panel has two tabs: **Screen** (base config) and **Stream Override**.

@@ -1,16 +1,29 @@
 # TASKS.md
 
-> **Tasks have been split into per-phase files for easier navigation.**
+> **Tasks are split into per-phase files for easier navigation.**
 > See [`docs/tasks/INDEX.md`](tasks/INDEX.md) for the full task list.
 
-## Quick Status
+## MVP (Complete)
+
+MVP phases (0–6) are archived in [`docs/archive/mvp/tasks/`](archive/mvp/tasks/).
+
+| Phase | Status |
+|---|---|
+| 0 — Scaffolding | `[x]` |
+| 1 — Rendering core | `[x]` |
+| 2 — iRacing data | `[x]` |
+| 3 — Overlay framework | `[x]` |
+| 4 — MVP overlays | `[x]` |
+| 5 — Settings UI | `[x]` |
+| 6 — Polish | `[x]` |
+
+## Alpha
 
 | Phase | Status | File |
 |---|---|---|
-| 0 — Scaffolding | `[x]` | [PHASE-0-scaffolding.md](tasks/PHASE-0-scaffolding.md) |
-| 1 — Rendering core | `[x]` | [PHASE-1-rendering.md](tasks/PHASE-1-rendering.md) |
-| 2 — iRacing data | `[x]` | [PHASE-2-iracing.md](tasks/PHASE-2-iracing.md) |
-| 3 — Overlay framework | `[x]` | [PHASE-3-framework.md](tasks/PHASE-3-framework.md) |
-| 4 — MVP overlays | `[x]` | [PHASE-4-overlays.md](tasks/PHASE-4-overlays.md) |
-| 5 — Settings UI | `[x]` | [PHASE-5-settings.md](tasks/PHASE-5-settings.md) |
-| 6 — Polish | `[x]` | [PHASE-6-polish.md](tasks/PHASE-6-polish.md) |
+| 7 — Infrastructure hardening | `[ ]` | [PHASE-7-infrastructure.md](tasks/PHASE-7-infrastructure.md) |
+| 8 — Data pipeline extensions | `[ ]` | [PHASE-8-data-pipeline.md](tasks/PHASE-8-data-pipeline.md) |
+| 9 — LMU integration | `[ ]` | [PHASE-9-lmu.md](tasks/PHASE-9-lmu.md) |
+| 10 — New overlays (Part 1) | `[ ]` | [PHASE-10-overlays-part1.md](tasks/PHASE-10-overlays-part1.md) |
+| 11 — New overlays (Part 2) | `[ ]` | [PHASE-11-overlays-part2.md](tasks/PHASE-11-overlays-part2.md) |
+| 12 — OBS Mode & Enhanced UX | `[ ]` | [PHASE-12-obs-and-ux.md](tasks/PHASE-12-obs-and-ux.md) |
