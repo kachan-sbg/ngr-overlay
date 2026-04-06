@@ -1,12 +1,12 @@
 using System.Collections.Immutable;
-using HerboldRacing;
+using IRSDKSharper;
 using SimOverlay.Core;
 using SimOverlay.Sim.Contracts;
 
 namespace SimOverlay.Sim.iRacing;
 
 /// <summary>
-/// Wraps <see cref="IRSDKSharper"/> and publishes <see cref="DriverData"/>,
+/// Wraps <see cref="IRacingSdk"/> and publishes <see cref="DriverData"/>,
 /// <see cref="RelativeData"/>, and <see cref="SessionData"/> to the <see cref="ISimDataBus"/>.
 /// <para>
 /// IRSDKSharper fires <c>OnTelemetryData</c> at ~60 Hz on its own background thread.
@@ -21,7 +21,7 @@ internal sealed class IRacingPoller : IDisposable
     // iRacing allocates exactly 64 car-index slots in every telemetry array.
     private const int MaxCars = 64;
 
-    private readonly IRSDKSharper     _sdk;
+    private readonly IRacingSdk        _sdk;
     private readonly ISimDataBus      _bus;
     private readonly Action<SimState> _onStateChanged;
 
@@ -32,6 +32,10 @@ internal sealed class IRacingPoller : IDisposable
     private int  _telemetryFrameCount;
     private bool _disposed;
 
+    // Signalled by OnStopped (v1.1.6+) so Dispose() can block until the async
+    // Stop() task has fully completed and Win32 handles have been nullified.
+    private readonly ManualResetEventSlim _stoppedGate = new(initialState: false);
+
     // ── Construction ─────────────────────────────────────────────────────────
 
     public IRacingPoller(ISimDataBus bus, Action<SimState> onStateChanged)
@@ -39,12 +43,13 @@ internal sealed class IRacingPoller : IDisposable
         _bus            = bus;
         _onStateChanged = onStateChanged;
 
-        _sdk = new IRSDKSharper();
+        _sdk = new IRacingSdk();
         _sdk.OnConnected     += HandleConnected;
         _sdk.OnDisconnected  += HandleDisconnected;
         _sdk.OnSessionInfo   += HandleSessionInfo;
         _sdk.OnTelemetryData += HandleTelemetryData;
         _sdk.OnException     += HandleException;
+        _sdk.OnStopped       += () => _stoppedGate.Set();
     }
 
     /// <summary>Starts the IRSDKSharper background loop.</summary>
@@ -164,6 +169,28 @@ internal sealed class IRacingPoller : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _sdk.Stop();
+
+        try
+        {
+            _sdk.Stop();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Exception("IRacingPoller.Dispose: sdk Stop failed", ex);
+        }
+
+        // IRSDKSharper.Stop() is async (Task.Run) and does not Dispose() its
+        // Win32 handles — it only nullifies them, leaving finalizers to close them.
+        // If iRacing is restarted before GC runs, CreateEvent("Local\\IRSDKDataValidEvent")
+        // returns the still-open event in whatever state it was, causing iRacing's
+        // SDK init to stall ("pending").  Block on the OnStopped event (v1.1.6+) so
+        // we know the async task completed, then force finalizer collection to
+        // deterministically release the handles.
+        _stoppedGate.Wait(TimeSpan.FromSeconds(3));
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
+        AppLog.Info("IRacingPoller disposed — SDK handles released.");
     }
 }
