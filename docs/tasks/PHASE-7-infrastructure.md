@@ -103,7 +103,7 @@ Fix the 4 remaining low-priority issues from MVP.
 
 ### TASK-705 · Multi-class data model
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Add car class support to the data contracts so overlays can distinguish classes.
 
@@ -115,11 +115,11 @@ Add car class support to the data contracts so overlays can distinguish classes.
 - Default `CarClass = ""` and `ClassPosition = Position` for single-class sessions
 
 **Acceptance criteria:**
-- [ ] `RelativeEntry` carries class info in multi-class sessions
-- [ ] Single-class sessions work identically to MVP (class fields have sensible defaults)
-- [ ] `SessionData.CarClasses` is populated from session YAML
-- [ ] Unit test: multi-class relative calculation with correct class positions
-- [ ] Config migration adds default class color palette
+- [x] `RelativeEntry` carries class info in multi-class sessions
+- [x] Single-class sessions work identically to MVP (class fields have sensible defaults)
+- [x] `SessionData.CarClasses` is populated from session YAML
+- [x] Unit test: multi-class relative calculation with correct class positions
+- [x] Config migration adds default class color palette
 
 **Dependencies:** TASK-701 (config migration for class colors), TASK-801 (data pipeline).
 

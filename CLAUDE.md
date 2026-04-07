@@ -10,7 +10,7 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 
 ## Current task
 **Phase 7 — Infrastructure hardening** `[~]` In progress
-Next: **TASK-705** — Multi-class data model
+Next: **TASK-706** — Overlay registration and dynamic creation
 File: `docs/tasks/PHASE-7-infrastructure.md`
 
 ## Codebase map

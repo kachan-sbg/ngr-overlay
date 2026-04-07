@@ -19,4 +19,11 @@ public sealed class SessionData
     /// 4=lightly wet, 5=moderately wet, 6=very wet, 7=extremely wet.
     /// </summary>
     public int TrackWetness { get; init; }
+
+    // ── Car classes ───────────────────────────────────────────────────────────
+    /// <summary>
+    /// All car classes present in the session. Empty in single-class sessions
+    /// (overlays should treat an empty list the same as one class).
+    /// </summary>
+    public IReadOnlyList<CarClassInfo> CarClasses { get; init; } = [];
 }

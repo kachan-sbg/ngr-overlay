@@ -1,3 +1,4 @@
+using SimOverlay.Core.Config;
 using SimOverlay.Sim.Contracts;
 
 namespace SimOverlay.Sim.iRacing;
@@ -15,6 +16,14 @@ internal static class IRacingRelativeCalculator
     /// </summary>
     private const int MaxEntries = 15;
 
+    // Intermediate record used between the two passes.
+    private sealed record CarCandidate(
+        int          CarIdx,
+        float        Gap,
+        int          OverallPosition,
+        int          LapDiff,
+        DriverSnapshot? Driver);
+
     /// <summary>
     /// Computes the relative display list.
     /// </summary>
@@ -24,16 +33,17 @@ internal static class IRacingRelativeCalculator
         TelemetrySnapshot snapshot,
         IReadOnlyList<DriverSnapshot> drivers)
     {
-        var playerPct   = snapshot.LapDistPcts[snapshot.PlayerCarIdx];
-        var playerLap   = snapshot.Laps[snapshot.PlayerCarIdx];
-        var estLapTime  = snapshot.EstimatedLapTime;
+        var playerPct  = snapshot.LapDistPcts[snapshot.PlayerCarIdx];
+        var playerLap  = snapshot.Laps[snapshot.PlayerCarIdx];
+        var estLapTime = snapshot.EstimatedLapTime;
 
         // Build O(1) lookup: CarIdx → DriverSnapshot
         var driverByIdx = new Dictionary<int, DriverSnapshot>(drivers.Count);
         foreach (var d in drivers)
             driverByIdx[d.CarIdx] = d;
 
-        var candidates = new List<(float Gap, RelativeEntry Entry)>(64);
+        // ── Pass 1: collect all on-track, non-spectator cars ─────────────────
+        var allCars = new List<CarCandidate>(64);
 
         for (int i = 0; i < snapshot.LapDistPcts.Length; i++)
         {
@@ -51,17 +61,51 @@ internal static class IRacingRelativeCalculator
             var gapSeconds = -delta * estLapTime;  // negative = ahead of player
             var lapDiff    = snapshot.Laps[i] - playerLap;
 
-            candidates.Add((gapSeconds, new RelativeEntry
+            allCars.Add(new CarCandidate(i, gapSeconds, snapshot.Positions[i], lapDiff, driver));
+        }
+
+        // ── Pass 2: compute per-class positions from overall race positions ───
+        // Group by ClassId; sort each group by overall position (0 = unknown → last).
+        // In single-class sessions all ClassIds will be identical, so classPositions
+        // will simply mirror overall positions.
+        var classPositionByCarIdx = new Dictionary<int, int>(allCars.Count);
+        foreach (var group in allCars.GroupBy(c => c.Driver?.CarClassId ?? 0))
+        {
+            var sorted = group
+                .OrderBy(c => c.OverallPosition == 0 ? int.MaxValue : c.OverallPosition)
+                .ToList();
+            for (int rank = 0; rank < sorted.Count; rank++)
+                classPositionByCarIdx[sorted[rank].CarIdx] = rank + 1;
+        }
+
+        // Detect single-class: only one distinct ClassId among on-track cars.
+        var distinctClasses = allCars
+            .Select(c => c.Driver?.CarClassId ?? 0)
+            .Distinct()
+            .Count();
+        var isMultiClass = distinctClasses > 1;
+
+        // ── Build candidates list ─────────────────────────────────────────────
+        var candidates = new List<(float Gap, RelativeEntry Entry)>(allCars.Count);
+        foreach (var car in allCars)
+        {
+            var driver        = car.Driver;
+            var classPosition = classPositionByCarIdx.TryGetValue(car.CarIdx, out var cp) ? cp : car.OverallPosition;
+
+            candidates.Add((car.Gap, new RelativeEntry
             {
-                Position           = snapshot.Positions[i],
-                CarNumber          = driver?.CarNumber  ?? i.ToString(),
-                DriverName         = driver?.UserName   ?? string.Empty,
-                IRating            = driver?.IRating    ?? 0,
+                Position           = car.OverallPosition,
+                CarNumber          = driver?.CarNumber   ?? car.CarIdx.ToString(),
+                DriverName         = driver?.UserName    ?? string.Empty,
+                IRating            = driver?.IRating     ?? 0,
                 LicenseClass       = driver?.LicenseClass ?? LicenseClass.R,
                 LicenseLevel       = driver?.LicenseLevel ?? "R 0.00",
-                GapToPlayerSeconds = gapSeconds,
-                LapDifference      = lapDiff,
-                IsPlayer           = i == snapshot.PlayerCarIdx,
+                GapToPlayerSeconds = car.Gap,
+                LapDifference      = car.LapDiff,
+                IsPlayer           = car.CarIdx == snapshot.PlayerCarIdx,
+                CarClass           = isMultiClass ? (driver?.CarClass ?? "") : "",
+                ClassPosition      = classPosition,
+                ClassColor         = isMultiClass ? (driver?.ClassColor ?? ColorConfig.White) : ColorConfig.White,
             }));
         }
 

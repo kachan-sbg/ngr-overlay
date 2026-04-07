@@ -11,7 +11,7 @@ public static class ConfigMigrator
     /// The latest config schema version. Bump this and add a corresponding
     /// migration method each time the config shape changes.
     /// </summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     /// <summary>
     /// Ordered list of migrations. Index 0 = v1→v2, index 1 = v2→v3, etc.
@@ -19,6 +19,7 @@ public static class ConfigMigrator
     private static readonly Action<AppConfig>[] Migrations =
     [
         MigrateV1ToV2,
+        MigrateV2ToV3,
     ];
 
     /// <summary>
@@ -63,5 +64,26 @@ public static class ConfigMigrator
         // TASK-704 / ISSUE-011: SimPriorityOrder — default to iRacing if absent.
         if (config.GlobalSettings.SimPriorityOrder is not { Count: > 0 })
             config.GlobalSettings.SimPriorityOrder = ["iRacing"];
+    }
+
+    /// <summary>
+    /// v2 → v3: Multi-class data model (TASK-705).
+    /// Populates the fallback class colour palette used when a sim does not
+    /// provide per-class colours.
+    /// </summary>
+    private static void MigrateV2ToV3(AppConfig config)
+    {
+        config.GlobalSettings ??= new GlobalSettings();
+
+        if (config.GlobalSettings.ClassColorPalette is not { Count: > 0 })
+        {
+            config.GlobalSettings.ClassColorPalette =
+            [
+                new ColorConfig { R = 0.20f, G = 0.60f, B = 1.00f, A = 1f }, // blue  — class 1
+                new ColorConfig { R = 1.00f, G = 0.30f, B = 0.20f, A = 1f }, // red   — class 2
+                new ColorConfig { R = 0.20f, G = 0.80f, B = 0.30f, A = 1f }, // green — class 3
+                new ColorConfig { R = 1.00f, G = 0.80f, B = 0.00f, A = 1f }, // gold  — class 4
+            ];
+        }
     }
 }

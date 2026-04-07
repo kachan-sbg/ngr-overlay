@@ -38,3 +38,4 @@ Brief summary of every significant design decision. Full entries with rationale,
 | 04-06 | Config versioning with sequential migration pipeline | Alpha adds fields across phases; numbered migrations are simple and testable |
 | 04-06 | JSON round-trip for OverlayConfig deep clone | Covers all fields automatically; no manual field list to maintain as fields are added |
 | 04-07 | Upgrade IRSDKSharper 1.0.3→1.1.6; deterministic Win32 handle release on disconnect | 1.0.3 left the MMF handle open after `Stop()`, causing "pending" state on sim restart |
+| 04-07 | Multi-class: CarClasses empty in single-class sessions; class fields blank/white | Avoids overlay clutter when multiclass info is irrelevant; overlays check `CarClasses.Count > 0` |
