@@ -96,3 +96,25 @@ Full decision entries from the Alpha milestone. For the brief summary, see [DECI
 - `IRacingProvider.Stop()` must call `Dispose()` (not just `Stop()`) on the IRSDKSharper instance.
 - Disconnect→reconnect cycle must be tested manually for any future change to `IRacingProvider` or `IRacingPoller` (documented in ARCHITECTURE.md §14).
 - Resource lifecycle rules (event handler unsubscription, native handle ownership) formally documented in ARCHITECTURE.md §14.
+
+---
+
+## 2026-04-07 — SimDetector provider list sorted by `SimPriorityOrder` config (TASK-905)
+
+**Decision:** `Program.cs` sorts the registered `ISimProvider` list by `GlobalSettings.SimPriorityOrder` at startup rather than using a fixed code order. Config migration v3→v4 appends "LMU" to `SimPriorityOrder` in existing configs. `SimDetector.Poll()` is made `internal` with `InternalsVisibleTo` so unit tests can drive it synchronously.
+
+**Context:** TASK-905 adds LMU to the active sim pipeline. The provider priority order must be config-driven so users can prefer LMU over iRacing if they choose. Existing configs only have "iRacing" in the list.
+
+**Rationale:**
+- Sorting providers by `SimPriorityOrder` at container build time is cheap (one LINQ sort at startup) and means `SimDetector` itself stays agnostic to ordering — it simply iterates in list order.
+- The migration appends rather than replaces, preserving any custom user ordering.
+- Making `Poll()` internal (not public) keeps the seam minimal while enabling deterministic unit tests without timing races.
+
+**Alternatives considered:**
+- **Hard-code iRacing first, LMU second:** Simpler but doesn't honour the config. Rejected — the config field exists precisely for this purpose.
+- **Config-driven ordering inside SimDetector:** SimDetector would need a dependency on `AppConfig` breaking its clean single-responsibility. Rejected — sorting at composition root is cleaner.
+- **Test via timer with short interval:** Would require Thread.Sleep in tests — flaky. Rejected in favour of internal test seam.
+
+**Consequences:**
+- Adding a new sim provider requires: (a) new csproj, (b) DI registration in Program.cs, (c) entry in the provider list lambda, (d) a config migration to append the new SimId to `SimPriorityOrder`.
+- `SimDetector` unit tests live in `SimOverlay.App.Tests` and cover: priority ordering, debounce (1 strike = no stop, 2 strikes = stop), no-overlap guarantee, and provider transitions.

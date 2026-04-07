@@ -38,4 +38,7 @@ Brief summary of every significant design decision. Full entries with rationale,
 | 04-06 | Config versioning with sequential migration pipeline | Alpha adds fields across phases; numbered migrations are simple and testable |
 | 04-06 | JSON round-trip for OverlayConfig deep clone | Covers all fields automatically; no manual field list to maintain as fields are added |
 | 04-07 | Upgrade IRSDKSharper 1.0.3→1.1.6; deterministic Win32 handle release on disconnect | 1.0.3 left the MMF handle open after `Stop()`, causing "pending" state on sim restart |
+| 04-07 | LMU: raw P/Invoke structs (Pack=4) instead of CrewChiefV4.rFactor2Data NuGet | No external dependency; structs match 64-bit rF2 layout exactly; telemetry stride derived from file size at runtime for plugin-version robustness |
+| 04-07 | LMU: `LicenseClass.Unknown` sentinel + empty `LicenseLevel` to hide LIC column | Overlays need a defined "not available" state; `Unknown` renders grey; empty level string skips the LIC cell draw |
 | 04-07 | Multi-class: CarClasses empty in single-class sessions; class fields blank/white | Avoids overlay clutter when multiclass info is irrelevant; overlays check `CarClasses.Count > 0` |
+| 04-07 | SimDetector provider list sorted by `SimPriorityOrder` config at startup; config v3→v4 appends "LMU" | User-adjustable priority without code change; migration preserves existing order |

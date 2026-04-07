@@ -34,11 +34,13 @@ SimOverlay.sln
 │   ├── SimOverlay.Rendering/
 │   ├── SimOverlay.Sim.Contracts/
 │   ├── SimOverlay.Sim.iRacing/
+│   ├── SimOverlay.Sim.LMU/
 │   ├── SimOverlay.Overlays/
 │   └── SimOverlay.App/
 ├── tests/
 │   ├── SimOverlay.Core.Tests/
 │   ├── SimOverlay.Sim.iRacing.Tests/
+│   ├── SimOverlay.Sim.LMU.Tests/
 │   ├── SimOverlay.Overlays.Tests/
 │   └── SimOverlay.Benchmarks/      — BenchmarkDotNet suite (not a test runner)
 └── docs/
@@ -62,6 +64,7 @@ App
  ├── Rendering
  ├── Overlays
  ├── Sim.iRacing
+ ├── Sim.LMU
  ├── Sim.Contracts
  └── Core
 
@@ -74,6 +77,10 @@ Rendering
  └── Core
 
 Sim.iRacing
+ ├── Sim.Contracts
+ └── Core
+
+Sim.LMU
  ├── Sim.Contracts
  └── Core
 
@@ -479,7 +486,20 @@ Transition: `SimDataBus` publishes an `EditModeChangedEvent`. Each overlay respo
 
 ### 9. Extensibility: Adding a New Sim
 
-To add a new sim (e.g., Assetto Corsa Competizione):
+**LMU (Le Mans Ultimate)** is the second sim provider, implemented in `SimOverlay.Sim.LMU` (Phase 9).
+It uses the rFactor 2 shared memory plugin (`$rFactor2SMMP_Scoring$`, `$rFactor2SMMP_Telemetry$`).
+
+#### LMU-specific notes
+- Detection: `MemoryMappedFile.OpenExisting("$rFactor2SMMP_Scoring$")` — same pattern as iRacing.
+- Struct layout: `[StructLayout(Sequential, Pack=4)]` matching 64-bit rF2 `#pragma pack(4)`.
+- Version-bump reads: `VersionUpdateBegin == VersionUpdateEnd` before/after reading = no torn write.
+- Telemetry stride is computed from the file size at runtime (robust to plugin version changes).
+- No iRating / license / incidents — use `LicenseClass.Unknown`, `IRating=0`, `IncidentCount=-1`.
+- Lap distance is metres, not percentage: normalise `lapDistPct = mLapDist / TrackLength`.
+- Vehicle class: from V02 expansion bytes `[4..35]`; falls back to first token of `VehicleName`.
+- Race position: from V02 expansion `[0..3]`; falls back to 0 when plugin version doesn't populate it.
+
+#### Adding a further sim (e.g. Assetto Corsa Competizione):
 
 1. Create project `SimOverlay.Sim.ACC`.
 2. Implement `ISimProvider` — the detection check, start/stop lifecycle, and polling loop.

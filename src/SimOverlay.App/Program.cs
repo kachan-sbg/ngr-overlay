@@ -8,6 +8,7 @@ using SimOverlay.Core.Config;
 using SimOverlay.Rendering;
 using SimOverlay.Sim.Contracts;
 using SimOverlay.Sim.iRacing;
+using SimOverlay.Sim.LMU;
 
 namespace SimOverlay.App;
 
@@ -72,8 +73,22 @@ internal static class Program
             services.AddSingleton(appConfig);
             services.AddSingleton<ISimDataBus, SimDataBus>();
             services.AddSingleton<IRacingProvider>();
+            services.AddSingleton<LmuProvider>();
+            // Provider order is determined by GlobalSettings.SimPriorityOrder.
+            // Providers not listed in the config appear after those that are.
             services.AddSingleton<IReadOnlyList<ISimProvider>>(sp =>
-                new List<ISimProvider> { sp.GetRequiredService<IRacingProvider>() });
+            {
+                var cfg   = sp.GetRequiredService<AppConfig>();
+                var order = cfg.GlobalSettings.SimPriorityOrder;
+                var all   = new List<ISimProvider>
+                {
+                    sp.GetRequiredService<IRacingProvider>(),
+                    sp.GetRequiredService<LmuProvider>(),
+                };
+                return all
+                    .OrderBy(p => { var i = order.IndexOf(p.SimId); return i < 0 ? int.MaxValue : i; })
+                    .ToList();
+            });
             services.AddSingleton<SimDetector>();
             services.AddSingleton<IOverlayFactory, OverlayFactory>();
             services.AddSingleton<OverlayManager>();

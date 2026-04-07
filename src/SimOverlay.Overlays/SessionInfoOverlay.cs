@@ -188,7 +188,8 @@ public sealed class SessionInfoOverlay : BaseOverlay
         // ── Delta (optional, colored) ─────────────────────────────────
         if (config.ShowDelta)
         {
-            var delta      = driver?.LapDeltaVsBestLap ?? 0f;
+            var deltaRaw   = driver?.LapDeltaVsBestLap ?? 0f;
+            var delta      = float.IsNaN(deltaRaw) ? 0f : deltaRaw;
             var deltaStr   = driver != null ? FormatDelta(delta) : "---.---";
             var deltaBrush = driver == null ? dimmed : (delta <= 0f ? green : red);
             DrawRow(context, dw, fmt, dimmed, deltaBrush, "Delta", deltaStr, pad, y, labelW, valueX, valueW, rowH);
@@ -267,7 +268,7 @@ public sealed class SessionInfoOverlay : BaseOverlay
 
     private static string FormatDelta(float delta)
     {
-        if (delta == 0f) return " 0.000";
+        if (float.IsNaN(delta) || delta == 0f) return " 0.000";
         var s = delta.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
         return delta < 0f ? s : $"+{s}";
     }

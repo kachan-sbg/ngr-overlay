@@ -69,8 +69,10 @@ public class ConfigMigratorTests
         ConfigMigrator.MigrateToLatest(config);
 
         Assert.NotNull(config.GlobalSettings.SimPriorityOrder);
-        Assert.Single(config.GlobalSettings.SimPriorityOrder);
-        Assert.Equal("iRacing", config.GlobalSettings.SimPriorityOrder[0]);
+        // After full migration (v1→v4) the list contains both providers.
+        Assert.Contains("iRacing", config.GlobalSettings.SimPriorityOrder);
+        Assert.Contains("LMU",     config.GlobalSettings.SimPriorityOrder);
+        Assert.Equal("iRacing", config.GlobalSettings.SimPriorityOrder[0]); // iRacing remains first
     }
 
     [Fact]
