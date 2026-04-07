@@ -9,9 +9,9 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 - Target: `net8.0-windows`, x64 only
 
 ## Current task
-**Phase 7 — Infrastructure hardening** `[~]` In progress
-Next: **Phase 7 complete** — see Phase 8 planning
-File: `docs/tasks/PHASE-7-infrastructure.md`
+**Phase 8 — Data pipeline extensions** `[x]` Complete
+Next: **Phase 9** — LMU sim provider / second sim integration
+File: `docs/tasks/PHASE-8-data-pipeline.md`
 
 ## Codebase map
 
@@ -33,18 +33,24 @@ No project dependencies. Domain types, config, data bus.
 ### Sim.Contracts (`src/SimOverlay.Sim.Contracts/`)
 Depends: Core. Sim-agnostic DTOs.
 - `ISimProvider.cs` — SimId, IsRunning(), Start(), Stop(), StateChanged event
-- `SessionData.cs` — track, session type, temps, time (published ~1 Hz)
+- `SessionData.cs` — track, session type, temps, time, CarClasses list (published ~1 Hz)
 - `DriverData.cs` — position, laps, delta (published 60 Hz)
-- `RelativeData.cs` / `RelativeEntry.cs` — relative list with gaps (published 10 Hz)
+- `RelativeData.cs` / `RelativeEntry.cs` — relative list with gaps, CarClass, ClassPosition, ClassColor (published 10 Hz)
+- `TelemetryData.cs` — throttle/brake/clutch/steering/speed/gear/rpm/fuel/incidents (published 60 Hz)
+- `PitData.cs` / `PitServiceFlags.cs` — pit road state, limiter, service flags, fuel amount (published 10 Hz)
+- `WeatherData.cs` — air/track temp, wind, humidity, sky, wetness, precipitation (published 1 Hz)
+- `TrackMapData.cs` / `TrackMapCarEntry.cs` — per-car LapDistPct for flat map (published 10 Hz)
+- `CarClassInfo.cs` — ClassId, ClassName, ClassColor, CarCount
 - `LicenseClass.cs` — enum: R, D, C, B, A, Pro, WC
 - `SessionType.cs` — Practice, Qualify, Race, etc.
 
 ### Sim.iRacing (`src/SimOverlay.Sim.iRacing/`)
 Depends: Sim.Contracts + Core. Uses `IRSDKSharper` NuGet.
 - `IRacingProvider.cs` — ISimProvider implementation, connection lifecycle
-- `IRacingPoller.cs` — wraps IRSDKSharper, 60 Hz events → bus publishing
-- `IRacingSessionDecoder.cs` — YAML session info → SessionData + DriverSnapshot
-- `IRacingRelativeCalculator.cs` — LapDistPct gap calc → RelativeData (10 Hz)
+- `IRacingPoller.cs` — wraps IRSDKSharper, 60 Hz events → bus publishing (all 6 DTO types)
+- `IRacingSessionDecoder.cs` — YAML session info → SessionData + DriverSnapshot (with class info)
+- `IRacingRelativeCalculator.cs` — LapDistPct gap calc → RelativeData with ClassPosition (10 Hz)
+- `FuelConsumptionTracker.cs` — rolling average over last 5 green-flag laps
 - `DriverSnapshot.cs` / `TelemetrySnapshot.cs` — intermediate data types
 
 ### Rendering (`src/SimOverlay.Rendering/`)
@@ -80,7 +86,7 @@ Depends: everything. Entry point, orchestration.
 
 ### Tests (`tests/`)
 - `SimOverlay.Core.Tests/` — ConfigStore, ConfigMigrator, OverlayConfig.Resolve, SimDataBus, LicenseClass
-- `SimOverlay.Sim.iRacing.Tests/` — IRacingRelativeCalculator, IRacingSessionDecoder
+- `SimOverlay.Sim.iRacing.Tests/` — IRacingRelativeCalculator, IRacingSessionDecoder, FuelConsumptionTracker
 - `SimOverlay.Overlays.Tests/` — overlay rendering tests
 - `SimOverlay.Benchmarks/` — BenchmarkDotNet (not a test runner)
 

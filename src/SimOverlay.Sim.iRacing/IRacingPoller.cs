@@ -6,20 +6,31 @@ using SimOverlay.Sim.Contracts;
 namespace SimOverlay.Sim.iRacing;
 
 /// <summary>
-/// Wraps <see cref="IRacingSdk"/> and publishes <see cref="DriverData"/>,
-/// <see cref="RelativeData"/>, and <see cref="SessionData"/> to the <see cref="ISimDataBus"/>.
-/// <para>
+/// Wraps <see cref="IRacingSdk"/> and publishes data to the <see cref="ISimDataBus"/>:
+/// <list type="bullet">
+///   <item><see cref="DriverData"/> — 60 Hz</item>
+///   <item><see cref="TelemetryData"/> — 60 Hz</item>
+///   <item><see cref="RelativeData"/> — 10 Hz</item>
+///   <item><see cref="PitData"/> — 10 Hz</item>
+///   <item><see cref="TrackMapData"/> — 10 Hz</item>
+///   <item><see cref="WeatherData"/> — 1 Hz</item>
+///   <item><see cref="SessionData"/> — on session YAML change</item>
+/// </list>
 /// IRSDKSharper fires <c>OnTelemetryData</c> at ~60 Hz on its own background thread.
 /// <c>OnSessionInfo</c> fires whenever the iRacing session YAML changes.
-/// </para>
 /// </summary>
 internal sealed class IRacingPoller : IDisposable
 {
-    // Publish RelativeData every N telemetry ticks → ~10 Hz at 60 Hz input.
+    // Publish RelativeData / PitData / TrackMapData every N telemetry ticks → ~10 Hz at 60 Hz input.
     private const int RelativePublishInterval = 6;
+    // Publish WeatherData every N telemetry ticks → ~1 Hz at 60 Hz input.
+    private const int WeatherPublishInterval  = 60;
 
     // iRacing allocates exactly 64 car-index slots in every telemetry array.
     private const int MaxCars = 64;
+
+    // iRacing EngineWarnings bitmask: pit speed limiter active.
+    private const int EngineWarningPitLimiter = 0x40;
 
     private readonly IRacingSdk        _sdk;
     private readonly ISimDataBus      _bus;
@@ -29,6 +40,10 @@ internal sealed class IRacingPoller : IDisposable
     private ImmutableArray<DriverSnapshot> _cachedDrivers =
         ImmutableArray<DriverSnapshot>.Empty;
 
+    // Cached track length (metres), parsed from session YAML.
+    private float _trackLengthMeters;
+
+    private readonly FuelConsumptionTracker _fuelTracker = new();
     private int  _telemetryFrameCount;
     private bool _disposed;
 
@@ -63,12 +78,14 @@ internal sealed class IRacingPoller : IDisposable
     private void HandleConnected()
     {
         AppLog.Info("iRacing SDK connected — session active.");
+        _fuelTracker.Reset();
         _onStateChanged(SimState.InSession);
     }
 
     private void HandleDisconnected()
     {
         AppLog.Info("iRacing SDK disconnected — waiting for session.");
+        _fuelTracker.Reset();
         _onStateChanged(SimState.Connected);
     }
 
@@ -78,6 +95,11 @@ internal sealed class IRacingPoller : IDisposable
         {
             var (drivers, session) = IRacingSessionDecoder.Decode(_sdk.Data);
             _cachedDrivers = drivers.ToImmutableArray();
+
+            // Cache track length for TrackMapData (changes only on track change).
+            _trackLengthMeters = ParseTrackLengthMeters(
+                _sdk.Data.SessionInfo?.WeekendInfo?.TrackLength);
+
             _bus.Publish(session);
             AppLog.Info($"Session info updated: {session.TrackName} / {session.SessionType}");
         }
@@ -92,9 +114,17 @@ internal sealed class IRacingPoller : IDisposable
         try
         {
             PublishDriverData();
+            PublishTelemetryData();
 
             if (++_telemetryFrameCount % RelativePublishInterval == 0)
+            {
                 PublishRelativeData();
+                PublishPitData();
+                PublishTrackMapData();
+            }
+
+            if (_telemetryFrameCount % WeatherPublishInterval == 0)
+                PublishWeatherData();
         }
         catch (Exception ex)
         {
@@ -128,6 +158,29 @@ internal sealed class IRacingPoller : IDisposable
         });
     }
 
+    private void PublishTelemetryData()
+    {
+        var data         = _sdk.Data;
+        var lap          = data.GetInt("Lap");
+        var fuelLevel    = data.GetFloat("FuelLevel");
+        var sessionFlags = data.GetInt("SessionFlags");
+
+        _fuelTracker.Update(lap, fuelLevel, sessionFlags);
+
+        _bus.Publish(new TelemetryData(
+            Throttle:              data.GetFloat("Throttle"),
+            Brake:                 data.GetFloat("Brake"),
+            Clutch:                data.GetFloat("Clutch"),
+            SteeringAngle:         data.GetFloat("SteeringWheelAngle"),
+            SpeedMps:              data.GetFloat("Speed"),
+            Gear:                  data.GetInt("Gear"),
+            Rpm:                   data.GetFloat("RPM"),
+            FuelLevelLiters:       fuelLevel,
+            FuelConsumptionPerLap: _fuelTracker.PerLapAverage,
+            IncidentCount:         data.GetInt("PlayerCarMyIncidentCount")
+        ));
+    }
+
     private void PublishRelativeData()
     {
         var data         = _sdk.Data;
@@ -153,14 +206,128 @@ internal sealed class IRacingPoller : IDisposable
         }
 
         var snapshot = new TelemetrySnapshot(
-            PlayerCarIdx:    playerCarIdx,
-            LapDistPcts:     lapDistPcts,
-            Positions:       positions,
-            Laps:            laps,
+            PlayerCarIdx:     playerCarIdx,
+            LapDistPcts:      lapDistPcts,
+            Positions:        positions,
+            Laps:             laps,
             EstimatedLapTime: estLapTimeSec);
 
         var relativeData = IRacingRelativeCalculator.Compute(snapshot, _cachedDrivers);
         _bus.Publish(relativeData);
+    }
+
+    private void PublishPitData()
+    {
+        var data         = _sdk.Data;
+        var playerCarIdx = data.SessionInfo?.DriverInfo?.DriverCarIdx ?? 0;
+
+        var isOnPitRoad    = data.GetInt("OnPitRoad") != 0;
+        var trackSurface   = data.GetInt("PlayerTrackSurface");
+        var isInPitStall   = trackSurface == 1; // irsdk_InPitStall = 1
+        var engineWarnings = data.GetInt("EngineWarnings");
+        var pitLimiterOn   = (engineWarnings & EngineWarningPitLimiter) != 0;
+
+        // Map iRacing PitSvFlags bitmask to our PitServiceFlags enum.
+        var iracingPitFlags = data.GetInt("PitSvFlags");
+        var serviceFlags    = PitServiceFlags.None;
+        if ((iracingPitFlags & 0x10) != 0) serviceFlags |= PitServiceFlags.Fuel;
+        if ((iracingPitFlags & 0x01) != 0) serviceFlags |= PitServiceFlags.LeftFrontTire;
+        if ((iracingPitFlags & 0x02) != 0) serviceFlags |= PitServiceFlags.RightFrontTire;
+        if ((iracingPitFlags & 0x04) != 0) serviceFlags |= PitServiceFlags.LeftRearTire;
+        if ((iracingPitFlags & 0x08) != 0) serviceFlags |= PitServiceFlags.RightRearTire;
+        if ((iracingPitFlags & 0x20) != 0) serviceFlags |= PitServiceFlags.WindshieldTearoff;
+        if ((iracingPitFlags & 0x40) != 0) serviceFlags |= PitServiceFlags.FastRepair;
+
+        _bus.Publish(new PitData(
+            IsOnPitRoad:        isOnPitRoad,
+            IsInPitStall:       isInPitStall,
+            PitLimiterSpeedMps: data.GetFloat("PitSpeedLimit"),
+            CurrentSpeedMps:    data.GetFloat("Speed"),
+            PitLimiterActive:   pitLimiterOn,
+            PitStopCount:       data.GetInt("CarIdxNumPitStops", playerCarIdx),
+            RequestedService:   serviceFlags,
+            FuelToAddLiters:    data.GetFloat("dpFuelFill")
+        ));
+    }
+
+    private void PublishWeatherData()
+    {
+        var data = _sdk.Data;
+
+        var windDirRad = data.GetFloat("WindDir");
+        var windDirDeg = windDirRad * (180f / MathF.PI);
+        if (windDirDeg < 0f) windDirDeg += 360f;
+
+        // iRacing TrackWetness: 0=unknown, 1=dry, ..., 7=extremely wet.
+        // Normalise 1–7 to 0.0–1.0; treat 0 (unknown) as 0.
+        var trackWetnessRaw  = data.GetInt("TrackWetness");
+        var trackWetnessNorm = trackWetnessRaw <= 0 ? 0f : (trackWetnessRaw - 1) / 6f;
+
+        _bus.Publish(new WeatherData(
+            AirTempC:         data.GetFloat("AirTemp"),
+            TrackTempC:       data.GetFloat("TrackTempCrew"),
+            WindSpeedMps:     data.GetFloat("WindVel"),
+            WindDirectionDeg: windDirDeg,
+            Humidity:         data.GetFloat("RelativeHumidity"),
+            SkyCoverage:      data.GetInt("Skies"),
+            TrackWetness:     trackWetnessNorm,
+            IsPrecipitating:  data.GetInt("WeatherDeclaredWet") != 0
+        ));
+    }
+
+    private void PublishTrackMapData()
+    {
+        var data         = _sdk.Data;
+        var playerCarIdx = data.SessionInfo?.DriverInfo?.DriverCarIdx ?? 0;
+
+        var drivers     = _cachedDrivers;
+        var driverByIdx = new Dictionary<int, DriverSnapshot>(drivers.Length);
+        foreach (var d in drivers)
+            driverByIdx[d.CarIdx] = d;
+
+        var cars = new List<TrackMapCarEntry>(MaxCars);
+        for (var i = 0; i < MaxCars; i++)
+        {
+            var pct = data.GetFloat("CarIdxLapDistPct", i);
+            if (pct < 0f) continue;  // not on track
+
+            driverByIdx.TryGetValue(i, out var driver);
+            if (driver is { IsSpectator: true } or { IsPaceCar: true }) continue;
+
+            cars.Add(new TrackMapCarEntry(
+                CarIndex:   i,
+                CarNumber:  driver?.CarNumber ?? i.ToString(),
+                Position:   data.GetInt("CarIdxPosition", i),
+                LapDistPct: pct,
+                CarClass:   driver?.CarClass ?? "",
+                IsPlayer:   i == playerCarIdx,
+                IsInPit:    data.GetInt("CarIdxOnPitRoad", i) != 0
+            ));
+        }
+
+        _bus.Publish(new TrackMapData(
+            TrackLengthMeters: _trackLengthMeters,
+            Cars:              cars));
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses iRacing's track length string, e.g. "5.78 km" → 5780f.
+    /// Returns 0 if the string is absent or unparseable.
+    /// </summary>
+    private static float ParseTrackLengthMeters(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return 0f;
+
+        // Format: "N.NN km"
+        var spaceIdx = raw.IndexOf(' ');
+        var numStr   = spaceIdx >= 0 ? raw[..spaceIdx] : raw;
+
+        return float.TryParse(numStr,
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var km) ? km * 1000f : 0f;
     }
 
     // ── Disposal ──────────────────────────────────────────────────────────────
