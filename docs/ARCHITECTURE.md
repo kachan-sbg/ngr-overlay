@@ -21,6 +21,7 @@
 | 11 | OBS Capture Compatibility | 480–518 | OBS/stream mode, window styles |
 | 12 | Error Handling Strategy | 521–528 | Error recovery, device lost |
 | 13 | Performance Benchmarks | 530–556 | Benchmark workflow, hot-path targets |
+| 14 | Resource Lifecycle & Memory | ~560+ | Touching IDisposable, event handlers, native handles |
 
 ---
 
@@ -577,5 +578,40 @@ dotnet run -c Release --project tests/SimOverlay.Benchmarks -- --filter *Relativ
 `RelativeCalculator.Compute` allocates (builds a `Dictionary` + `List` per call) — acceptable at 10 Hz. The render loop itself (`OnRender`) cannot be benchmarked without a real D2D context; measure it manually under a live session if stuttering is suspected.
 
 **Baseline workflow:** after a significant feature lands, run the benchmarks, commit the JSON from `BenchmarkDotNet.Artifacts/results/` to `benchmarks/baseline/` on the reference machine. Future runs on the same machine can be compared against it to detect regressions.
+
+---
+
+### 14. Resource Lifecycle & Memory
+
+**Priority:** Resource lifecycle correctness is a first-class constraint alongside rendering performance. Memory leaks and un-closed native handles cause in-race crashes and resource exhaustion — they are bugs, not tech debt.
+
+#### Rules
+
+1. **Every `IDisposable` must have an owner.** The owner disposes it when done. Unclear ownership is a design smell — decide ownership at allocation time.
+2. **Unsubscribe every event handler you subscribe.** Subscribe in `Start()` / constructor, unsubscribe in `Stop()` / `Dispose()`. Failing to unsubscribe keeps the subscriber alive (GC root via delegate), leaks memory, and fires events on a "dead" object.
+3. **Native handles (Win32, D2D COM, MMF) must be released deterministically.** Do not rely on finalizers. Wrap in `SafeHandle` subclasses or explicit `Dispose()` blocks. Verify release order — releasing a child before its parent can AV.
+4. **Sim SDK wrappers need special care.** External SDKs (e.g. IRSDKSharper) manage their own Win32 handles internally. Use the version that correctly releases the handle on `Stop()`/`Dispose()` — keep SDK packages up to date and test disconnect/reconnect cycles explicitly.
+
+#### Symptoms of lifecycle bugs
+- App hangs on iRacing exit or app close (handle not released)
+- "Pending" or stale state after sim restart (old subscriber still active, new one never fires)
+- Gradual memory growth over a long session (event handler leak)
+- ObjectDisposedException on a COM object (wrong dispose order)
+
+#### Patterns in use
+
+| Component | Lifecycle |
+|---|---|
+| `OverlayWindow` | Owns D2D factory, DCRenderTarget, GDI DIB — disposed in `Dispose()` |
+| `BaseOverlay` | Subscribes to `ISimDataBus` events; unsubscribes in `Dispose()` |
+| `IRacingProvider` / `IRacingPoller` | Owns `IRSDKSharper` instance; calls `Stop()` + `Dispose()` on `ISimProvider.Stop()` |
+| `AppLog` | Owns persistent `StreamWriter`; flushed and disposed at shutdown |
+| `ZOrderHook` | Registers WinEvent hook via `SetWinEventHook`; calls `UnhookWinEvent` in `Dispose()` |
+
+#### Disconnect / reconnect testing
+Any change to a sim provider, poller, or data bus subscriber **must** be manually tested through a full disconnect–reconnect cycle before committing:
+1. Start app → confirm data flowing.
+2. Close/kill the sim → confirm `Disconnected` state.
+3. Relaunch the sim → confirm `Connected` + data resumes with no stale state.
 
 ---

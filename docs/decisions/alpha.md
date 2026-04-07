@@ -75,3 +75,24 @@ Full decision entries from the Alpha milestone. For the brief summary, see [DECI
 **Consequences:**
 - `ApplyConfig` now replaces the `OverlayConfig` reference in `AppConfig.Overlays` (and updates the overlay) rather than mutating the existing reference in place.
 - Slight allocation overhead from serialization, acceptable since `ApplyConfig` is user-triggered (not per-frame).
+
+---
+
+## 2026-04-07 — Upgrade IRSDKSharper 1.0.3→1.1.6; deterministic Win32 handle release on disconnect
+
+**Decision:** Upgrade `IRSDKSharper` from 1.0.3 to 1.1.6 and ensure `IRacingProvider.Stop()` calls `Dispose()` on the SDK instance, releasing all Win32 handles deterministically.
+
+**Context:** After a sim session ended and iRacing was restarted, the overlay remained in a "pending/connecting" state and never recovered. The underlying cause was that IRSDKSharper 1.0.3 held a Win32 memory-mapped file handle open after `Stop()` was called, preventing the SDK from cleanly re-initialising on the next connection attempt.
+
+**Rationale:**
+- IRSDKSharper 1.1.6 fixes the internal handle release on `Stop()`/`Dispose()` — upgrading is the minimal correct fix.
+- Deterministic handle release via `Dispose()` is the right pattern regardless; do not rely on GC finalizers for Win32 resources.
+- Resource lifecycle correctness is a first-class constraint: handle leaks cause in-race crashes and are treated with the same priority as rendering performance.
+
+**Alternatives considered:**
+- **Workaround in `IRacingProvider` (recreate SDK object on reconnect):** Possible but layering a workaround on top of a library bug adds complexity and masks the root cause. Rejected in favour of upgrading.
+
+**Consequences:**
+- `IRacingProvider.Stop()` must call `Dispose()` (not just `Stop()`) on the IRSDKSharper instance.
+- Disconnect→reconnect cycle must be tested manually for any future change to `IRacingProvider` or `IRacingPoller` (documented in ARCHITECTURE.md §14).
+- Resource lifecycle rules (event handler unsubscription, native handle ownership) formally documented in ARCHITECTURE.md §14.
