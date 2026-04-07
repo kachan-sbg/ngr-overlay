@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using SimOverlay.Overlays;
 using UserControl = System.Windows.Controls.UserControl;
 
 namespace SimOverlay.App.Settings;
@@ -34,9 +33,10 @@ public partial class OverlaySettingsPanel : UserControl
         DataContext = vm;
 
         // Show the sections relevant to this overlay type.
-        bool isRelative = overlayId == RelativeOverlay.OverlayId;
-        bool isSession  = overlayId == SessionInfoOverlay.OverlayId;
-        bool isDelta    = overlayId == DeltaBarOverlay.OverlayId;
+        // IDs match the constants in each overlay class (e.g. RelativeOverlay.OverlayId).
+        bool isRelative = overlayId == "Relative";
+        bool isSession  = overlayId == "SessionInfo";
+        bool isDelta    = overlayId == "DeltaBar";
 
         RelativeSection.Visibility = isRelative ? Visibility.Visible : Visibility.Collapsed;
         SessionSection.Visibility  = isSession  ? Visibility.Visible : Visibility.Collapsed;

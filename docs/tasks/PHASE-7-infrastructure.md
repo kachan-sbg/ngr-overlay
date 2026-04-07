@@ -127,7 +127,7 @@ Add car class support to the data contracts so overlays can distinguish classes.
 
 ### TASK-706 · Overlay registration and dynamic creation
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Replace hardcoded overlay list in `OverlayManager` with a registration-based system.
 
@@ -139,11 +139,11 @@ Replace hardcoded overlay list in `OverlayManager` with a registration-based sys
 - Settings sidebar populated from registry (not hardcoded)
 
 **Acceptance criteria:**
-- [ ] `OverlayManager` has no hardcoded overlay type references
-- [ ] Adding a new overlay = write class + register in DI — no changes to OverlayManager or SettingsWindow
-- [ ] Settings sidebar shows all registered overlays dynamically
-- [ ] Overlay enable/disable works for all registered overlays
-- [ ] Config contains entries only for overlays the user has (no phantom entries for unregistered types)
+- [x] `OverlayManager` has no hardcoded overlay type references
+- [x] Adding a new overlay = write class + register in DI — no changes to OverlayManager or SettingsWindow
+- [x] Settings sidebar shows all registered overlays dynamically
+- [x] Overlay enable/disable works for all registered overlays
+- [x] Config contains entries only for overlays the user has (no phantom entries for unregistered types)
 
 **Dependencies:** TASK-703 (DI container).
 

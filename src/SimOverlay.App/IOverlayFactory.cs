@@ -18,4 +18,11 @@ public interface IOverlayFactory
     /// Used by <see cref="OverlayManager"/> to ensure all overlay types have a config entry.
     /// </summary>
     IReadOnlyDictionary<string, OverlayConfig> DefaultConfigs { get; }
+
+    /// <summary>
+    /// Ordered list of all registered overlay types with their display names.
+    /// Ordered by registration order. Used by <see cref="Settings.SettingsWindow"/>
+    /// to build the sidebar nav list dynamically without referencing concrete overlay types.
+    /// </summary>
+    IReadOnlyList<(string Id, string DisplayName)> DisplayNames { get; }
 }

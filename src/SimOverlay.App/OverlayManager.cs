@@ -37,6 +37,11 @@ public sealed class OverlayManager : IDisposable
         _appConfig   = appConfig;
         _configStore = configStore;
 
+        // Remove config entries for overlay types that are no longer registered.
+        // This prevents phantom entries accumulating when overlays are removed/renamed.
+        var registeredIds = new HashSet<string>(factory.DefaultConfigs.Keys);
+        _appConfig.Overlays.RemoveAll(c => !registeredIds.Contains(c.Id));
+
         _overlays = new Dictionary<string, BaseOverlay>();
         foreach (var (id, defaultConfig) in factory.DefaultConfigs)
         {

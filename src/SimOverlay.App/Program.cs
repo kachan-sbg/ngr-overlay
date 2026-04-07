@@ -84,6 +84,7 @@ internal static class Program
             // Resolve singletons — provider manages their lifetimes.
             var detector       = provider.GetRequiredService<SimDetector>();
             var overlayManager = provider.GetRequiredService<OverlayManager>();
+            var factory        = provider.GetRequiredService<IOverlayFactory>();
             AppLog.Info("Core services resolved");
 
             // --- Settings window (lazy singleton, not in DI — requires delegate wiring) ---
@@ -92,7 +93,7 @@ internal static class Program
             {
                 if (settingsWindow is null)
                 {
-                    settingsWindow = new SettingsWindow(overlayManager, appConfig, configStore);
+                    settingsWindow = new SettingsWindow(overlayManager, appConfig, configStore, factory);
                     AppLog.Info("SettingsWindow created");
                 }
                 return settingsWindow;
