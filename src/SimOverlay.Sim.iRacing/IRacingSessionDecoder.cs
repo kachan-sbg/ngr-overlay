@@ -115,11 +115,29 @@ internal static class IRacingSessionDecoder
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Converts a packed 0xRRGGBB integer (as iRacing stores class colours) to a
-    /// <see cref="ColorConfig"/>.  Falls back to white when the value is 0 (unset).
+    /// Converts an iRacing class colour string to a <see cref="ColorConfig"/>.
+    /// iRacing stores colours as decimal or hex strings, e.g. "16711680" or "0xFF0000".
+    /// Falls back to white when the value is absent, zero, or unparseable.
     /// </summary>
-    private static ColorConfig RgbIntToColor(int rgb)
+    private static ColorConfig RgbIntToColor(string? raw)
     {
+        if (string.IsNullOrWhiteSpace(raw)) return ColorConfig.White;
+
+        int rgb;
+        var trimmed = raw.Trim();
+        if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!int.TryParse(trimmed[2..], System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out rgb))
+                return ColorConfig.White;
+        }
+        else
+        {
+            if (!int.TryParse(trimmed, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out rgb))
+                return ColorConfig.White;
+        }
+
         if (rgb == 0) return ColorConfig.White;
         return new ColorConfig
         {
