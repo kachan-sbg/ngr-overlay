@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using SimOverlay.Core.Config;
-using SimOverlay.Overlays;
 using CheckBox = System.Windows.Controls.CheckBox;
 
 namespace SimOverlay.App.Settings;
@@ -16,9 +15,10 @@ namespace SimOverlay.App.Settings;
 /// </summary>
 public partial class SettingsWindow : Window
 {
-    private readonly OverlayManager _overlayManager;
-    private readonly AppConfig      _appConfig;
-    private readonly ConfigStore    _configStore;
+    private readonly OverlayManager  _overlayManager;
+    private readonly AppConfig       _appConfig;
+    private readonly ConfigStore     _configStore;
+    private readonly IOverlayFactory _factory;
 
     // One ViewModel per overlay, keyed by overlay ID.
     private readonly Dictionary<string, OverlayConfigViewModel> _viewModels = new();
@@ -50,15 +50,17 @@ public partial class SettingsWindow : Window
     }
 
     public SettingsWindow(
-        OverlayManager overlayManager,
-        AppConfig      appConfig,
-        ConfigStore    configStore)
+        OverlayManager  overlayManager,
+        AppConfig       appConfig,
+        ConfigStore     configStore,
+        IOverlayFactory factory)
     {
         InitializeComponent();
 
         _overlayManager = overlayManager;
         _appConfig      = appConfig;
         _configStore    = configStore;
+        _factory        = factory;
 
         _overlayPanel = new OverlaySettingsPanel();
         _globalPanel  = new GlobalSettingsPanel(overlayManager, appConfig, configStore);
@@ -122,16 +124,9 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private static readonly (string Id, string Label)[] OverlayLabels =
-    [
-        (RelativeOverlay.OverlayId,    "Relative"),
-        (SessionInfoOverlay.OverlayId, "Session Info"),
-        (DeltaBarOverlay.OverlayId,    "Delta Bar"),
-    ];
-
     private void BuildNavList()
     {
-        foreach (var (id, label) in OverlayLabels)
+        foreach (var (id, label) in _factory.DisplayNames)
         {
             var cfg = _appConfig.Overlays.FirstOrDefault(c => c.Id == id);
             if (cfg == null) continue;

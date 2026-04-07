@@ -18,24 +18,27 @@ public sealed class OverlayFactory : IOverlayFactory
     private readonly ConfigStore _configStore;
     private readonly AppConfig   _appConfig;
 
-    // Map: overlay ID → (constructor delegate, default config).
-    // To register a new overlay type, add an entry here.
-    private static readonly Dictionary<string, (
+    // Ordered list of registrations: (id, displayName, constructor delegate, default config).
+    // ORDER MATTERS — determines sidebar order in Settings.
+    // To add a new overlay type: write the class, add one entry here. Nothing else changes.
+    private static readonly (
+        string Id,
+        string DisplayName,
         Func<ISimDataBus, OverlayConfig, ConfigStore, AppConfig, BaseOverlay> Create,
-        OverlayConfig Default)> _registry = new()
-    {
-        [RelativeOverlay.OverlayId] = (
+        OverlayConfig Default)[] _registry =
+    [
+        (RelativeOverlay.OverlayId,    "Relative",
             (bus, cfg, store, app) => new RelativeOverlay(bus, cfg, store, app),
             RelativeOverlay.DefaultConfig),
 
-        [SessionInfoOverlay.OverlayId] = (
+        (SessionInfoOverlay.OverlayId, "Session Info",
             (bus, cfg, store, app) => new SessionInfoOverlay(bus, cfg, store, app),
             SessionInfoOverlay.DefaultConfig),
 
-        [DeltaBarOverlay.OverlayId] = (
+        (DeltaBarOverlay.OverlayId,    "Delta Bar",
             (bus, cfg, store, app) => new DeltaBarOverlay(bus, cfg, store, app),
             DeltaBarOverlay.DefaultConfig),
-    };
+    ];
 
     public OverlayFactory(ISimDataBus bus, ConfigStore configStore, AppConfig appConfig)
     {
@@ -47,12 +50,17 @@ public sealed class OverlayFactory : IOverlayFactory
     /// <inheritdoc/>
     public BaseOverlay Create(OverlayConfig config)
     {
-        if (!_registry.TryGetValue(config.Id, out var entry))
+        var entry = _registry.FirstOrDefault(r => r.Id == config.Id);
+        if (entry == default)
             throw new ArgumentException($"Unknown overlay ID '{config.Id}'.", nameof(config));
         return entry.Create(_bus, config, _configStore, _appConfig);
     }
 
     /// <inheritdoc/>
     public IReadOnlyDictionary<string, OverlayConfig> DefaultConfigs =>
-        _registry.ToDictionary(kv => kv.Key, kv => kv.Value.Default);
+        _registry.ToDictionary(r => r.Id, r => r.Default);
+
+    /// <inheritdoc/>
+    public IReadOnlyList<(string Id, string DisplayName)> DisplayNames =>
+        _registry.Select(r => (r.Id, r.DisplayName)).ToList();
 }
