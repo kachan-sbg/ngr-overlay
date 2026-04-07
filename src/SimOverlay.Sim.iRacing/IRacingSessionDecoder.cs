@@ -1,3 +1,4 @@
+using SimOverlay.Core.Config;
 using SimOverlay.Sim.Contracts;
 
 namespace SimOverlay.Sim.iRacing;
@@ -21,11 +22,24 @@ internal static class IRacingSessionDecoder
         var rawDrivers = info?.DriverInfo?.Drivers;
         var drivers    = new List<DriverSnapshot>(rawDrivers?.Count ?? 0);
 
+        // Class accumulator: classId → (name, color, count)
+        var classMap = new Dictionary<int, (string Name, ColorConfig Color, int Count)>();
+
         if (rawDrivers != null)
         {
             foreach (var d in rawDrivers)
             {
                 if (d is null) continue;
+
+                var classId    = d.CarClassID;
+                var className  = d.CarClassShortName ?? string.Empty;
+                var classColor = RgbIntToColor(d.CarClassColor);
+
+                // Accumulate class info (first driver in each class wins for name/color)
+                if (!classMap.TryGetValue(classId, out var existing))
+                    classMap[classId] = (className, classColor, 1);
+                else
+                    classMap[classId] = (existing.Name, existing.Color, existing.Count + 1);
 
                 drivers.Add(new DriverSnapshot(
                     CarIdx:       d.CarIdx,
@@ -35,10 +49,24 @@ internal static class IRacingSessionDecoder
                     LicenseClass: ParseLicenseClass(d.LicString),
                     LicenseLevel: d.LicString   ?? "R 0.00",
                     IsSpectator:  d.IsSpectator != 0,
-                    IsPaceCar:    d.CarIsPaceCar != 0
+                    IsPaceCar:    d.CarIsPaceCar != 0,
+                    CarClassId:   classId,
+                    CarClass:     className,
+                    ClassColor:   classColor
                 ));
             }
         }
+
+        // Build CarClassInfo list — only expose multiple classes when there truly are multiple
+        var carClasses = classMap.Count > 1
+            ? classMap.Select(kv => new CarClassInfo
+              {
+                  ClassId    = kv.Key,
+                  ClassName  = kv.Value.Name,
+                  ClassColor = kv.Value.Color,
+                  CarCount   = kv.Value.Count,
+              }).ToList()
+            : (IReadOnlyList<CarClassInfo>)[];
 
         // ── Track / weather ───────────────────────────────────────────────────
         var weekendInfo = info?.WeekendInfo;
@@ -78,12 +106,29 @@ internal static class IRacingSessionDecoder
             RelativeHumidity     = humidity,
             WeatherDeclaredWet   = weatherDeclaredWet,
             TrackWetness         = trackWetness,
+            CarClasses           = carClasses,
         };
 
         return (drivers, session);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts a packed 0xRRGGBB integer (as iRacing stores class colours) to a
+    /// <see cref="ColorConfig"/>.  Falls back to white when the value is 0 (unset).
+    /// </summary>
+    private static ColorConfig RgbIntToColor(int rgb)
+    {
+        if (rgb == 0) return ColorConfig.White;
+        return new ColorConfig
+        {
+            R = ((rgb >> 16) & 0xFF) / 255f,
+            G = ((rgb >>  8) & 0xFF) / 255f,
+            B = ( rgb        & 0xFF) / 255f,
+            A = 1f,
+        };
+    }
 
     /// <summary>Parses iRacing's temperature string, e.g. "24.44 C" → 24.44f.</summary>
     private static float ParseTemperatureC(string? value)

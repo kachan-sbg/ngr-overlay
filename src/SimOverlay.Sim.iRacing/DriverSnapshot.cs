@@ -1,3 +1,4 @@
+using SimOverlay.Core.Config;
 using SimOverlay.Sim.Contracts;
 
 namespace SimOverlay.Sim.iRacing;
@@ -15,4 +16,7 @@ internal sealed record DriverSnapshot(
     LicenseClass LicenseClass,
     string LicenseLevel,
     bool   IsSpectator,
-    bool   IsPaceCar);
+    bool   IsPaceCar,
+    int    CarClassId   = 0,
+    string CarClass     = "",
+    ColorConfig? ClassColor = null);

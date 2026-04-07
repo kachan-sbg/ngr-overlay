@@ -41,9 +41,14 @@ public class RelativeCalculatorTests
     }
 
     /// <summary>Creates a simple <see cref="DriverSnapshot"/> for a given car index.</summary>
-    private static DriverSnapshot MakeDriver(int carIdx, bool isSpectator = false, bool isPaceCar = false) =>
+    private static DriverSnapshot MakeDriver(
+        int carIdx,
+        bool isSpectator = false,
+        bool isPaceCar   = false,
+        int carClassId   = 0,
+        string carClass  = "") =>
         new(carIdx, $"Driver{carIdx}", carIdx.ToString(), 1500, LicenseClass.B, "B 3.00",
-            isSpectator, isPaceCar);
+            isSpectator, isPaceCar, carClassId, carClass);
 
     // ── Core gap computation ──────────────────────────────────────────────────
 
@@ -379,5 +384,88 @@ public class RelativeCalculatorTests
         Assert.Single(result.Entries);
         Assert.True(result.Entries[0].IsPlayer);
         Assert.Equal(0f, result.Entries[0].GapToPlayerSeconds);
+    }
+
+    // ── Multi-class ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void MultiClass_ClassPositions_AreCorrect()
+    {
+        // GTP: cars 0 (P1), 2 (P3) → class positions 1, 2
+        // GT3: cars 1 (P2), 3 (P4) → class positions 1, 2
+        var snapshot = MakeSnapshot(0, 90f, [
+            (0, 0.70f, 1, 1),   // GTP leader (player)
+            (1, 0.65f, 1, 2),   // GT3 leader
+            (2, 0.60f, 1, 3),   // GTP P2
+            (3, 0.55f, 1, 4),   // GT3 P2
+        ]);
+        var drivers = new[]
+        {
+            MakeDriver(0, carClassId: 1, carClass: "GTP"),
+            MakeDriver(1, carClassId: 2, carClass: "GT3"),
+            MakeDriver(2, carClassId: 1, carClass: "GTP"),
+            MakeDriver(3, carClassId: 2, carClass: "GT3"),
+        };
+
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+
+        var gtp1 = result.Entries.Single(e => e.CarNumber == "0");
+        var gt31 = result.Entries.Single(e => e.CarNumber == "1");
+        var gtp2 = result.Entries.Single(e => e.CarNumber == "2");
+        var gt32 = result.Entries.Single(e => e.CarNumber == "3");
+
+        Assert.Equal(1, gtp1.ClassPosition);
+        Assert.Equal(1, gt31.ClassPosition);
+        Assert.Equal(2, gtp2.ClassPosition);
+        Assert.Equal(2, gt32.ClassPosition);
+    }
+
+    [Fact]
+    public void MultiClass_CarClassAndColor_ArePopulated()
+    {
+        var snapshot = MakeSnapshot(0, 90f, [
+            (0, 0.70f, 1, 1),
+            (1, 0.65f, 1, 2),
+        ]);
+        var drivers = new[]
+        {
+            MakeDriver(0, carClassId: 1, carClass: "GTP"),
+            MakeDriver(1, carClassId: 2, carClass: "GT3"),
+        };
+
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+
+        Assert.Equal("GTP", result.Entries.Single(e => e.CarNumber == "0").CarClass);
+        Assert.Equal("GT3", result.Entries.Single(e => e.CarNumber == "1").CarClass);
+    }
+
+    [Fact]
+    public void SingleClass_CarClassIsEmpty_ClassPositionEqualsOverallPosition()
+    {
+        // All cars in same class → single-class session rules apply
+        var snapshot = MakeSnapshot(0, 90f, [
+            (0, 0.70f, 1, 1),
+            (1, 0.65f, 1, 2),
+            (2, 0.60f, 1, 3),
+        ]);
+        var drivers = new[]
+        {
+            MakeDriver(0, carClassId: 1, carClass: "GT3"),
+            MakeDriver(1, carClassId: 1, carClass: "GT3"),
+            MakeDriver(2, carClassId: 1, carClass: "GT3"),
+        };
+
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+
+        // CarClass must be empty in single-class session
+        Assert.All(result.Entries, e => Assert.Equal("", e.CarClass));
+
+        // ClassPosition should equal the class-internal rank (1, 2, 3)
+        var p1 = result.Entries.Single(e => e.CarNumber == "0");
+        var p2 = result.Entries.Single(e => e.CarNumber == "1");
+        var p3 = result.Entries.Single(e => e.CarNumber == "2");
+        Assert.Equal(1, p1.ClassPosition);
+        Assert.Equal(2, p2.ClassPosition);
+        Assert.Equal(3, p3.ClassPosition);
     }
 }
