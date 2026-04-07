@@ -11,7 +11,7 @@ public static class ConfigMigrator
     /// The latest config schema version. Bump this and add a corresponding
     /// migration method each time the config shape changes.
     /// </summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     /// <summary>
     /// Ordered list of migrations. Index 0 = v1→v2, index 1 = v2→v3, etc.
@@ -20,6 +20,7 @@ public static class ConfigMigrator
     [
         MigrateV1ToV2,
         MigrateV2ToV3,
+        MigrateV3ToV4,
     ];
 
     /// <summary>
@@ -85,5 +86,18 @@ public static class ConfigMigrator
                 new ColorConfig { R = 1.00f, G = 0.80f, B = 0.00f, A = 1f }, // gold  — class 4
             ];
         }
+    }
+
+    /// <summary>
+    /// v3 → v4: LMU integration (TASK-905).
+    /// Appends "LMU" to <see cref="GlobalSettings.SimPriorityOrder"/> so existing
+    /// configs gain LMU detection without wiping the user's current priority order.
+    /// </summary>
+    private static void MigrateV3ToV4(AppConfig config)
+    {
+        config.GlobalSettings ??= new GlobalSettings();
+
+        if (!config.GlobalSettings.SimPriorityOrder.Contains("LMU"))
+            config.GlobalSettings.SimPriorityOrder.Add("LMU");
     }
 }

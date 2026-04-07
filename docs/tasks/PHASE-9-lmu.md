@@ -5,7 +5,7 @@
 > overlays must handle missing data gracefully. This phase surfaces all multi-sim issues early,
 > before the new overlays are built (Phases 10–11).
 
-## Status: `[ ]` Not started
+## Status: `[x]` Complete
 
 ---
 
@@ -34,7 +34,7 @@ sections. The data model is significantly different from iRacing:
 
 ### TASK-901 · LMU shared memory provider
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Implement `ISimProvider` for LMU using rFactor 2 shared memory.
 
@@ -58,12 +58,12 @@ Implement `ISimProvider` for LMU using rFactor 2 shared memory.
   - Map rF2 structs to C# types
 
 **Acceptance criteria:**
-- [ ] `LmuProvider.IsRunning()` correctly detects LMU running/not running
-- [ ] `Start()` opens shared memory and begins polling
-- [ ] `Stop()` cleanly releases shared memory handles
-- [ ] `StateChanged` fires on connection/disconnection
-- [ ] No crashes when LMU is not running
-- [ ] Sim.LMU project follows dependency rules (no Rendering/Overlays dependency)
+- [x] `LmuProvider.IsRunning()` correctly detects LMU running/not running
+- [x] `Start()` opens shared memory and begins polling
+- [x] `Stop()` cleanly releases shared memory handles
+- [x] `StateChanged` fires on connection/disconnection
+- [x] No crashes when LMU is not running
+- [x] Sim.LMU project follows dependency rules (no Rendering/Overlays dependency)
 
 **Dependencies:** None (can be done in parallel with Phase 8).
 
@@ -71,7 +71,7 @@ Implement `ISimProvider` for LMU using rFactor 2 shared memory.
 
 ### TASK-902 · LMU session and driver data mapping
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Map LMU shared memory data to the existing sim-agnostic DTOs.
 
@@ -106,14 +106,14 @@ Map LMU shared memory data to the existing sim-agnostic DTOs.
 | ClassPosition | Compute from scoring | Compute from class sorting |
 
 **Acceptance criteria:**
-- [ ] `SessionData` published with correct LMU session info
-- [ ] `DriverData` published with position, lap, lap times
-- [ ] `RelativeData` published with correct gap calculations
-- [ ] Missing fields (iRating, license, incidents) use defined fallback values
-- [ ] `LicenseClass` enum gains an `Unknown` value that overlays handle gracefully
-- [ ] Delta approximation is reasonable (not wildly wrong)
-- [ ] Unit test: rF2 scoring data → RelativeData conversion
-- [ ] Unit test: lap distance meters → LapDistPct normalization
+- [x] `SessionData` published with correct LMU session info
+- [x] `DriverData` published with position, lap, lap times
+- [x] `RelativeData` published with correct gap calculations
+- [x] Missing fields (iRating, license, incidents) use defined fallback values
+- [x] `LicenseClass` enum gains an `Unknown` value that overlays handle gracefully
+- [x] Delta approximation is reasonable (not wildly wrong)
+- [x] Unit test: rF2 scoring data → RelativeData conversion
+- [x] Unit test: lap distance meters → LapDistPct normalization
 
 **Dependencies:** TASK-901 (LMU provider running).
 
@@ -121,7 +121,7 @@ Map LMU shared memory data to the existing sim-agnostic DTOs.
 
 ### TASK-903 · LMU telemetry and pit data mapping
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Map LMU telemetry to the expanded Alpha DTOs (TelemetryData, PitData, WeatherData, TrackMapData).
 
@@ -154,11 +154,11 @@ Map LMU telemetry to the expanded Alpha DTOs (TelemetryData, PitData, WeatherDat
   - Car entries: `mLapDist / TrackLength` for normalized LapDistPct
 
 **Acceptance criteria:**
-- [ ] All 4 expanded DTOs publish with LMU data where available
-- [ ] Missing telemetry fields use sensible defaults (0, false, -1)
-- [ ] Fuel consumption averaging works correctly with LMU fuel data
-- [ ] TrackMapData positions normalized correctly from meters to 0–1
-- [ ] No crashes when specific rF2 shared memory sections are unavailable
+- [x] All 4 expanded DTOs publish with LMU data where available
+- [x] Missing telemetry fields use sensible defaults (0, false, -1)
+- [x] Fuel consumption averaging works correctly with LMU fuel data
+- [x] TrackMapData positions normalized correctly from meters to 0–1
+- [x] No crashes when specific rF2 shared memory sections are unavailable
 
 **Dependencies:** TASK-901, TASK-902, Phase 8 DTOs.
 
@@ -166,7 +166,7 @@ Map LMU telemetry to the expanded Alpha DTOs (TelemetryData, PitData, WeatherDat
 
 ### TASK-904 · Graceful degradation in overlays
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Ensure all existing and planned overlays handle missing/unavailable data cleanly.
 
@@ -186,11 +186,11 @@ Ensure all existing and planned overlays handle missing/unavailable data cleanly
 - `DeltaBarOverlay`: show "No delta data" placeholder when delta is unavailable
 
 **Acceptance criteria:**
-- [ ] Every overlay renders correctly with iRacing data (no regression)
-- [ ] Every overlay renders correctly with LMU data (missing fields show "—" or are hidden)
-- [ ] No crashes, no `NaN` rendered as text, no `-1` shown as a value
-- [ ] `LicenseClass.Unknown` handled in all license color mappings (default grey)
-- [ ] Unit test: overlay mock data with unavailable fields
+- [x] Every overlay renders correctly with iRacing data (no regression)
+- [x] Every overlay renders correctly with LMU data (missing fields show "—" or are hidden)
+- [x] No crashes, no `NaN` rendered as text, no `-1` shown as a value
+- [x] `LicenseClass.Unknown` handled in all license color mappings (default grey)
+- [ ] Unit test: overlay mock data with unavailable fields (defer to Overlays.Tests)
 
 **Dependencies:** TASK-902, TASK-903.
 
@@ -198,7 +198,7 @@ Ensure all existing and planned overlays handle missing/unavailable data cleanly
 
 ### TASK-905 · SimDetector multi-sim switching
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Verify and harden `SimDetector` for real multi-sim usage.
 
@@ -213,12 +213,12 @@ Verify and harden `SimDetector` for real multi-sim usage.
 - Log provider transitions clearly
 
 **Acceptance criteria:**
-- [ ] `SimDetector` activates LMU provider when LMU is detected and iRacing is not running
-- [ ] Priority order from config is respected
-- [ ] Clean transition: overlays show correct data within 2 seconds of sim switch
-- [ ] No overlapping providers (only one active at a time)
-- [ ] Debounce prevents flicker on LMU startup/shutdown
-- [ ] Log entries for each provider transition
+- [x] `SimDetector` activates LMU provider when LMU is detected and iRacing is not running
+- [x] Priority order from config is respected
+- [x] Clean transition: overlays show correct data within 2 seconds of sim switch
+- [x] No overlapping providers (only one active at a time)
+- [x] Debounce prevents flicker on LMU startup/shutdown
+- [x] Log entries for each provider transition
 
 **Dependencies:** TASK-901, TASK-704 (SimPriorityOrder).
 

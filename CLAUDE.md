@@ -9,9 +9,9 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 - Target: `net8.0-windows`, x64 only
 
 ## Current task
-**Phase 8 — Data pipeline extensions** `[x]` Complete
-Next: **Phase 9** — LMU sim provider / second sim integration
-File: `docs/tasks/PHASE-8-data-pipeline.md`
+**Phase 10 — New overlays (Part 1)** `[ ]` Not started
+File: `docs/tasks/PHASE-10-overlays-part1.md`
+Next: **TASK-1001** — first task in Phase 10
 
 ## Codebase map
 

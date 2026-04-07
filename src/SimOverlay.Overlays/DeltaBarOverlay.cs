@@ -72,6 +72,9 @@ public sealed class DeltaBarOverlay : BaseOverlay
         // Fall back to personal best when session best isn't available yet (value is 0).
         var sessionDelta   = driver?.LapDeltaVsSessionBest ?? 0f;
         var personalDelta  = driver?.LapDeltaVsBestLap     ?? 0f;
+        // Guard NaN sentinels (e.g. LMU where delta is not available).
+        if (float.IsNaN(sessionDelta))  sessionDelta  = 0f;
+        if (float.IsNaN(personalDelta)) personalDelta = 0f;
         var usingSessionBest = sessionDelta != 0f;
         var delta = usingSessionBest ? sessionDelta : personalDelta;
 
@@ -197,7 +200,7 @@ public sealed class DeltaBarOverlay : BaseOverlay
 
     private static string FormatDelta(float delta)
     {
-        if (delta == 0f) return " 0.000";
+        if (float.IsNaN(delta) || delta == 0f) return " 0.000";
         var s = delta.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
         return delta < 0f ? s : $"+{s}";
     }

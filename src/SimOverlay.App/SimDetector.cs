@@ -37,15 +37,21 @@ public sealed class SimDetector : IDisposable
     public event Action<ISimProvider?>? ActiveProviderChanged;
 
     public SimDetector(ISimDataBus bus, IReadOnlyList<ISimProvider> providers)
+        : this(bus, providers, TimeSpan.FromSeconds(2)) { }
+
+    // Internal constructor lets tests disable the timer by passing Timeout.InfiniteTimeSpan.
+    internal SimDetector(ISimDataBus bus, IReadOnlyList<ISimProvider> providers, TimeSpan pollInterval)
     {
         _bus       = bus;
         _providers = providers;
 
-        // Start immediately, then repeat every 2 seconds.
-        _timer = new Timer(Poll, null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
+        _timer = pollInterval == Timeout.InfiniteTimeSpan
+            ? new Timer(Poll, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan)
+            : new Timer(Poll, null, TimeSpan.Zero, pollInterval);
     }
 
-    private void Poll(object? state)
+    // Exposed as internal so SimDetectorTests can drive it synchronously.
+    internal void Poll(object? state = null)
     {
         if (_disposed)
             return;
@@ -63,11 +69,12 @@ public sealed class SimDetector : IDisposable
                     return;
                 }
 
-                AppLog.Info($"SimDetector: '{_activeProvider.SimId}' stopped — resuming detection.");
+                var stoppedId = _activeProvider.SimId;
                 _activeProvider.StateChanged -= OnProviderStateChanged;
                 _activeProvider.Stop();
                 _activeProvider = null;
                 _disconnectStrikes = 0;
+                AppLog.Info($"SimDetector: provider transition: '{stoppedId}' → (none)");
                 _bus.Publish(new SimStateChangedEvent(SimState.Disconnected));
                 ActiveProviderChanged?.Invoke(null);
             }
@@ -87,7 +94,7 @@ public sealed class SimDetector : IDisposable
                 if (!provider.IsRunning())
                     continue;
 
-                AppLog.Info($"SimDetector: '{provider.SimId}' detected — starting.");
+                AppLog.Info($"SimDetector: provider transition: (none) → '{provider.SimId}'");
                 _activeProvider = provider;
                 _activeProvider.StateChanged += OnProviderStateChanged;
                 _activeProvider.Start();
