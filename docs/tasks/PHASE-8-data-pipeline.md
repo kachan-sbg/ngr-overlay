@@ -4,13 +4,13 @@
 > New DTOs and poller channels — no rendering changes in this phase.
 > DTOs are designed to be sim-agnostic; LMU will implement the same interfaces in Phase 9.
 
-## Status: `[ ]` Not started
+## Status: `[x]` Complete
 
 ---
 
 ### TASK-801 · Telemetry DTOs and extraction
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Add real-time telemetry data types for input, speed, fuel, and gear.
 
@@ -35,11 +35,11 @@ Add real-time telemetry data types for input, speed, fuel, and gear.
 - Fuel consumption averaging: maintain a rolling buffer of last N green-flag laps; compute average per-lap consumption; publish the average (not raw per-tick burn rate)
 
 **Acceptance criteria:**
-- [ ] `TelemetryData` published at 60 Hz when connected
-- [ ] Throttle/Brake/Clutch values are 0.0–1.0 normalized
-- [ ] Fuel consumption is a rolling average over green-flag laps only (not under caution/pit)
-- [ ] `IncidentCount` reflects the driver's current session incident total
-- [ ] Unit test: fuel consumption averaging with mixed green/caution laps
+- [x] `TelemetryData` published at 60 Hz when connected
+- [x] Throttle/Brake/Clutch values are 0.0–1.0 normalized
+- [x] Fuel consumption is a rolling average over green-flag laps only (not under caution/pit)
+- [x] `IncidentCount` reflects the driver's current session incident total
+- [x] Unit test: fuel consumption averaging with mixed green/caution laps
 
 **Dependencies:** None.
 
@@ -47,7 +47,7 @@ Add real-time telemetry data types for input, speed, fuel, and gear.
 
 ### TASK-802 · Pit service data extraction
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Extract pit-related telemetry for the Pit Helper overlay.
 
@@ -83,11 +83,11 @@ Extract pit-related telemetry for the Pit Helper overlay.
 - Publish `PitData` at 10 Hz (every 6th tick, same as RelativeData)
 
 **Acceptance criteria:**
-- [ ] `PitData` published when connected
-- [ ] `PitLimiterSpeedMps` correctly reflects the track's pit road speed limit
-- [ ] `PitServiceFlags` correctly maps from iRacing's `PitSvFlags` bitmask
-- [ ] `FuelToAddLiters` reflects the current pit menu fuel amount
-- [ ] Works correctly when not on pit road (sensible defaults)
+- [x] `PitData` published when connected
+- [x] `PitLimiterSpeedMps` correctly reflects the track's pit road speed limit
+- [x] `PitServiceFlags` correctly maps from iRacing's `PitSvFlags` bitmask
+- [x] `FuelToAddLiters` reflects the current pit menu fuel amount
+- [x] Works correctly when not on pit road (sensible defaults)
 
 **Dependencies:** None.
 
@@ -95,7 +95,7 @@ Extract pit-related telemetry for the Pit Helper overlay.
 
 ### TASK-803 · Weather data extraction
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Extract current weather conditions for the Weather overlay. Current conditions only — no forecast complexity for Alpha.
 
@@ -118,11 +118,11 @@ Extract current weather conditions for the Weather overlay. Current conditions o
 - No forecast DTO — keep it simple. If iRacing exposes trivially accessible forecast vars, include them as optional fields in a future iteration.
 
 **Acceptance criteria:**
-- [ ] `WeatherData` published at ≤1 Hz
-- [ ] Wind direction is in degrees (0–360)
-- [ ] `TrackWetness` reflects the iRacing `TrackWetness` telemetry var
-- [ ] `Humidity` correctly normalized to 0.0–1.0
-- [ ] Existing `SessionData.AirTempC`/`TrackTempC` remain as-is (duplicated in WeatherData for Weather overlay convenience)
+- [x] `WeatherData` published at ≤1 Hz
+- [x] Wind direction is in degrees (0–360)
+- [x] `TrackWetness` reflects the iRacing `TrackWetness` telemetry var
+- [x] `Humidity` correctly normalized to 0.0–1.0
+- [x] Existing `SessionData.AirTempC`/`TrackTempC` remain as-is (duplicated in WeatherData for Weather overlay convenience)
 
 **Dependencies:** None.
 
@@ -130,7 +130,7 @@ Extract current weather conditions for the Weather overlay. Current conditions o
 
 ### TASK-804 · Track position data for Flat Map
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Extract per-car track position data for rendering a flat (linear) track map.
 
@@ -157,12 +157,12 @@ Extract per-car track position data for rendering a flat (linear) track map.
 - Publish `TrackMapData` at 10 Hz (same cadence as RelativeData)
 
 **Acceptance criteria:**
-- [ ] `TrackMapData` published at 10 Hz
-- [ ] All on-track cars included (spectators and pace cars excluded)
-- [ ] `LapDistPct` is 0.0–1.0 for each car
-- [ ] `IsInPit` correctly reflects cars on pit road
-- [ ] `CarNumber` and `Position` populated per car
-- [ ] `TrackLengthMeters` matches the iRacing session data
+- [x] `TrackMapData` published at 10 Hz
+- [x] All on-track cars included (spectators and pace cars excluded)
+- [x] `LapDistPct` is 0.0–1.0 for each car
+- [x] `IsInPit` correctly reflects cars on pit road
+- [x] `CarNumber` and `Position` populated per car
+- [x] `TrackLengthMeters` matches the iRacing session data
 
 **Dependencies:** TASK-705 (CarClass field).
 
