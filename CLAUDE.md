@@ -9,9 +9,13 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 - Target: `net8.0-windows`, x64 only
 
 ## Current task
-**Alpha complete** — Phases 7–11 all `[x]`.
-Phase 12 (OBS Mode & Enhanced UX) deferred — user to confirm next priorities.
-Next: **TASK-1201** — first task in Phase 12 when resumed.
+**v0.0.1 Alpha shipped** — Phases 7–11 all `[x]`.
+
+**Next priority: Phase 13 — Data Validation & Audit**
+First task: **TASK-1301** (iRacing field audit).
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for full post-alpha priority order.
+
+Phase 12 (OBS Mode & Enhanced UX) deferred to later — see TASKS.md.
 
 ## Codebase map
 
