@@ -5,7 +5,7 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 
 ## Collaboration model
 - User drives product direction, priorities, and review
-- Claude writes all code — never run `dotnet` or `msbuild` locally
+- Claude writes all code and may run `dotnet` (build, test, benchmark) locally in `G:\ngr-overlay`
 - Target: `net8.0-windows`, x64 only
 
 ## Current task

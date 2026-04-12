@@ -618,6 +618,8 @@ dotnet run -c Release --project tests/SimOverlay.Benchmarks -- --filter *Relativ
 
 **Baseline workflow:** after a significant feature lands, run the benchmarks, commit the JSON from `BenchmarkDotNet.Artifacts/results/` to `benchmarks/baseline/` on the reference machine. Future runs on the same machine can be compared against it to detect regressions.
 
+**Current baseline:** committed in the next commit after `acaf812` (pre-Phase-13 hotfixes). Files: `benchmarks/baseline/*-report-full.json`. Machine: AMD Ryzen 5 7535HS / .NET 8.0.25 / 2026-04-12. To find it: `git log --oneline -- benchmarks/baseline/`.
+
 ---
 
 ### 14. Resource Lifecycle & Memory
