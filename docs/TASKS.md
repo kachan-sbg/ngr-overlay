@@ -17,7 +17,7 @@ MVP phases (0–6) are archived in [`docs/archive/mvp/tasks/`](archive/mvp/tasks
 | 5 — Settings UI | `[x]` |
 | 6 — Polish | `[x]` |
 
-## Alpha
+## Alpha (complete — v0.0.1)
 
 | Phase | Status | File |
 |---|---|---|
@@ -26,4 +26,20 @@ MVP phases (0–6) are archived in [`docs/archive/mvp/tasks/`](archive/mvp/tasks
 | 9 — LMU integration | `[x]` | [PHASE-9-lmu.md](tasks/PHASE-9-lmu.md) |
 | 10 — New overlays (Part 1) | `[x]` | [PHASE-10-overlays-part1.md](tasks/PHASE-10-overlays-part1.md) |
 | 11 — New overlays (Part 2) | `[x]` | [PHASE-11-overlays-part2.md](tasks/PHASE-11-overlays-part2.md) |
-| 12 — OBS Mode & Enhanced UX | `[ ]` | [PHASE-12-obs-and-ux.md](tasks/PHASE-12-obs-and-ux.md) |
+
+## Post-Alpha
+
+Priority order reflects product direction as of v0.0.1.
+See [ROADMAP.md](ROADMAP.md) for full rationale and scope.
+
+| Phase | Status | Priority | File |
+|---|---|---|---|
+| 13 — Data validation & audit | `[ ]` | **1 — next** | [PHASE-13-data-validation.md](tasks/PHASE-13-data-validation.md) |
+| 14 — WebSocket server | `[ ]` | 2 | _(to be specced)_ |
+| 15 — Field visibility & layout config | `[ ]` | 3 | _(to be specced)_ |
+| 16 — Cross-sim data normalization | `[ ]` | 4 | _(to be specced)_ |
+| 17 — Radar overlay | `[ ]` | 5 | _(to be specced)_ |
+| 18 — Map overlay | `[ ]` | 6 | _(to be specced)_ |
+| 19 — ACC integration | `[ ]` | 7 | _(to be specced)_ |
+| 20 — Session-state-aware visibility | `[ ]` | 8 | _(to be specced)_ |
+| 12 — OBS Mode & Enhanced UX | `[ ]` | deferred | [PHASE-12-obs-and-ux.md](tasks/PHASE-12-obs-and-ux.md) |

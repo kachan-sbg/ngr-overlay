@@ -8,8 +8,8 @@ public interface ISimProvider
     string SimId { get; }
 
     /// <summary>
-    /// Fast check for whether the sim is running. Called every ~2 s from the detection loop.
-    /// Must not block or throw.
+    /// Fast check for whether the sim is running. Called on every detector poll tick
+    /// (every ~5 s by default). Must not block or throw.
     /// </summary>
     bool IsRunning();
 

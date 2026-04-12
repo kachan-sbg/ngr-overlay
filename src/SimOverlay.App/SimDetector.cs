@@ -6,50 +6,87 @@ using Timer = System.Threading.Timer;
 namespace SimOverlay.App;
 
 /// <summary>
-/// Polls all registered <see cref="ISimProvider"/> instances every
-/// <see cref="PollInterval"/> and starts / stops providers as sims appear
-/// or disappear.  Only one provider is active at a time; priority order is
-/// determined by the order of the <paramref name="providers"/> list.
-/// <para>
-/// Handles every startup-order scenario:
-/// overlay starts before sim, sim starts before overlay, or the user
-/// closes one sim and opens a different one mid-session.
-/// </para>
+/// Polls all registered <see cref="ISimProvider"/> instances on every tick and manages
+/// a single active provider lifecycle.
+///
+/// <para><b>Design rules</b></para>
+/// <list type="bullet">
+///   <item>All providers are polled on every tick regardless of which is active.</item>
+///   <item><b>First-connect wins:</b> the first provider to become
+///     <see cref="ProviderState.Available"/> is activated.  Once a provider is
+///     <see cref="ProviderState.Active"/>, no other provider can take over — even if a
+///     different sim starts while the active one is still running.  Switching only happens
+///     naturally: the active sim disconnects, then the next available sim is activated.</item>
+///   <item>Disconnect is debounced: the active provider must report
+///     <see cref="ISimProvider.IsRunning"/> == <c>false</c> for
+///     <see cref="DisconnectThreshold"/> consecutive ticks before it is stopped.  If it
+///     comes back before the threshold is reached it recovers to
+///     <see cref="ProviderState.Active"/> without a restart.</item>
+///   <item>All transitions and the current state of every provider are observable at any
+///     time via <see cref="ProviderStates"/>.</item>
+/// </list>
 /// </summary>
 public sealed class SimDetector : IDisposable
 {
     /// <summary>How often all providers are polled.</summary>
-    public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Consecutive IsRunning()==false results required before the active
-    /// provider is stopped.  At 10-second intervals this is 20 seconds —
-    /// long enough to ignore brief SDK hiccups without feeling sluggish.
+    /// Consecutive <see cref="ISimProvider.IsRunning"/> == <c>false</c> results required
+    /// before the active provider is stopped and a disconnect is published.
+    /// At a 5-second interval this is 15 seconds — long enough to absorb brief SDK hiccups
+    /// without feeling sluggish.
     /// </summary>
-    private const int DisconnectThreshold = 2;
+    private const int DisconnectThreshold = 3;
 
     private readonly ISimDataBus _bus;
     private readonly IReadOnlyList<ISimProvider> _providers;
+    private readonly Dictionary<ISimProvider, ProviderState> _states = new();
+    private readonly Dictionary<ISimProvider, int> _strikes = new();
     private readonly Timer _timer;
 
+    // The one provider that is currently Active or Disconnecting.
+    // Null when no provider has been activated.
     private ISimProvider? _activeProvider;
-    private int  _disconnectStrikes;
     private bool _disposed;
 
+    // ── Public surface ────────────────────────────────────────────────────────
+
     /// <summary>
-    /// Fires when the active provider changes (null = no sim running).
+    /// Fires when the active provider changes.
+    /// <c>null</c> = no sim is currently active.
     /// Raised on a ThreadPool thread.
     /// </summary>
     public event Action<ISimProvider?>? ActiveProviderChanged;
 
+    /// <summary>
+    /// A point-in-time snapshot of the state of every registered provider,
+    /// keyed by <see cref="ISimProvider.SimId"/>.
+    /// Safe to call from any thread.
+    /// </summary>
+    public IReadOnlyDictionary<string, ProviderState> ProviderStates =>
+        _states.ToDictionary(kv => kv.Key.SimId, kv => kv.Value);
+
+    /// <summary>The SimId of the currently active provider, or <c>null</c>.</summary>
+    public string? ActiveSimId => _activeProvider?.SimId;
+
+    // ── Construction ──────────────────────────────────────────────────────────
+
     public SimDetector(ISimDataBus bus, IReadOnlyList<ISimProvider> providers)
         : this(bus, providers, PollInterval) { }
 
-    // Internal constructor lets tests disable the timer by passing Timeout.InfiniteTimeSpan.
+    // Internal constructor lets tests disable the automatic timer by passing
+    // Timeout.InfiniteTimeSpan and driving Poll() synchronously.
     internal SimDetector(ISimDataBus bus, IReadOnlyList<ISimProvider> providers, TimeSpan pollInterval)
     {
         _bus       = bus;
         _providers = providers;
+
+        foreach (var p in providers)
+        {
+            _states[p]  = ProviderState.Idle;
+            _strikes[p] = 0;
+        }
 
         _timer = pollInterval == Timeout.InfiniteTimeSpan
             ? new Timer(Poll, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan)
@@ -58,104 +95,146 @@ public sealed class SimDetector : IDisposable
 
     // ── Poll ──────────────────────────────────────────────────────────────────
 
-    // Exposed as internal so SimDetectorTests can drive it synchronously.
-    internal void Poll(object? state = null)
+    // Exposed as internal so tests can drive it synchronously without any timer.
+    internal void Poll(object? _ = null)
     {
         if (_disposed) return;
 
-        // Check all providers in priority order; the first one that reports
-        // IsRunning() is the "preferred" provider for this tick.
-        ISimProvider? preferred = null;
-        foreach (var p in _providers)
+        // ── Step 1: update every provider's state based on IsRunning() ────────
+
+        foreach (var provider in _providers)
         {
-            try
-            {
-                if (p.IsRunning()) { preferred = p; break; }
-            }
+            bool running;
+            try   { running = provider.IsRunning(); }
             catch (Exception ex)
             {
-                AppLog.Exception($"SimDetector: error checking '{p.SimId}'", ex);
-            }
-        }
-
-        // ── Nothing changed ───────────────────────────────────────────────────
-        if (preferred == _activeProvider)
-        {
-            _disconnectStrikes = 0;
-            return;
-        }
-
-        // ── Sim switch: different sim now takes priority ───────────────────────
-        // (e.g. user closed LMU and opened iRacing, or vice-versa)
-        if (preferred != null && _activeProvider != null)
-        {
-            AppLog.Info(
-                $"SimDetector: sim switch — '{_activeProvider.SimId}' → '{preferred.SimId}'");
-            StopActive();
-            StartProvider(preferred);
-            return;
-        }
-
-        // ── Active sim stopped, no other sim available ────────────────────────
-        if (preferred == null && _activeProvider != null)
-        {
-            _disconnectStrikes++;
-            if (_disconnectStrikes < DisconnectThreshold)
-            {
-                AppLog.Info(
-                    $"SimDetector: '{_activeProvider.SimId}' IsRunning()==false " +
-                    $"(strike {_disconnectStrikes}/{DisconnectThreshold}) — waiting.");
-                return;
+                AppLog.Exception($"SimDetector: IsRunning() threw for '{provider.SimId}'", ex);
+                running = false;
             }
 
-            AppLog.Info($"SimDetector: '{_activeProvider.SimId}' confirmed stopped.");
-            StopActive();
-            return;
+            TransitionState(provider, running);
         }
 
-        // ── New sim detected, nothing was active ──────────────────────────────
-        if (preferred != null)
+        // ── Step 2: if nothing is active, activate the first Available provider ─
+
+        if (_activeProvider == null)
         {
-            _disconnectStrikes = 0;
-            StartProvider(preferred);
+            var candidate = _providers.FirstOrDefault(p => _states[p] == ProviderState.Available);
+            if (candidate != null)
+                Activate(candidate);
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── State machine ─────────────────────────────────────────────────────────
 
-    private void StartProvider(ISimProvider provider)
+    private void TransitionState(ISimProvider provider, bool running)
+    {
+        switch (_states[provider])
+        {
+            case ProviderState.Idle:
+                if (running)
+                {
+                    _states[provider] = ProviderState.Available;
+                    AppLog.Info($"SimDetector: '{provider.SimId}' → Available.");
+                }
+                break;
+
+            case ProviderState.Available:
+                if (!running)
+                {
+                    _states[provider] = ProviderState.Idle;
+                    AppLog.Info($"SimDetector: '{provider.SimId}' → Idle (disappeared before activation).");
+                }
+                // Still Available — Step 2 will activate it if no other provider is active.
+                break;
+
+            case ProviderState.Active:
+                if (!running)
+                {
+                    // First false read: enter Disconnecting with strike 1.
+                    _strikes[provider] = 1;
+                    _states[provider]  = ProviderState.Disconnecting;
+                    AppLog.Info(
+                        $"SimDetector: '{provider.SimId}' → Disconnecting " +
+                        $"(strike 1/{DisconnectThreshold}).");
+                }
+                // Still running fine — no change.
+                break;
+
+            case ProviderState.Disconnecting:
+                if (running)
+                {
+                    // Recovered — return to Active without restarting the poller.
+                    _strikes[provider] = 0;
+                    _states[provider]  = ProviderState.Active;
+                    AppLog.Info($"SimDetector: '{provider.SimId}' → Active (recovered).");
+                }
+                else
+                {
+                    _strikes[provider]++;
+                    if (_strikes[provider] >= DisconnectThreshold)
+                    {
+                        // Confirmed dead.
+                        AppLog.Info(
+                            $"SimDetector: '{provider.SimId}' confirmed disconnected " +
+                            $"after {_strikes[provider]} strikes.");
+                        Deactivate(provider);
+                    }
+                    else
+                    {
+                        AppLog.Info(
+                            $"SimDetector: '{provider.SimId}' still Disconnecting " +
+                            $"(strike {_strikes[provider]}/{DisconnectThreshold}).");
+                    }
+                }
+                break;
+        }
+    }
+
+    // ── Activate / Deactivate ─────────────────────────────────────────────────
+
+    private void Activate(ISimProvider provider)
     {
         try
         {
-            AppLog.Info($"SimDetector: starting '{provider.SimId}'");
-            _activeProvider = provider;
-            _activeProvider.StateChanged += OnProviderStateChanged;
-            _activeProvider.Start();
-            ActiveProviderChanged?.Invoke(_activeProvider);
+            AppLog.Info($"SimDetector: activating '{provider.SimId}'.");
+            _activeProvider    = provider;
+            _states[provider]  = ProviderState.Active;
+            _strikes[provider] = 0;
+
+            provider.StateChanged += OnProviderStateChanged;
+            provider.Start();
+
+            ActiveProviderChanged?.Invoke(provider);
         }
         catch (Exception ex)
         {
-            AppLog.Exception($"SimDetector: error starting '{provider.SimId}'", ex);
-            _activeProvider = null;
+            AppLog.Exception($"SimDetector: error activating '{provider.SimId}'", ex);
+            // Roll back to Idle so the next poll can try again.
+            provider.StateChanged -= OnProviderStateChanged;
+            _states[provider]  = ProviderState.Idle;
+            _activeProvider    = null;
         }
     }
 
-    private void StopActive()
+    private void Deactivate(ISimProvider provider)
     {
-        if (_activeProvider == null) return;
-        var id = _activeProvider.SimId;
-        _activeProvider.StateChanged -= OnProviderStateChanged;
-        _activeProvider.Stop();
-        _activeProvider = null;
-        _disconnectStrikes = 0;
-        AppLog.Info($"SimDetector: stopped '{id}'");
+        AppLog.Info($"SimDetector: deactivating '{provider.SimId}'.");
+        provider.StateChanged -= OnProviderStateChanged;
+        _states[provider]     = ProviderState.Idle;
+        _strikes[provider]    = 0;
+        _activeProvider       = null;
+
+        try   { provider.Stop(); }
+        catch (Exception ex) { AppLog.Exception($"SimDetector: error stopping '{provider.SimId}'", ex); }
+
         _bus.Publish(new SimStateChangedEvent(SimState.Disconnected));
         ActiveProviderChanged?.Invoke(null);
     }
 
     private void OnProviderStateChanged(SimState state)
     {
-        AppLog.Info($"SimDetector: state → {state}");
+        AppLog.Info($"SimDetector: provider state → {state}");
         _bus.Publish(new SimStateChangedEvent(state));
     }
 
@@ -165,6 +244,7 @@ public sealed class SimDetector : IDisposable
     {
         _disposed = true;
         _timer.Dispose();
-        StopActive();
+        if (_activeProvider != null)
+            Deactivate(_activeProvider);
     }
 }
