@@ -96,21 +96,48 @@ public class SimDetectorTests
     }
 
     [Fact]
-    public void Poll_OnlyOneProviderActiveAtATime()
+    public void Poll_OnlyOneProviderActiveAtATime_HighestPriorityWins()
     {
         var bus = new MockDataBus();
         var p1  = new MockProvider("iRacing") { Running = true };
         var p2  = new MockProvider("LMU")     { Running = true };
         using var det = MakeDetector(bus, [p1, p2]);
 
-        det.Poll(); // activates p1
+        det.Poll(); // activates p1 (higher priority — first in list)
 
-        // Even though p2 is also running, p1 stays active — no switching mid-session.
+        // Both still running; p1 is still the highest-priority running sim,
+        // so no switch occurs.
         det.Poll();
         det.Poll();
 
         Assert.True(p1.Started);
         Assert.False(p2.Started);
+    }
+
+    [Fact]
+    public void Poll_SwitchesToHigherPrioritySimWhileLowerIsActive()
+    {
+        var bus = new MockDataBus();
+        var p1  = new MockProvider("iRacing") { Running = false }; // higher priority, not running yet
+        var p2  = new MockProvider("LMU")     { Running = true  }; // lower priority, running
+        using var det = MakeDetector(bus, [p1, p2]);
+
+        det.Poll(); // p2 activates (p1 not running)
+        Assert.True(p2.Started);
+        Assert.False(p1.Started);
+
+        // User now starts iRacing — higher-priority sim appears.
+        p1.Running = true;
+
+        var changes = new List<ISimProvider?>();
+        det.ActiveProviderChanged += p => changes.Add(p);
+        det.Poll(); // should stop p2 and start p1
+
+        Assert.True(p2.Stopped);
+        Assert.True(p1.Started);
+        Assert.Equal(2, changes.Count); // deactivate p2, activate p1
+        Assert.Null(changes[0]);        // deactivate event
+        Assert.Same(p1, changes[1]);    // activate event
     }
 
     [Fact]

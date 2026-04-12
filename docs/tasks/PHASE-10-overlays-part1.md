@@ -3,13 +3,13 @@
 > **Goal:** Implement the three most-requested overlay types: Input Telemetry, Fuel Calculator, and Standings.
 > All overlays must handle missing data gracefully (LMU from Phase 9 may not provide all fields).
 
-## Status: `[ ]` Not started
+## Status: `[x]` Complete
 
 ---
 
 ### TASK-1001 · Input Telemetry overlay
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Real-time visualization of driver inputs: throttle, brake, clutch, steering, gear, and speed.
 
@@ -52,13 +52,13 @@ Real-time visualization of driver inputs: throttle, brake, clutch, steering, gea
 - `throttleColor`, `brakeColor`, `clutchColor` (ColorConfig)
 
 **Acceptance criteria:**
-- [ ] Bars render at correct fill proportions for both iRacing and LMU
-- [ ] Scrolling trace shows 5 seconds of history, scrolls smoothly
-- [ ] Gear displays correctly (-1=R, 0=N, 1–8)
-- [ ] Speed unit conversion correct (m/s → km/h or mph)
-- [ ] All sub-components individually toggleable via config
-- [ ] Mock data shows realistic input pattern in edit mode
-- [ ] Stream override works for all new config fields
+- [x] Bars render at correct fill proportions for both iRacing and LMU
+- [x] Scrolling trace shows 5 seconds of history, scrolls smoothly
+- [x] Gear displays correctly (-1=R, 0=N, 1–8)
+- [x] Speed unit conversion correct (m/s → km/h or mph)
+- [x] All sub-components individually toggleable via config
+- [x] Mock data shows realistic input pattern in edit mode
+- [x] Stream override works for all new config fields
 
 **Dependencies:** TASK-801 (TelemetryData), TASK-706 (overlay registration).
 
@@ -66,7 +66,7 @@ Real-time visualization of driver inputs: throttle, brake, clutch, steering, gea
 
 ### TASK-1002 · Fuel Calculator overlay
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Read-only fuel management overlay: consumption tracking, laps remaining estimate, fuel-to-add calculation. No sim interaction — estimation only.
 
@@ -112,15 +112,15 @@ Read-only fuel management overlay: consumption tracking, laps remaining estimate
 - `showFuelMargin` (bool, default true)
 
 **Acceptance criteria:**
-- [ ] Fuel level displays in configured unit with correct L↔gal conversion
-- [ ] Laps remaining = level / avg consumption
-- [ ] Fuel to finish accounts for session type (lap-limited vs time-limited)
-- [ ] Safety margin adds configurable extra fuel
-- [ ] "PIT ADD" row is prominently styled (bold or accent color)
-- [ ] Shows "—" for computed fields until at least 1 green-flag lap of data
-- [ ] Practice/Quali mode: shows laps remaining, hides "needed to finish" section
-- [ ] Mock data in edit mode
-- [ ] Works with both iRacing and LMU fuel data
+- [x] Fuel level displays in configured unit with correct L↔gal conversion
+- [x] Laps remaining = level / avg consumption
+- [x] Fuel to finish accounts for session type (lap-limited vs time-limited)
+- [x] Safety margin adds configurable extra fuel
+- [x] "PIT ADD" row is prominently styled (bold or accent color)
+- [x] Shows "—" for computed fields until at least 1 green-flag lap of data
+- [x] Practice/Quali mode: shows laps remaining, hides "needed to finish" section
+- [x] Mock data in edit mode
+- [x] Works with both iRacing and LMU fuel data
 
 **Dependencies:** TASK-801 (TelemetryData), TASK-706 (overlay registration).
 
@@ -128,7 +128,7 @@ Read-only fuel management overlay: consumption tracking, laps remaining estimate
 
 ### TASK-1003 · Standings overlay
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Full-field leaderboard showing all drivers sorted by race position, with multi-class support.
 
@@ -174,16 +174,16 @@ Full-field leaderboard showing all drivers sorted by race position, with multi-c
 - `maxStandingsRows` (int, 10–60, default 30)
 
 **Acceptance criteria:**
-- [ ] All drivers in session shown (not just ±15)
-- [ ] Sorted by overall position in Combined mode
-- [ ] Class separators shown in ClassGrouped mode
-- [ ] Class badge colored with class color from session data
-- [ ] Gap to leader computed correctly (lapped cars show "+N LAP(S)")
-- [ ] Player row highlighted
-- [ ] Multi-class and single-class sessions both work
-- [ ] iRating column auto-hidden when data unavailable (LMU)
-- [ ] Mock data shows a multi-class scenario
-- [ ] Configurable column visibility
+- [x] All drivers in session shown (not just ±15)
+- [x] Sorted by overall position in Combined mode
+- [x] Class separators shown in ClassGrouped mode
+- [x] Class badge colored with class color from session data
+- [x] Gap to leader computed correctly (lapped cars show "+N LAP(S)")
+- [x] Player row highlighted
+- [x] Multi-class and single-class sessions both work
+- [x] iRating column auto-hidden when data unavailable (LMU)
+- [x] Mock data shows a multi-class scenario
+- [x] Configurable column visibility
 
 **Dependencies:** TASK-705 (multi-class data model), TASK-706 (overlay registration). Need to either modify `IRacingRelativeCalculator` or add a separate standings data publisher.
 

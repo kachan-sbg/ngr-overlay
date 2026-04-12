@@ -44,20 +44,18 @@ public class LmuSessionDecoderTests
     // ── Vehicle class derivation ──────────────────────────────────────────────
 
     [Fact]
-    public void DeriveClass_UsesExpansionVehicleClass_WhenPopulated()
+    public void DeriveClass_UsesVehicleClassField_WhenPopulated()
     {
-        var expansion = new byte[48];
-        System.Text.Encoding.ASCII.GetBytes("LMDh\0").CopyTo(expansion, 4);
-
-        var v = MakeVehicle("LMDh_Porsche_963", expansion);
+        // VehicleClass is now a direct struct field in LmuVehicleScoring.
+        var v = MakeVehicle("LMDh_Porsche_963", vehicleClass: "LMDh");
 
         Assert.Equal("LMDh", LmuSessionDecoder.DeriveClass(in v));
     }
 
     [Fact]
-    public void DeriveClass_FallsBackToVehicleNamePrefix_WhenExpansionEmpty()
+    public void DeriveClass_FallsBackToVehicleNamePrefix_WhenVehicleClassEmpty()
     {
-        var v = MakeVehicle("LMH_GlickenHaus_007", new byte[48]);
+        var v = MakeVehicle("LMH_GlickenHaus_007", vehicleClass: "");
 
         Assert.Equal("LMH", LmuSessionDecoder.DeriveClass(in v));
     }
@@ -65,7 +63,7 @@ public class LmuSessionDecoderTests
     [Fact]
     public void DeriveClass_SpaceDelimiter_ExtractsFirstToken()
     {
-        var v = MakeVehicle("GT3 Ferrari 296", new byte[48]);
+        var v = MakeVehicle("GT3 Ferrari 296", vehicleClass: "");
 
         Assert.Equal("GT3", LmuSessionDecoder.DeriveClass(in v));
     }
@@ -78,13 +76,13 @@ public class LmuSessionDecoderTests
         var info = MakeScoringInfo(session: 10, numVehicles: 2, trackName: "Le Mans");
         var vehicles = new[]
         {
-            MakeVehicle("LMH_Toyota_GR010", new byte[48], id: 1, driverName: "T. Kobayashi"),
-            MakeVehicle("LMH_Toyota_GR010", new byte[48], id: 2, driverName: "S. Buemi"),
+            MakeVehicle("LMH_Toyota_GR010", id: 1, driverName: "T. Kobayashi"),
+            MakeVehicle("LMH_Toyota_GR010", id: 2, driverName: "S. Buemi"),
         };
 
         var (session, drivers) = LmuSessionDecoder.Decode(info, vehicles);
 
-        Assert.Equal("Le Mans",      session.TrackName);
+        Assert.Equal("Le Mans",        session.TrackName);
         Assert.Equal(SessionType.Race, session.SessionType);
         Assert.Equal(2, drivers.Count);
     }
@@ -92,15 +90,11 @@ public class LmuSessionDecoderTests
     [Fact]
     public void Decode_LicenseAndRatingAreUnavailable()
     {
-        // Drivers returned by session decoder should have Unknown class and empty level.
-        // This is tested indirectly through the relative calculator — the decoder only
-        // produces LmuDriverSnapshot which does not carry license data.
         var info     = MakeScoringInfo(session: 10, numVehicles: 1);
-        var vehicles = new[] { MakeVehicle("LMH_Car", new byte[48], id: 1, driverName: "Driver A") };
+        var vehicles = new[] { MakeVehicle("LMH_Car", id: 1, driverName: "Driver A") };
 
         var (_, drivers) = LmuSessionDecoder.Decode(info, vehicles);
 
-        // LmuDriverSnapshot has no IRating / LicenseClass fields — confirmed absence.
         Assert.Single(drivers);
         Assert.Equal("Driver A", drivers[0].DriverName);
     }
@@ -111,9 +105,9 @@ public class LmuSessionDecoderTests
         var info = MakeScoringInfo(session: 10, numVehicles: 3);
         var vehicles = new[]
         {
-            MakeVehicle("LMH_Car", new byte[48], id: 1, driverName: "Active1"),
-            new Rf2VehicleScoring { Id = 2, DriverName = "", LapDist = -1 }, // inactive
-            MakeVehicle("LMH_Car", new byte[48], id: 3, driverName: "Active2"),
+            MakeVehicle("LMH_Car", id: 1, driverName: "Active1"),
+            new LmuVehicleScoring { Id = 2, DriverName = "", LapDist = -1, UpgradePack = new byte[16], Expansion = new byte[4], PitGroup = "" }, // inactive
+            MakeVehicle("LMH_Car", id: 3, driverName: "Active2"),
         };
 
         var (_, drivers) = LmuSessionDecoder.Decode(info, vehicles);
@@ -125,21 +119,15 @@ public class LmuSessionDecoderTests
     [Fact]
     public void Decode_MultipleClasses_CarClassesPopulated()
     {
-        var expansion_lmh  = new byte[48];
-        var expansion_lmdh = new byte[48];
-        System.Text.Encoding.ASCII.GetBytes("LMH\0").CopyTo(expansion_lmh, 4);
-        System.Text.Encoding.ASCII.GetBytes("LMDh\0").CopyTo(expansion_lmdh, 4);
-
         var info = MakeScoringInfo(session: 10, numVehicles: 2);
         var vehicles = new[]
         {
-            MakeVehicle("LMH_Car",  expansion_lmh,  id: 1, driverName: "A"),
-            MakeVehicle("LMDh_Car", expansion_lmdh, id: 2, driverName: "B"),
+            MakeVehicle("LMH_Car",  id: 1, driverName: "A", vehicleClass: "LMH"),
+            MakeVehicle("LMDh_Car", id: 2, driverName: "B", vehicleClass: "LMDh"),
         };
 
         var (session, drivers) = LmuSessionDecoder.Decode(info, vehicles);
 
-        // With 2 distinct classes, CarClasses list should be populated.
         Assert.Equal(2, session.CarClasses.Count);
         var classNames = session.CarClasses.Select(c => c.ClassName).OrderBy(x => x).ToList();
         Assert.Contains("LMH",  classNames);
@@ -148,13 +136,13 @@ public class LmuSessionDecoderTests
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static Rf2ScoringInfo MakeScoringInfo(
+    private static LmuScoringInfo MakeScoringInfo(
         int    session     = 10,
         int    numVehicles = 0,
         string trackName   = "Test Track",
         double lapDist     = 6000.0)
     {
-        return new Rf2ScoringInfo
+        return new LmuScoringInfo
         {
             TrackName      = trackName,
             Session        = session,
@@ -162,38 +150,36 @@ public class LmuSessionDecoderTests
             LapDist        = lapDist,
             CurrentET      = 600.0,
             EndET          = 3600.0,
-            Temperature    = 22.0,
+            AmbientTempC   = 22.0,
+            TrackTempC     = 30.0,
             MaxPathWetness = 0.0,
             Raining        = 0.0,
             InRealtime     = 1,
             PlayerName     = "TestPlayer",
-            SectorFlag     = [0, 0, 0],
-            Expansion      = new byte[256],
+            SectorFlag     = new byte[3],
+            ResultsStreamPtr = new byte[8],
+            Expansion      = new byte[187],
+            VehiclePointer = new byte[8],
         };
     }
 
-    private static Rf2VehicleScoring MakeVehicle(
+    private static LmuVehicleScoring MakeVehicle(
         string vehicleName,
-        byte[] expansion,
-        int    id         = 1,
-        string driverName = "Driver")
+        int    id           = 1,
+        string driverName   = "Driver",
+        string vehicleClass = "LMH")
     {
-        return new Rf2VehicleScoring
+        return new LmuVehicleScoring
         {
-            Id            = id,
-            DriverName    = driverName,
-            VehicleName   = vehicleName,
-            TotalLaps     = 5,
-            LapDist       = 3000.0,
-            Expansion     = expansion,
-            Pos           = [0.0, 0.0, 0.0],
-            LocalVel      = [0.0, 0.0, 0.0],
-            LocalAccel    = [0.0, 0.0, 0.0],
-            Ori           = [1,0,0, 0,1,0, 0,0,1],
-            LocalRot      = [0.0, 0.0, 0.0],
-            LocalRotAccel = [0.0, 0.0, 0.0],
-            UpgradePack   = new byte[16],
-            PitGroup      = "",
+            Id           = id,
+            DriverName   = driverName,
+            VehicleName  = vehicleName,
+            VehicleClass = vehicleClass,
+            TotalLaps    = 5,
+            LapDist      = 3000.0,
+            UpgradePack  = new byte[16],
+            PitGroup     = "",
+            Expansion    = new byte[4],
         };
     }
 }

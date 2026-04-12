@@ -103,7 +103,7 @@ public partial class GlobalSettingsPanel : UserControl
             if (enable)
             {
                 var exePath = Environment.ProcessPath
-                    ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+                    ?? System.AppContext.BaseDirectory + AppDomain.CurrentDomain.FriendlyName + ".exe";
                 key.SetValue(RunValueName, $"\"{exePath}\"");
             }
             else

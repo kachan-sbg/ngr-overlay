@@ -118,6 +118,19 @@ ISimProvider
   void Stop()
   event Action<SimState> StateChanged
 
+StandingsData                          // published at ~10 Hz (same cadence as RelativeData)
+  IReadOnlyList<StandingsEntry> Entries // all on-track drivers sorted by race position
+
+StandingsEntry                         // one row in the full-field standings
+  int Position                         // overall race position
+  int ClassPosition                    // position within car class
+  string CarNumber / DriverName / CarClass / IRating
+  ColorConfig ClassColor
+  float GapToLeaderSeconds             // 0 for leader
+  int LapDifference                    // laps behind leader
+  TimeSpan BestLapTime                 // Zero = no lap set
+  bool IsPlayer
+
 SessionData                            // published at ~1 Hz or on change
   string TrackName
   SessionType SessionType              // Practice, Qualify, Race, TimeTrial, etc.
@@ -221,6 +234,12 @@ Responsibility: concrete overlay implementations. Each class inherits `BaseOverl
 - `RelativeOverlay`
 - `SessionInfoOverlay`
 - `DeltaBarOverlay`
+- `InputTelemetryOverlay` — vertical pedal bars (T/B/C), gear+speed header, scrolling 5-second trace
+- `FuelCalculatorOverlay` — read-only fuel level, avg/lap, laps remaining, fuel-to-finish, pit-add with safety margin
+- `StandingsOverlay` — full-field leaderboard; Combined + ClassGrouped modes; subscribes to `StandingsData`
+- `PitHelperOverlay` — pit limiter speed/compliance (on pit road), compact mode + next-stop estimate (off road)
+- `WeatherOverlay` — air/track temp, wind with compass, humidity, sky, track wetness; rows hidden when unavailable
+- `FlatTrackMapOverlay` — horizontal bar with per-car ticks at LapDistPct; multi-class colors; label overlap mitigation
 
 Detailed specifications in OVERLAYS.md.
 
@@ -239,13 +258,13 @@ Key types:
 - Hosts the WPF or WinUI3 settings window (loaded lazily on tray icon click).
 
 `SimDetector`
-- Runs a background timer every 2 seconds.
-- Iterates the ordered list of registered `ISimProvider` instances.
-- Calls `provider.IsRunning()` on each.
-- When a provider transitions to running: calls `provider.Start()`, sets it as the active provider.
-- When the active provider is no longer running: calls `provider.Stop()`, resumes detection.
-- Only one provider is active at a time (constraint from requirements).
-- Fires `ActiveProviderChanged` event.
+- Runs a background timer every 10 seconds.
+- On every tick, polls **all** registered `ISimProvider` instances in priority order, picking the first one that reports `IsRunning()` as the "preferred" provider.
+- When a new preferred provider appears with nothing active: calls `provider.Start()`, sets it as active; fires `ActiveProviderChanged`.
+- Sim switching: if a higher-priority sim starts while a lower-priority one is active, `StopActive()` then `StartProvider()` in the same tick — no manual intervention required.
+- Disconnect debounce: the active provider must report `IsRunning()==false` for **2 consecutive ticks** (≈20 s) before it is stopped — avoids false disconnects from transient SDK hiccups.
+- Only one provider is active at a time; priority is determined by the order of the provider list.
+- Fires `ActiveProviderChanged` event (null = no sim active); forwards provider `StateChanged` to the data bus as `SimStateChangedEvent`.
 
 `TrayIconController`
 - `System.Windows.Forms.NotifyIcon` (requires `<UseWindowsForms>true</UseWindowsForms>`).
@@ -487,17 +506,17 @@ Transition: `SimDataBus` publishes an `EditModeChangedEvent`. Each overlay respo
 ### 9. Extensibility: Adding a New Sim
 
 **LMU (Le Mans Ultimate)** is the second sim provider, implemented in `SimOverlay.Sim.LMU` (Phase 9).
-It uses the rFactor 2 shared memory plugin (`$rFactor2SMMP_Scoring$`, `$rFactor2SMMP_Telemetry$`).
+It uses LMU's **native** `LMU_Data` shared memory buffer — distinct from the rF2 plugin MMF names.
+All struct layouts and field offsets are derived from the official Studio 397 plugin SDK headers
+(`InternalsPlugin.hpp` / `SharedMemoryInterface.hpp`).
 
 #### LMU-specific notes
-- Detection: `MemoryMappedFile.OpenExisting("$rFactor2SMMP_Scoring$")` — same pattern as iRacing.
-- Struct layout: `[StructLayout(Sequential, Pack=4)]` matching 64-bit rF2 `#pragma pack(4)`.
-- Version-bump reads: `VersionUpdateBegin == VersionUpdateEnd` before/after reading = no torn write.
-- Telemetry stride is computed from the file size at runtime (robust to plugin version changes).
-- No iRating / license / incidents — use `LicenseClass.Unknown`, `IRating=0`, `IncidentCount=-1`.
+- Detection: `MemoryMappedFile.OpenExisting("LMU_Data")` — tried every 16 ms inside `LmuPoller.Poll()` until it succeeds, making startup order irrelevant (overlay can start before or after the game).
+- **Pack rule**: `InternalsPlugin.hpp` wraps all game structs in `#pragma pack(push,4)` … `#pragma pack(pop)` (lines 24–1106). `SharedMemoryInterface.hpp` defines the container structs (`SharedMemoryScoringData`, `SharedMemoryTelemetryData`) **after** the pop, so those use **default 8-byte packing** on x64. This causes 4 bytes of implicit padding between `ScoringInfoV01` (alignof=4) and the following `size_t scoringStreamSize` (alignof=8), shifting `vehScoringInfo[]` to absolute offset **2192**.
+- Telemetry player index: `SharedMemoryTelemetryData` header byte `[+1]` (`playerVehicleIdx`) is the authoritative index into `telemInfo[]` — not the scoring array index.
+- No iRating / license / incidents — publish `LicenseClass.Unknown`, `IRating=0`, `IncidentCount=-1`.
 - Lap distance is metres, not percentage: normalise `lapDistPct = mLapDist / TrackLength`.
-- Vehicle class: from V02 expansion bytes `[4..35]`; falls back to first token of `VehicleName`.
-- Race position: from V02 expansion `[0..3]`; falls back to 0 when plugin version doesn't populate it.
+- In-session state: tracked via `InRealtime` flag (can flip without any session-key change, e.g. race start after formation lap), evaluated every tick outside `HandleSessionChange`.
 
 #### Adding a further sim (e.g. Assetto Corsa Competizione):
 

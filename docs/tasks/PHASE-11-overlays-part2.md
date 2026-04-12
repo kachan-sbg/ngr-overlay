@@ -3,13 +3,13 @@
 > **Goal:** Implement Pit Helper, Weather, and Flat Track Map overlays.
 > All overlays must handle missing data gracefully across both iRacing and LMU.
 
-## Status: `[ ]` Not started
+## Status: `[x]` Complete
 
 ---
 
 ### TASK-1101 · Pit Helper overlay
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Pit road assistance: pit limiter status, speed compliance, service indicators, and pit stop counter.
 
@@ -57,15 +57,15 @@ Pit road assistance: pit limiter status, speed compliance, service indicators, a
 - `showNextPitEstimate` (bool, default true)
 
 **Acceptance criteria:**
-- [ ] Full layout shown when `IsOnPitRoad == true`
-- [ ] Compact layout shown when not on pit road
-- [ ] Speed limit and current speed display in configured units
-- [ ] Compliance indicator is green when under limit, red when over
-- [ ] Service flags correctly mapped to visual indicators
-- [ ] Pit stop count increments on each pit visit
-- [ ] "Next stop in ~N laps" estimate shown when fuel data available
-- [ ] Graceful when pit data partially unavailable (LMU)
-- [ ] Mock data in edit mode
+- [x] Full layout shown when `IsOnPitRoad == true`
+- [x] Compact layout shown when not on pit road
+- [x] Speed limit and current speed display in configured units
+- [x] Compliance indicator is green when under limit, red when over
+- [x] Service flags correctly mapped to visual indicators
+- [x] Pit stop count increments on each pit visit
+- [x] "Next stop in ~N laps" estimate shown when fuel data available
+- [x] Graceful when pit data partially unavailable (LMU)
+- [x] Mock data in edit mode
 
 **Dependencies:** TASK-802 (PitData), TASK-706 (overlay registration).
 
@@ -73,7 +73,7 @@ Pit road assistance: pit limiter status, speed compliance, service indicators, a
 
 ### TASK-1102 · Weather overlay
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Current weather conditions display. No forecast section for Alpha — current conditions only.
 
@@ -110,14 +110,14 @@ Current weather conditions display. No forecast section for Alpha — current co
 - `temperatureUnit` — reuse existing global setting
 
 **Acceptance criteria:**
-- [ ] All current conditions display correctly
-- [ ] Wind direction converts degrees to 16-point compass
-- [ ] Sky coverage mapped to readable text
-- [ ] Track wetness mapped to readable levels
-- [ ] Temperature respects global temperature unit setting
-- [ ] Rows with unavailable data are hidden (not showing "—")
-- [ ] Works with both iRacing and LMU weather data
-- [ ] Mock data in edit mode
+- [x] All current conditions display correctly
+- [x] Wind direction converts degrees to 16-point compass
+- [x] Sky coverage mapped to readable text
+- [x] Track wetness mapped to readable levels
+- [x] Temperature respects global temperature unit setting
+- [x] Rows with unavailable data are hidden (not showing "—")
+- [x] Works with both iRacing and LMU weather data
+- [x] Mock data in edit mode
 
 **Dependencies:** TASK-803 (WeatherData), TASK-706 (overlay registration).
 
@@ -125,7 +125,7 @@ Current weather conditions display. No forecast section for Alpha — current co
 
 ### TASK-1103 · Flat Track Map overlay
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 Linearized "flat" track map — a horizontal bar representing the track, with car markers showing position.
 
@@ -162,15 +162,15 @@ Linearized "flat" track map — a horizontal bar representing the track, with ca
 - `showPitCars` (bool, default true) — show dimmed markers for cars on pit road
 
 **Acceptance criteria:**
-- [ ] Horizontal bar fills overlay width
-- [ ] Start/finish marker visible
-- [ ] All on-track cars shown at correct proportional positions
-- [ ] Player marker is visually distinct
-- [ ] Multi-class markers colored by class
-- [ ] In-pit cars visually differentiated (dimmed or smaller)
-- [ ] Label overlap handled gracefully (no unreadable text stacking)
-- [ ] Works with both iRacing and LMU track position data
-- [ ] Mock data in edit mode
+- [x] Horizontal bar fills overlay width
+- [x] Start/finish marker visible
+- [x] All on-track cars shown at correct proportional positions
+- [x] Player marker is visually distinct
+- [x] Multi-class markers colored by class
+- [x] In-pit cars visually differentiated (dimmed or smaller)
+- [x] Label overlap handled gracefully (no unreadable text stacking)
+- [x] Works with both iRacing and LMU track position data
+- [x] Mock data in edit mode
 
 **Dependencies:** TASK-804 (TrackMapData), TASK-705 (multi-class colors), TASK-706 (overlay registration).
 

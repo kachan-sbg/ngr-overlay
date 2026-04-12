@@ -5,12 +5,12 @@ using SimOverlay.Sim.LMU.SharedMemory;
 namespace SimOverlay.Sim.LMU;
 
 /// <summary>
-/// Pure static calculator: converts rF2/LMU scoring data to a sorted
-/// <see cref="RelativeData"/> suitable for the relative overlay.
+/// Pure static calculator: converts LMU scoring data to a sorted
+/// <see cref="RelativeData"/> and <see cref="StandingsData"/>.
 /// <para>
-/// Key difference from the iRacing calculator: lap distance is in metres
-/// (0 → TrackLength) rather than a 0–1 percentage.  Distances are normalised
-/// to [0, 1] before the gap calculation, then the same wrapping logic applies.
+/// Lap distance is in metres (0 → TrackLength).  Distances are normalised to
+/// [0, 1] before the gap calculation, then the same wrapping logic applies as
+/// the iRacing calculator.
 /// </para>
 /// </summary>
 internal static class LmuRelativeCalculator
@@ -18,28 +18,28 @@ internal static class LmuRelativeCalculator
     private const int MaxEntries = 15;
 
     private sealed record CarCandidate(
-        int              SlotId,
-        float            Gap,
-        int              OverallPosition,
-        int              LapDiff,
+        int                SlotId,
+        float              Gap,
+        int                OverallPosition,
+        int                LapDiff,
         LmuDriverSnapshot? Driver);
 
     /// <summary>
-    /// Computes the relative display list.
+    /// Computes the relative display list and full-field standings.
     /// </summary>
     /// <param name="vehicles">Live scoring vehicle array.</param>
     /// <param name="drivers">Driver list built from the latest session decode.</param>
-    /// <param name="playerSlotId">Slot ID of the player vehicle.</param>
-    /// <param name="trackLengthMeters">Track length in metres (must be > 0).</param>
+    /// <param name="playerSlotId">Slot ID of the player vehicle (used for <see cref="RelativeEntry.IsPlayer"/>).</param>
+    /// <param name="trackLengthMeters">Track length in metres (must be &gt; 0).</param>
     /// <param name="estimatedLapTime">Estimated lap time in seconds; used for gap conversion.</param>
-    public static RelativeData Compute(
-        Rf2VehicleScoring[]     vehicles,
+    public static (RelativeData Relative, StandingsData Standings) Compute(
+        LmuVehicleScoring[]              vehicles,
         IReadOnlyList<LmuDriverSnapshot> drivers,
-        int                     playerSlotId,
-        double                  trackLengthMeters,
-        double                  estimatedLapTime)
+        int                              playerSlotId,
+        double                           trackLengthMeters,
+        double                           estimatedLapTime)
     {
-        if (trackLengthMeters <= 0) return new RelativeData();
+        if (trackLengthMeters <= 0) return (new RelativeData(), new StandingsData());
         if (estimatedLapTime  <= 0) estimatedLapTime = 90.0;
 
         // Build O(1) lookup: SlotId → LmuDriverSnapshot
@@ -47,12 +47,12 @@ internal static class LmuRelativeCalculator
         foreach (var d in drivers)
             driverBySlot[d.SlotId] = d;
 
-        // Find player's lap distance.
-        float playerPct  = -1f;
-        int   playerLap  = 0;
+        // Find player's lap distance by IsPlayer flag.
+        float playerPct = -1f;
+        int   playerLap = 0;
         foreach (ref readonly var v in vehicles.AsSpan())
         {
-            if (v.Id == playerSlotId)
+            if (v.IsPlayer != 0)
             {
                 playerPct = (float)(v.LapDist / trackLengthMeters);
                 playerLap = v.TotalLaps;
@@ -60,7 +60,7 @@ internal static class LmuRelativeCalculator
             }
         }
 
-        if (playerPct < 0f) return new RelativeData();
+        if (playerPct < 0f) return (new RelativeData(), new StandingsData());
 
         // ── Pass 1: collect on-track cars ─────────────────────────────────────
         var allCars = new List<CarCandidate>(vehicles.Length);
@@ -78,7 +78,7 @@ internal static class LmuRelativeCalculator
             float gapSeconds = (float)(-delta * estimatedLapTime);
             int   lapDiff    = v.TotalLaps - playerLap;
 
-            // Overall position: use Place from V02 expansion; 0 if not available.
+            // Overall position: directly from Place field (1-based byte).
             int pos = v.Place;
 
             driverBySlot.TryGetValue(v.Id, out var driver);
@@ -102,8 +102,13 @@ internal static class LmuRelativeCalculator
             .Count();
         bool isMultiClass = distinctClasses > 1;
 
+        // Build best-lap lookup from vehicle array.
+        var bestLapBySlot = new Dictionary<int, double>(allCars.Count);
+        foreach (ref readonly var v in vehicles.AsSpan())
+            if (v.BestLapTime > 0) bestLapBySlot[v.Id] = v.BestLapTime;
+
         // ── Build relative entry list ─────────────────────────────────────────
-        var candidates = new List<(float Gap, RelativeEntry Entry)>(allCars.Count);
+        var candidates = new List<(float Gap, int SlotId, RelativeEntry Entry)>(allCars.Count);
         foreach (var car in allCars)
         {
             var driver        = car.Driver;
@@ -111,14 +116,14 @@ internal static class LmuRelativeCalculator
                 ? cp
                 : car.OverallPosition;
 
-            candidates.Add((car.Gap, new RelativeEntry
+            candidates.Add((car.Gap, car.SlotId, new RelativeEntry
             {
                 Position           = car.OverallPosition,
                 CarNumber          = driver?.CarNumber ?? car.SlotId.ToString(),
                 DriverName         = driver?.DriverName ?? string.Empty,
-                IRating            = 0,                        // unavailable in LMU
-                LicenseClass       = LicenseClass.Unknown,     // unavailable in LMU
-                LicenseLevel       = string.Empty,             // unavailable in LMU
+                IRating            = 0,
+                LicenseClass       = LicenseClass.Unknown,
+                LicenseLevel       = string.Empty,
                 GapToPlayerSeconds = car.Gap,
                 LapDifference      = car.LapDiff,
                 IsPlayer           = car.SlotId == playerSlotId,
@@ -132,28 +137,72 @@ internal static class LmuRelativeCalculator
 
         candidates.Sort((a, b) => a.Gap.CompareTo(b.Gap));
 
+        // ── Build standings (all cars, sorted by overall position) ────────────
+        var standingsSorted = candidates
+            .OrderBy(c => c.Entry.Position == 0 ? int.MaxValue : c.Entry.Position)
+            .ToList();
+
+        StandingsData standings;
+        if (standingsSorted.Count == 0)
+        {
+            standings = new StandingsData();
+        }
+        else
+        {
+            float leaderGap     = standingsSorted[0].Entry.GapToPlayerSeconds;
+            int   leaderLapDiff = standingsSorted[0].Entry.LapDifference;
+            var   standingsEntries = new List<StandingsEntry>(standingsSorted.Count);
+
+            foreach (var (gap, slotId, rel) in standingsSorted)
+            {
+                bestLapBySlot.TryGetValue(slotId, out double bestSec);
+                standingsEntries.Add(new StandingsEntry
+                {
+                    Position           = rel.Position,
+                    ClassPosition      = rel.ClassPosition,
+                    CarNumber          = rel.CarNumber,
+                    DriverName         = rel.DriverName,
+                    IRating            = 0,
+                    CarClass           = isMultiClass ? rel.CarClass : "",
+                    ClassColor         = rel.ClassColor,
+                    GapToLeaderSeconds = gap - leaderGap,
+                    LapDifference      = rel.LapDifference - leaderLapDiff,
+                    BestLapTime        = bestSec > 0 ? TimeSpan.FromSeconds(bestSec) : TimeSpan.Zero,
+                    IsPlayer           = rel.IsPlayer,
+                });
+            }
+            standings = new StandingsData { Entries = standingsEntries };
+        }
+
+        // ── Select relative window ────────────────────────────────────────────
         int playerIdx = candidates.FindIndex(c => c.Entry.IsPlayer);
+        RelativeData relative;
+
         if (playerIdx < 0)
         {
-            return new RelativeData
+            relative = new RelativeData
             {
                 Entries = candidates.Take(MaxEntries).Select(c => c.Entry).ToList()
             };
         }
-
-        int half  = MaxEntries / 2;
-        int start = Math.Max(0, playerIdx - half);
-        int end   = Math.Min(candidates.Count, start + MaxEntries);
-        if (end - start < MaxEntries)
-            start = Math.Max(0, end - MaxEntries);
-
-        return new RelativeData
+        else
         {
-            Entries = candidates
-                .Skip(start)
-                .Take(end - start)
-                .Select(c => c.Entry)
-                .ToList()
-        };
+            int half  = MaxEntries / 2;
+            int start = Math.Max(0, playerIdx - half);
+            int end   = Math.Min(candidates.Count, start + MaxEntries);
+            if (end - start < MaxEntries)
+                start = Math.Max(0, end - MaxEntries);
+
+            relative = new RelativeData
+            {
+                Entries = candidates
+                    .Skip(start)
+                    .Take(end - start)
+                    .Select(c => c.Entry)
+                    .ToList()
+            };
+        }
+
+        return (relative, standings);
     }
 }

@@ -55,6 +55,43 @@ public sealed class OverlayConfig
     public bool ShowTrendArrow { get; set; } = true;
     public bool ShowDeltaText { get; set; } = true;
 
+    // --- Standings overlay ---
+    public StandingsDisplayMode StandingsDisplayMode { get; set; } = StandingsDisplayMode.Combined;
+    public bool ShowClassBadge { get; set; } = true;
+    public bool ShowBestLap { get; set; } = true;
+    public int MaxStandingsRows { get; set; } = 30;
+
+    // --- Fuel Calculator overlay ---
+    public FuelUnit FuelUnit { get; set; } = FuelUnit.Liters;
+    public float FuelSafetyMarginLaps { get; set; } = 1.0f;
+    public bool ShowFuelMargin { get; set; } = true;
+
+    // --- Input Telemetry overlay ---
+    public bool ShowThrottle { get; set; } = true;
+    public bool ShowBrake { get; set; } = true;
+    public bool ShowClutch { get; set; } = true;
+    public bool ShowInputTrace { get; set; } = true;
+    public bool ShowGearSpeed { get; set; } = true;
+    public SpeedUnit SpeedUnit { get; set; } = SpeedUnit.Kph;
+    public ColorConfig ThrottleColor { get; set; } = ColorConfig.Green;
+    public ColorConfig BrakeColor { get; set; } = ColorConfig.Red;
+    public ColorConfig ClutchColor { get; set; } = ColorConfig.Blue;
+
+    // --- Pit Helper overlay ---
+    public bool ShowPitServices { get; set; } = true;
+    public bool ShowNextPitEstimate { get; set; } = true;
+
+    // --- Weather overlay ---
+    public bool ShowHumidity { get; set; } = true;
+    public bool ShowWind { get; set; } = true;
+    public WindSpeedUnit WindSpeedUnit { get; set; } = WindSpeedUnit.Kph;
+
+    // --- Flat Track Map overlay ---
+    public FlatMapLabelMode FlatMapLabelMode { get; set; } = FlatMapLabelMode.CarNumber;
+    public float PlayerMarkerSize { get; set; } = 8f;
+    public float CarMarkerSize { get; set; } = 4f;
+    public bool ShowPitCars { get; set; } = true;
+
     // --- Stream override ---
     public StreamOverrideConfig? StreamOverride { get; set; }
 
@@ -96,6 +133,31 @@ public sealed class OverlayConfig
             SlowerColor = o.SlowerColor ?? SlowerColor,
             ShowTrendArrow = o.ShowTrendArrow ?? ShowTrendArrow,
             ShowDeltaText = o.ShowDeltaText ?? ShowDeltaText,
+            StandingsDisplayMode = o.StandingsDisplayMode ?? StandingsDisplayMode,
+            ShowClassBadge = o.ShowClassBadge ?? ShowClassBadge,
+            ShowBestLap = o.ShowBestLap ?? ShowBestLap,
+            MaxStandingsRows = o.MaxStandingsRows ?? MaxStandingsRows,
+            FuelUnit = o.FuelUnit ?? FuelUnit,
+            FuelSafetyMarginLaps = o.FuelSafetyMarginLaps ?? FuelSafetyMarginLaps,
+            ShowFuelMargin = o.ShowFuelMargin ?? ShowFuelMargin,
+            ShowThrottle = o.ShowThrottle ?? ShowThrottle,
+            ShowBrake = o.ShowBrake ?? ShowBrake,
+            ShowClutch = o.ShowClutch ?? ShowClutch,
+            ShowInputTrace = o.ShowInputTrace ?? ShowInputTrace,
+            ShowGearSpeed = o.ShowGearSpeed ?? ShowGearSpeed,
+            SpeedUnit = o.SpeedUnit ?? SpeedUnit,
+            ThrottleColor = o.ThrottleColor ?? ThrottleColor,
+            BrakeColor = o.BrakeColor ?? BrakeColor,
+            ClutchColor = o.ClutchColor ?? ClutchColor,
+            ShowPitServices = o.ShowPitServices ?? ShowPitServices,
+            ShowNextPitEstimate = o.ShowNextPitEstimate ?? ShowNextPitEstimate,
+            ShowHumidity = o.ShowHumidity ?? ShowHumidity,
+            ShowWind = o.ShowWind ?? ShowWind,
+            WindSpeedUnit = o.WindSpeedUnit ?? WindSpeedUnit,
+            FlatMapLabelMode = o.FlatMapLabelMode ?? FlatMapLabelMode,
+            PlayerMarkerSize = o.PlayerMarkerSize ?? PlayerMarkerSize,
+            CarMarkerSize = o.CarMarkerSize ?? CarMarkerSize,
+            ShowPitCars = o.ShowPitCars ?? ShowPitCars,
             StreamOverride = null, // Resolved config is a snapshot; no shared mutable refs
         };
     }

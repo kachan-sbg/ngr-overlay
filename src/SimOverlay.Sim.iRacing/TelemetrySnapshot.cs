@@ -11,4 +11,5 @@ internal sealed record TelemetrySnapshot(
     float[] LapDistPcts,        // CarIdxLapDistPct[64]: 0–1; -1 = car not on track
     int[]   Positions,          // CarIdxPosition[64]
     int[]   Laps,               // CarIdxLap[64]
-    float   EstimatedLapTime);  // seconds; used to convert lap-pct delta → gap
+    float   EstimatedLapTime,   // seconds; used to convert lap-pct delta → gap
+    float[] BestLapTimes);      // CarIdxBestLapTime[64]: best lap in seconds; 0 = no lap

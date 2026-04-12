@@ -6,7 +6,7 @@ namespace SimOverlay.Sim.LMU.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="LmuRelativeCalculator"/>.
-/// Tests focus on the rF2-specific lap-distance-to-percentage normalisation
+/// Tests focus on the LMU lap-distance-to-percentage normalisation
 /// and the windowed relative list construction.
 /// All tests are pure in-memory — no LMU process or shared memory required.
 /// </summary>
@@ -17,37 +17,37 @@ public class LmuRelativeCalculatorTests
 
     // ── Factory helpers ───────────────────────────────────────────────────────
 
-    private static Rf2VehicleScoring MakeVehicle(
+    /// <summary>
+    /// Creates an <see cref="LmuVehicleScoring"/> entry for testing.
+    /// <paramref name="isPlayer"/> = true sets the <c>IsPlayer</c> flag so the
+    /// calculator can locate the player without a slot ID lookup.
+    /// </summary>
+    private static LmuVehicleScoring MakeVehicle(
         int    slotId,
         string driverName,
         double lapDistMeters,
         int    totalLaps,
-        int    place         = 0,
-        bool   inGarage      = false,
-        byte   underYellow   = 0)
+        int    place        = 0,
+        bool   inGarage     = false,
+        byte   underYellow  = 0,
+        bool   isPlayer     = false,
+        string vehicleClass = "LMH")
     {
-        // Build the expansion bytes for Place (V02 extension at [0..3]).
-        var expansion = new byte[48];
-        BitConverter.TryWriteBytes(expansion.AsSpan(0, 4), place);
-
-        return new Rf2VehicleScoring
+        return new LmuVehicleScoring
         {
             Id            = slotId,
             DriverName    = driverName,
             VehicleName   = "LMH_TestCar",
             TotalLaps     = (short)totalLaps,
             LapDist       = lapDistMeters,
+            Place         = (byte)(place > 0 && place <= 255 ? place : 0),
             InGarageStall = (byte)(inGarage ? 1 : 0),
             UnderYellow   = underYellow,
-            Expansion     = expansion,
-            Pos           = [0.0, 0.0, 0.0],
-            LocalVel      = [0.0, 0.0, 0.0],
-            LocalAccel    = [0.0, 0.0, 0.0],
-            Ori           = [1,0,0, 0,1,0, 0,0,1],
-            LocalRot      = [0.0, 0.0, 0.0],
-            LocalRotAccel = [0.0, 0.0, 0.0],
+            IsPlayer      = (byte)(isPlayer ? 1 : 0),
+            VehicleClass  = vehicleClass,
             UpgradePack   = new byte[16],
             PitGroup      = "",
+            Expansion     = new byte[4],
         };
     }
 
@@ -62,14 +62,14 @@ public class LmuRelativeCalculatorTests
     {
         var vehicles = new[]
         {
-            MakeVehicle(1, "Player", 3000.0, 5, place: 1),
+            MakeVehicle(1, "Player", 3000.0, 5, place: 1, isPlayer: true),
         };
-        var drivers  = new[] { MakeDriver(1, "Player") };
+        var drivers = new[] { MakeDriver(1, "Player") };
 
         var result = LmuRelativeCalculator.Compute(vehicles, drivers, 1, TrackLength, EstLap);
 
-        Assert.Single(result.Entries);
-        Assert.True(result.Entries[0].IsPlayer);
+        Assert.Single(result.Relative.Entries);
+        Assert.True(result.Relative.Entries[0].IsPlayer);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class LmuRelativeCalculatorTests
         // Car 2 at 3600 m (60 % of track) = 10% ahead = 0.1 × 120s = 12s ahead (negative).
         var vehicles = new[]
         {
-            MakeVehicle(1, "Player", 3000.0, 5, place: 2),
+            MakeVehicle(1, "Player", 3000.0, 5, place: 2, isPlayer: true),
             MakeVehicle(2, "Car2",   3600.0, 5, place: 1),
         };
         var drivers = new[]
@@ -90,7 +90,7 @@ public class LmuRelativeCalculatorTests
 
         var result = LmuRelativeCalculator.Compute(vehicles, drivers, 1, TrackLength, EstLap);
 
-        var car2Entry = result.Entries.First(e => e.DriverName == "Car2");
+        var car2Entry = result.Relative.Entries.First(e => e.DriverName == "Car2");
         // Car2 is 600 m = 10% of lap ahead → gap ≈ -12 s
         Assert.True(car2Entry.GapToPlayerSeconds < 0f, "Car ahead should have negative gap");
         Assert.InRange(car2Entry.GapToPlayerSeconds, -13f, -11f);
@@ -103,14 +103,14 @@ public class LmuRelativeCalculatorTests
         // Their on-track gap is 200 m = 200/6000 * 120s ≈ 4s ahead (negative).
         var vehicles = new[]
         {
-            MakeVehicle(1, "Player", 100.0,  5),
+            MakeVehicle(1, "Player", 100.0,  5, isPlayer: true),
             MakeVehicle(2, "Car2",   5900.0, 4), // one lap behind — same total lap count
         };
         var drivers = new[] { MakeDriver(1, "Player"), MakeDriver(2, "Car2") };
 
         var result = LmuRelativeCalculator.Compute(vehicles, drivers, 1, TrackLength, EstLap);
 
-        var car2 = result.Entries.First(e => e.DriverName == "Car2");
+        var car2 = result.Relative.Entries.First(e => e.DriverName == "Car2");
         // Should detect wrap: Car2 is actually ~3.3 s ahead (not 196 m behind = 196/6000*120≈3.9s)
         Assert.True(Math.Abs(car2.GapToPlayerSeconds) < 5f,
             "S/F wrap should produce small gap, not full-lap gap");
@@ -121,14 +121,14 @@ public class LmuRelativeCalculatorTests
     {
         var vehicles = new[]
         {
-            MakeVehicle(1, "Player",  3000.0, 5),
+            MakeVehicle(1, "Player",   3000.0, 5, isPlayer: true),
             MakeVehicle(2, "InGarage", 0.0,   5, inGarage: true),
         };
         var drivers = new[] { MakeDriver(1, "Player"), MakeDriver(2, "InGarage") };
 
         var result = LmuRelativeCalculator.Compute(vehicles, drivers, 1, TrackLength, EstLap);
 
-        Assert.DoesNotContain(result.Entries, e => e.DriverName == "InGarage");
+        Assert.DoesNotContain(result.Relative.Entries, e => e.DriverName == "InGarage");
     }
 
     [Fact]
@@ -136,14 +136,14 @@ public class LmuRelativeCalculatorTests
     {
         var vehicles = new[]
         {
-            MakeVehicle(1, "Player", 3000.0, 5),
+            MakeVehicle(1, "Player", 3000.0, 5, isPlayer: true),
             MakeVehicle(2, "Car2",   3100.0, 5),
         };
         var drivers = new[] { MakeDriver(1, "Player"), MakeDriver(2, "Car2") };
 
         var result = LmuRelativeCalculator.Compute(vehicles, drivers, 1, TrackLength, EstLap);
 
-        Assert.All(result.Entries, e =>
+        Assert.All(result.Relative.Entries, e =>
         {
             Assert.Equal(LicenseClass.Unknown, e.LicenseClass);
             Assert.Equal("", e.LicenseLevel);
@@ -156,9 +156,9 @@ public class LmuRelativeCalculatorTests
     {
         var vehicles = new[]
         {
-            MakeVehicle(1, "LMH1",   3000.0, 5, place: 1),
-            MakeVehicle(2, "LMDh1",  2900.0, 5, place: 2),
-            MakeVehicle(3, "LMDh2",  2800.0, 5, place: 3),
+            MakeVehicle(1, "LMH1",  3000.0, 5, place: 1, isPlayer: true,  vehicleClass: "LMH"),
+            MakeVehicle(2, "LMDh1", 2900.0, 5, place: 2, vehicleClass: "LMDh"),
+            MakeVehicle(3, "LMDh2", 2800.0, 5, place: 3, vehicleClass: "LMDh"),
         };
         var drivers = new[]
         {
@@ -169,7 +169,7 @@ public class LmuRelativeCalculatorTests
 
         var result = LmuRelativeCalculator.Compute(vehicles, drivers, 1, TrackLength, EstLap);
 
-        var lmdhEntries = result.Entries.Where(e => e.CarClass == "LMDh").ToList();
+        var lmdhEntries = result.Relative.Entries.Where(e => e.CarClass == "LMDh").ToList();
         Assert.Equal(2, lmdhEntries.Count);
 
         // Class positions should be 1 and 2 within LMDh.
@@ -180,20 +180,18 @@ public class LmuRelativeCalculatorTests
     [Fact]
     public void Compute_TrackLengthZero_ReturnsEmpty()
     {
-        var vehicles = new[] { MakeVehicle(1, "Player", 100.0, 1) };
+        var vehicles = new[] { MakeVehicle(1, "Player", 100.0, 1, isPlayer: true) };
         var drivers  = new[] { MakeDriver(1, "Player") };
 
         var result = LmuRelativeCalculator.Compute(vehicles, drivers, 1, 0.0, EstLap);
 
-        Assert.Empty(result.Entries);
+        Assert.Empty(result.Relative.Entries);
     }
 
     [Fact]
     public void Compute_PlayerNotInVehicles_ReturnsEmpty()
     {
-        // Player slot 99 not in vehicle list.
-        // A relative overlay requires a player reference to compute meaningful gaps,
-        // so the result is empty when the player cannot be located.
+        // No vehicle has IsPlayer set — player cannot be located.
         var vehicles = new[]
         {
             MakeVehicle(1, "Car1", 1000.0, 3),
@@ -203,6 +201,6 @@ public class LmuRelativeCalculatorTests
 
         var result = LmuRelativeCalculator.Compute(vehicles, drivers, 99, TrackLength, EstLap);
 
-        Assert.Empty(result.Entries);
+        Assert.Empty(result.Relative.Entries);
     }
 }

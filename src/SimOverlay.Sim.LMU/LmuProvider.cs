@@ -1,21 +1,20 @@
 using System.IO.MemoryMappedFiles;
 using SimOverlay.Core;
 using SimOverlay.Sim.Contracts;
+using SimOverlay.Sim.LMU.SharedMemory;
 
 namespace SimOverlay.Sim.LMU;
 
 /// <summary>
 /// <see cref="ISimProvider"/> implementation for Le Mans Ultimate.
 /// <para>
-/// Detection checks for the existence of the rF2 scoring shared memory file
-/// (<c>$rFactor2SMMP_Scoring$</c>), which LMU creates when the process starts —
-/// identical lightweight detection to the iRacing MMF approach.
+/// Detection checks for the existence of the <c>LMU_Data</c> shared memory file,
+/// which LMU creates when the process starts.
 /// </para>
 /// </summary>
 public sealed class LmuProvider : ISimProvider
 {
-    // LMU creates the same rF2 shared memory mapped files as rFactor 2.
-    private const string ScoringMapName = "$rFactor2SMMP_Scoring$";
+    private const string DataFileName = LmuSharedMemoryLayout.DataFile;
 
     private readonly ISimDataBus _bus;
     private LmuPoller?           _poller;
@@ -33,15 +32,15 @@ public sealed class LmuProvider : ISimProvider
     }
 
     /// <summary>
-    /// Returns <c>true</c> if the LMU scoring shared memory file exists,
-    /// indicating LMU (or an rF2-based game) is running.
+    /// Returns <c>true</c> if the <c>LMU_Data</c> shared memory file exists,
+    /// indicating LMU is running.
     /// This check is intentionally lightweight — no SDK state is touched.
     /// </summary>
     public bool IsRunning()
     {
         try
         {
-            using var mmf = MemoryMappedFile.OpenExisting(ScoringMapName);
+            using var mmf = MemoryMappedFile.OpenExisting(DataFileName);
             return true;
         }
         catch
