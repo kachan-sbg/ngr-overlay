@@ -436,7 +436,7 @@ public class SimDetectorTests
         public bool IsRunning() => throw new InvalidOperationException("SDK crash");
         public void Start() { }
         public void Stop()  { }
-        public event Action<SimState>? StateChanged;
+        public event Action<SimState>? StateChanged { add { } remove { } }
     }
 
     // ── Disposal ─────────────────────────────────────────────────────────────
