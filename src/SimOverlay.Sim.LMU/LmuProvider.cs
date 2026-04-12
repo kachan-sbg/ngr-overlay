@@ -12,7 +12,7 @@ namespace SimOverlay.Sim.LMU;
 /// which LMU creates when the process starts.
 /// </para>
 /// </summary>
-public sealed class LmuProvider : ISimProvider
+public sealed class LmuProvider : ISimProvider, IDisposable
 {
     private const string DataFileName = LmuSharedMemoryLayout.DataFile;
 
@@ -80,6 +80,9 @@ public sealed class LmuProvider : ISimProvider
 
         FireStateChanged(SimState.Disconnected);
     }
+
+    /// <summary>Stops the polling loop if still running. Safe to call multiple times.</summary>
+    public void Dispose() => Stop();
 
     private void FireStateChanged(SimState state) => StateChanged?.Invoke(state);
 }

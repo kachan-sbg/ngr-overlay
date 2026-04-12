@@ -14,6 +14,12 @@ public sealed class RelativeEntry
     public int LapDifference { get; init; }          // 0 = same lap, +1 = one lap ahead
     public bool IsPlayer { get; init; }
 
+    /// <summary>
+    /// Last completed lap time for this driver.
+    /// <see cref="TimeSpan.Zero"/> = no lap completed yet or unavailable.
+    /// </summary>
+    public TimeSpan LastLapTime { get; init; }
+
     // ── Multi-class fields ────────────────────────────────────────────────────
     /// <summary>Short class name, e.g. "GTP", "GT3". Empty string in single-class sessions.</summary>
     public string CarClass { get; init; } = "";

@@ -42,3 +42,6 @@ Brief summary of every significant design decision. Full entries with rationale,
 | 04-07 | LMU: `LicenseClass.Unknown` sentinel + empty `LicenseLevel` to hide LIC column | Overlays need a defined "not available" state; `Unknown` renders grey; empty level string skips the LIC cell draw |
 | 04-07 | Multi-class: CarClasses empty in single-class sessions; class fields blank/white | Avoids overlay clutter when multiclass info is irrelevant; overlays check `CarClasses.Count > 0` |
 | 04-07 | SimDetector provider list sorted by `SimPriorityOrder` config at startup; config v3→v4 appends "LMU" | User-adjustable priority without code change; migration preserves existing order |
+| 04-12 | Shutdown via `MessagePump.Quit()` not `Environment.Exit()` | `Environment.Exit` bypassed `using var provider` disposal; IRSDKSharper's HWND stayed alive, causing iOverlay to lose SDK events until iRacing restarted |
+| 04-12 | `CarIdxTrackSurface >= 0` as the in-world filter for iRacing car slots | Garage/registered-not-spawned drivers have `LapDistPct == 0.0` (not -1); the old `pct < 0f` filter passed them through as ghost entries |
+| 04-12 | Session timing smoothed locally (sync from SDK, count down with wall clock) | SDK occasionally returns 0 for `SessionTime` between valid samples; display blinked every few seconds; simple `> 0` guard + local delta eliminates the blink |

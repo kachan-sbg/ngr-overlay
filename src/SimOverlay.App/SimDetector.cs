@@ -48,6 +48,12 @@ public sealed class SimDetector : IDisposable
     // The one provider that is currently Active or Disconnecting.
     // Null when no provider has been activated.
     private ISimProvider? _activeProvider;
+
+    // Last sim state seen from the active provider — broadcast as a heartbeat on every
+    // poll tick so late subscribers (overlays created/subscribed after the initial event)
+    // always catch up within one poll interval instead of staying stuck at Disconnected.
+    private SimState _currentSimState = SimState.Disconnected;
+
     private bool _disposed;
 
     // ── Public surface ────────────────────────────────────────────────────────
@@ -123,6 +129,17 @@ public sealed class SimDetector : IDisposable
             if (candidate != null)
                 Activate(candidate);
         }
+
+        // ── Step 3: heartbeat — re-broadcast current state when a sim is active ──
+        // This ensures any subscriber that missed the original transition event
+        // (e.g. an overlay whose subscription was set up after the first poll fired)
+        // catches up within one poll interval.  BaseOverlay only calls BringToFront()
+        // when the state value actually changes, so repeated identical broadcasts are cheap.
+        // We skip the heartbeat when Disconnected: overlays default to that state already,
+        // and broadcasting Disconnected on every poll tick would trigger false-positive
+        // "no disconnect event" assertions in tests (and confuse future diagnostics).
+        if (_currentSimState != SimState.Disconnected)
+            _bus.Publish(new SimStateChangedEvent(_currentSimState));
     }
 
     // ── State machine ─────────────────────────────────────────────────────────
@@ -224,6 +241,7 @@ public sealed class SimDetector : IDisposable
         _states[provider]     = ProviderState.Idle;
         _strikes[provider]    = 0;
         _activeProvider       = null;
+        _currentSimState      = SimState.Disconnected;
 
         try   { provider.Stop(); }
         catch (Exception ex) { AppLog.Exception($"SimDetector: error stopping '{provider.SimId}'", ex); }
@@ -235,6 +253,7 @@ public sealed class SimDetector : IDisposable
     private void OnProviderStateChanged(SimState state)
     {
         AppLog.Info($"SimDetector: provider state → {state}");
+        _currentSimState = state;
         _bus.Publish(new SimStateChangedEvent(state));
     }
 

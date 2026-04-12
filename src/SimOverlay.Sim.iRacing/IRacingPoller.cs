@@ -123,7 +123,7 @@ internal sealed class IRacingPoller : IDisposable
                 PublishTrackMapData();
             }
 
-            if (_telemetryFrameCount % WeatherPublishInterval == 0)
+            if (_telemetryFrameCount % WeatherPublishInterval == 0 || _telemetryFrameCount == 1)
                 PublishWeatherData();
         }
         catch (Exception ex)
@@ -139,13 +139,34 @@ internal sealed class IRacingPoller : IDisposable
 
     private void PublishDriverData()
     {
-        var data       = _sdk.Data;
-        var bestLapSec = data.GetFloat("LapBestLapTime");
-        var lastLapSec = data.GetFloat("LapLastLapTime");
-        var delta             = data.GetFloat("LapDeltaToBestLap");
-        var deltaSessionBest  = data.GetFloat("LapDeltaToSessionBestLap");
-        var position          = data.GetInt("PlayerCarPosition");
-        var lap               = data.GetInt("Lap");
+        var data = _sdk.Data;
+
+        var bestLapSec       = data.GetFloat("LapBestLapTime");
+        var lastLapSec       = data.GetFloat("LapLastLapTime");
+        var delta            = data.GetFloat("LapDeltaToBestLap");
+        var deltaSessionBest = data.GetFloat("LapDeltaToSessionBestLap");
+        var position         = data.GetInt("PlayerCarPosition");
+        var lap              = data.GetInt("Lap");
+
+        // Live session timing — read from telemetry so the display counts down in
+        // real time rather than showing a stale YAML snapshot value.
+        var sessionTimeSec       = data.GetFloat("SessionTime");
+        var sessionTimeRemainSec = data.GetFloat("SessionTimeRemain");
+
+        // In-game time of day (real-time, not YAML snapshot).
+        var sessionTimeOfDaySec = data.GetFloat("SessionTimeOfDay");
+        TimeOnly? gameTimeOfDay = sessionTimeOfDaySec > 0f
+            ? TimeOnly.FromTimeSpan(TimeSpan.FromSeconds(sessionTimeOfDaySec % 86400.0))
+            : null;
+
+        // Session best = minimum valid lap time across all cars this session.
+        var sessionBestSec = 0f;
+        for (int i = 0; i < MaxCars; i++)
+        {
+            var t = data.GetFloat("CarIdxBestLapTime", i);
+            if (t > 0f && (sessionBestSec <= 0f || t < sessionBestSec))
+                sessionBestSec = t;
+        }
 
         _bus.Publish(new DriverData
         {
@@ -153,8 +174,15 @@ internal sealed class IRacingPoller : IDisposable
             Lap                   = lap,
             BestLapTime           = bestLapSec > 0 ? TimeSpan.FromSeconds(bestLapSec) : TimeSpan.Zero,
             LastLapTime           = lastLapSec > 0 ? TimeSpan.FromSeconds(lastLapSec) : TimeSpan.Zero,
+            SessionBestLapTime    = sessionBestSec > 0 ? TimeSpan.FromSeconds(sessionBestSec) : TimeSpan.Zero,
             LapDeltaVsBestLap     = delta,
             LapDeltaVsSessionBest = deltaSessionBest,
+            SessionTimeElapsed    = sessionTimeSec > 0 ? TimeSpan.FromSeconds(sessionTimeSec) : TimeSpan.Zero,
+            // iRacing returns -1 for SessionTimeRemain when the session has no time limit (laps-based).
+            SessionTimeRemaining  = sessionTimeRemainSec >= 0f
+                                        ? TimeSpan.FromSeconds(sessionTimeRemainSec)
+                                        : (TimeSpan?)null,
+            GameTimeOfDay         = gameTimeOfDay,
         });
     }
 
@@ -177,6 +205,7 @@ internal sealed class IRacingPoller : IDisposable
             Rpm:                   data.GetFloat("RPM"),
             FuelLevelLiters:       fuelLevel,
             FuelConsumptionPerLap: _fuelTracker.PerLapAverage,
+            LastLapFuelLiters:     _fuelTracker.LastLapConsumption,
             IncidentCount:         data.GetInt("PlayerCarMyIncidentCount")
         ));
     }
@@ -194,17 +223,21 @@ internal sealed class IRacingPoller : IDisposable
         if (estLapTimeSec <= 0f) estLapTimeSec = 90f; // safe fallback before any lap is complete
 
         // Build per-car arrays from the indexed telemetry variables.
-        var lapDistPcts  = new float[MaxCars];
-        var positions    = new int[MaxCars];
-        var laps         = new int[MaxCars];
-        var bestLapTimes = new float[MaxCars];
+        var lapDistPcts   = new float[MaxCars];
+        var positions     = new int[MaxCars];
+        var laps          = new int[MaxCars];
+        var bestLapTimes  = new float[MaxCars];
+        var lastLapTimes  = new float[MaxCars];
+        var trackSurfaces = new int[MaxCars];
 
         for (var i = 0; i < MaxCars; i++)
         {
-            lapDistPcts[i]  = data.GetFloat("CarIdxLapDistPct",  i);
-            positions[i]    = data.GetInt("CarIdxPosition",      i);
-            laps[i]         = data.GetInt("CarIdxLap",           i);
-            bestLapTimes[i] = data.GetFloat("CarIdxBestLapTime", i);
+            lapDistPcts[i]   = data.GetFloat("CarIdxLapDistPct",    i);
+            positions[i]     = data.GetInt("CarIdxPosition",        i);
+            laps[i]          = data.GetInt("CarIdxLap",             i);
+            bestLapTimes[i]  = data.GetFloat("CarIdxBestLapTime",   i);
+            lastLapTimes[i]  = data.GetFloat("CarIdxLastLapTime",   i);
+            trackSurfaces[i] = data.GetInt("CarIdxTrackSurface",    i);
         }
 
         var snapshot = new TelemetrySnapshot(
@@ -213,7 +246,9 @@ internal sealed class IRacingPoller : IDisposable
             Positions:        positions,
             Laps:             laps,
             EstimatedLapTime: estLapTimeSec,
-            BestLapTimes:     bestLapTimes);
+            BestLapTimes:     bestLapTimes,
+            LastLapTimes:     lastLapTimes,
+            TrackSurfaces:    trackSurfaces);
 
         var (relativeData, standingsData) = IRacingRelativeCalculator.Compute(snapshot, _cachedDrivers);
         _bus.Publish(relativeData);
@@ -292,8 +327,13 @@ internal sealed class IRacingPoller : IDisposable
         var cars = new List<TrackMapCarEntry>(MaxCars);
         for (var i = 0; i < MaxCars; i++)
         {
+            // CarIdxTrackSurface == -1 means the slot is unused / car not spawned in world.
+            // This filters out registered-but-not-connected drivers that iRacing still
+            // populates in the car array (they have pct=0 which passes a pct<0 check).
+            var trackSurface = data.GetInt("CarIdxTrackSurface", i);
+            if (trackSurface < 0) continue;  // NotInWorld
+
             var pct = data.GetFloat("CarIdxLapDistPct", i);
-            if (pct < 0f) continue;  // not on track
 
             driverByIdx.TryGetValue(i, out var driver);
             if (driver is { IsSpectator: true } or { IsPaceCar: true }) continue;

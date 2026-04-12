@@ -12,6 +12,7 @@ public sealed record TelemetryData(
     int   Gear,                   // -1=R, 0=N, 1–8
     float Rpm,
     float FuelLevelLiters,
-    float FuelConsumptionPerLap,  // rolling average over green-flag laps only
+    float FuelConsumptionPerLap,  // rolling average over last N green-flag laps
+    float LastLapFuelLiters,      // fuel used in the last completed green-flag lap; 0 = none yet
     int   IncidentCount           // driver's session incident total
 );

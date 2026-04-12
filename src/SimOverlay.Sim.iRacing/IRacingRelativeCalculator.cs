@@ -5,7 +5,7 @@ namespace SimOverlay.Sim.iRacing;
 
 /// <summary>
 /// Pure static calculator that converts a <see cref="TelemetrySnapshot"/> +
-/// cached driver list into a sorted <see cref="RelativeData"/>.
+/// cached driver list into a sorted <see cref="RelativeData"/> and <see cref="StandingsData"/>.
 /// No SDK dependency — fully unit-testable.
 /// </summary>
 internal static class IRacingRelativeCalculator
@@ -47,8 +47,12 @@ internal static class IRacingRelativeCalculator
 
         for (int i = 0; i < snapshot.LapDistPcts.Length; i++)
         {
+            // CarIdxTrackSurface == -1 (NotInWorld) means the slot is unused or the
+            // driver is registered but not spawned — skip to avoid ghost entries.
+            if (i < snapshot.TrackSurfaces.Length && snapshot.TrackSurfaces[i] < 0) continue;
+
             var pct = snapshot.LapDistPcts[i];
-            if (pct < 0f) continue;                 // car not on track
+            if (pct < 0f) continue;                 // car not on track (secondary guard)
 
             driverByIdx.TryGetValue(i, out var driver);
             if (driver is { IsSpectator: true } or { IsPaceCar: true }) continue;
@@ -65,9 +69,6 @@ internal static class IRacingRelativeCalculator
         }
 
         // ── Pass 2: compute per-class positions from overall race positions ───
-        // Group by ClassId; sort each group by overall position (0 = unknown → last).
-        // In single-class sessions all ClassIds will be identical, so classPositions
-        // will simply mirror overall positions.
         var classPositionByCarIdx = new Dictionary<int, int>(allCars.Count);
         foreach (var group in allCars.GroupBy(c => c.Driver?.CarClassId ?? 0))
         {
@@ -92,6 +93,10 @@ internal static class IRacingRelativeCalculator
             var driver        = car.Driver;
             var classPosition = classPositionByCarIdx.TryGetValue(car.CarIdx, out var cp) ? cp : car.OverallPosition;
 
+            var lastLapSec = car.CarIdx < snapshot.LastLapTimes.Length
+                ? snapshot.LastLapTimes[car.CarIdx]
+                : 0f;
+
             candidates.Add((car.Gap, car.CarIdx, new RelativeEntry
             {
                 Position           = car.OverallPosition,
@@ -102,6 +107,7 @@ internal static class IRacingRelativeCalculator
                 LicenseLevel       = driver?.LicenseLevel ?? "R 0.00",
                 GapToPlayerSeconds = car.Gap,
                 LapDifference      = car.LapDiff,
+                LastLapTime        = lastLapSec > 0f ? TimeSpan.FromSeconds(lastLapSec) : TimeSpan.Zero,
                 IsPlayer           = car.CarIdx == snapshot.PlayerCarIdx,
                 CarClass           = isMultiClass ? (driver?.CarClass ?? "") : "",
                 ClassPosition      = classPosition,
@@ -113,10 +119,6 @@ internal static class IRacingRelativeCalculator
         candidates.Sort((a, b) => a.Gap.CompareTo(b.Gap));
 
         // ── Build standings (all cars sorted by overall position) ─────────────
-        // Leader is the car with the smallest positive position number, closest ahead of the rest.
-        // Gap-to-leader: use position sort and compute cumulative time deltas.
-        // Simpler approach: use the gap values we already have. Leader's gap to themselves is 0;
-        // everyone else's gap-to-leader = gap-to-player − leader's gap-to-player.
         var standings = BuildStandings(candidates, snapshot, isMultiClass);
 
         // ── Select relative window ─────────────────────────────────────────────
@@ -163,16 +165,34 @@ internal static class IRacingRelativeCalculator
 
         if (sorted.Count == 0) return new StandingsData();
 
-        // Leader is P1; use their gap value as the reference point.
-        float leaderGap = sorted[0].Entry.GapToPlayerSeconds;
+        // ── Gap-to-leader via cumulative progress ─────────────────────────────
+        // GapToPlayerSeconds (relative gap) breaks down when the race leader has
+        // lapped the player: they appear just behind on track but ahead in overall
+        // position, producing a positive GapToPlayerSeconds that makes the math wrong.
+        //
+        // Correct approach: compare total "race progress" = laps_completed + pct.
+        // Progress difference × estimated lap time = gap in seconds.
+        // For lapped cars the integer part of the difference gives the lap count.
+
+        int   leaderCarIdx  = sorted[0].CarIdx;
+        float leaderPct     = snapshot.LapDistPcts[leaderCarIdx];
+        if (leaderPct < 0f) leaderPct = 0f;
+        float leaderProgress = snapshot.Laps[leaderCarIdx] + leaderPct;
 
         var entries = new List<StandingsEntry>(sorted.Count);
-        foreach (var (gap, carIdx, rel) in sorted)
+        foreach (var (_, carIdx, rel) in sorted)
         {
-            float gapToLeader = gap - leaderGap;
+            bool isLeader = entries.Count == 0;
 
-            // Lap difference relative to leader (same car: 0).
-            int lapsBehindLeader = rel.LapDifference - sorted[0].Entry.LapDifference;
+            float carPct = snapshot.LapDistPcts[carIdx];
+            if (carPct < 0f) carPct = 0f;
+            float carProgress   = snapshot.Laps[carIdx] + carPct;
+            float lapsBehind    = leaderProgress - carProgress;   // ≥ 0
+
+            // Explicitly zero the leader; clamp all others to ≥ 0.001 so only one
+            // entry ever gets gap == 0f (which FormatGap maps to "LEADER").
+            float gapToLeader   = isLeader ? 0f : Math.Max(0.001f, lapsBehind * snapshot.EstimatedLapTime);
+            int   lapDiffLeader = isLeader ? 0  : (int)Math.Max(0, Math.Floor(lapsBehind));
 
             float bestLapSec = carIdx < snapshot.BestLapTimes.Length
                 ? snapshot.BestLapTimes[carIdx]
@@ -180,17 +200,17 @@ internal static class IRacingRelativeCalculator
 
             entries.Add(new StandingsEntry
             {
-                Position          = rel.Position,
-                ClassPosition     = rel.ClassPosition,
-                CarNumber         = rel.CarNumber,
-                DriverName        = rel.DriverName,
-                IRating           = rel.IRating,
-                CarClass          = isMultiClass ? rel.CarClass : "",
-                ClassColor        = rel.ClassColor,
+                Position           = rel.Position,
+                ClassPosition      = rel.ClassPosition,
+                CarNumber          = rel.CarNumber,
+                DriverName         = rel.DriverName,
+                IRating            = rel.IRating,
+                CarClass           = isMultiClass ? rel.CarClass : "",
+                ClassColor         = rel.ClassColor,
                 GapToLeaderSeconds = gapToLeader,
-                LapDifference     = lapsBehindLeader,
-                BestLapTime       = bestLapSec > 0 ? TimeSpan.FromSeconds(bestLapSec) : TimeSpan.Zero,
-                IsPlayer          = rel.IsPlayer,
+                LapDifference      = lapDiffLeader,
+                BestLapTime        = bestLapSec > 0 ? TimeSpan.FromSeconds(bestLapSec) : TimeSpan.Zero,
+                IsPlayer           = rel.IsPlayer,
             });
         }
 

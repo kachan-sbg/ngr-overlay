@@ -116,7 +116,7 @@ public sealed class StandingsOverlay : BaseOverlay
                            + (irtgW > 0 ? irtgW + colGap : 0)
                            + gapW  + colGap
                            + (bestW > 0 ? bestW + colGap : 0)
-                           + pad;
+                           + pad + 5f;
 
         float nameW = MathF.Max(w - fixedW, 40f);
 
@@ -190,7 +190,8 @@ public sealed class StandingsOverlay : BaseOverlay
                 DrawL(ctx, dw, fmt, text, "\u25ba", pad - charW, y, charW + 2f, rowH);
 
             // POS
-            DrawR(ctx, dw, fmt, rowBrush, entry.Position.ToString(), xPos, y, posW, rowH);
+            var posStr = entry.Position > 0 ? entry.Position.ToString() : "-";
+            DrawR(ctx, dw, fmt, rowBrush, posStr, xPos, y, posW, rowH);
 
             // CLS badge
             if (clsW > 0 && !string.IsNullOrEmpty(entry.CarClass))
@@ -208,8 +209,10 @@ public sealed class StandingsOverlay : BaseOverlay
             // CAR
             DrawR(ctx, dw, fmt, rowBrush, "#" + entry.CarNumber, xCar, y, carW, rowH);
 
-            // DRIVER NAME
-            var name = Truncate(entry.DriverName, nameW, charW);
+            // DRIVER NAME ("??" when unavailable)
+            var name = string.IsNullOrEmpty(entry.DriverName)
+                ? "??"
+                : Truncate(entry.DriverName, nameW, charW);
             DrawL(ctx, dw, fmt, rowBrush, name, xName, y, nameW, rowH);
 
             // iRTG
@@ -261,11 +264,11 @@ public sealed class StandingsOverlay : BaseOverlay
 
     private static string FormatGap(StandingsEntry entry)
     {
-        if (entry.Position == 1) return "LEADER";
+        // Only the explicit leader (gap set to exactly 0f in BuildStandings) shows "LEADER".
+        if (entry.GapToLeaderSeconds == 0f) return "LEADER";
         if (entry.LapDifference == 1) return "+1 LAP";
         if (entry.LapDifference > 1)  return $"+{entry.LapDifference} LAPS";
-        var gap = entry.GapToLeaderSeconds;
-        return gap <= 0f ? "LEADER" : $"+{gap:F3}";
+        return $"+{entry.GapToLeaderSeconds:F3}";
     }
 
     private static string FormatLapTime(TimeSpan t)

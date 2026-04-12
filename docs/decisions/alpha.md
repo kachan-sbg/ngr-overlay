@@ -4,6 +4,44 @@ Full decision entries from the Alpha milestone. For the brief summary, see [DECI
 
 ---
 
+## 2026-04-12 — Proper shutdown via MessagePump.Quit() instead of Environment.Exit()
+
+**Decision:** Replace `Environment.Exit(0)` in quit callbacks (F10 hotkey and tray icon) with `MessagePump.Quit()`, letting the message pump exit cleanly and the `using var provider` block unwind.
+
+**Context:** After SimOverlay was closed, iOverlay (a competing SDK client) would stop working until iRacing was restarted. Root cause: `Environment.Exit(0)` does not unwind the C# call stack, so `using var provider = services.BuildServiceProvider()` never disposed. `SimDetector`, `IRacingProvider`, `IRacingPoller` were never stopped. IRSDKSharper's background thread and Win32 handles were alive until OS cleanup — and crucially, IRSDKSharper's hidden HWND was still receiving iRacing broadcasts; with no message pump running, iRacing's `SendMessage(HWND_BROADCAST)` would block on that dead window for the hung-window timeout (~5 s), delaying SDK notifications to iOverlay.
+
+**Rationale:** `MessagePump.Quit()` posts `WM_QUIT`, which exits `GetMessage` on the next iteration. The pump returns, the try block exits, `using var provider` disposes, `ServiceProvider.Dispose()` calls `IDisposable.Dispose()` on all registered singletons in LIFO order: `SimDetector` → `IRacingProvider` → `IRacingPoller` → IRSDKSharper `Stop()` + `GC.Collect() + GC.WaitForPendingFinalizers()`. All Win32 handles are released deterministically before the process exits.
+
+**Also added:** `IDisposable` on `IRacingProvider` and `LmuProvider` (DI fallback), safe `Timer.Dispose(WaitHandle)` in `LmuPoller` to wait for in-flight callbacks before releasing the `MemoryMappedViewAccessor`.
+
+**Consequences:** Normal shutdown now takes slightly longer (~3 s max — the `_stoppedGate.Wait(3s)` in `IRacingPoller.Dispose()`). Process kills via Task Manager still skip cleanup, but that is unavoidable and Windows closes all handles anyway.
+
+---
+
+## 2026-04-12 — CarIdxTrackSurface filter for relative/standings/track map
+
+**Decision:** Use `CarIdxTrackSurface >= 0` as the primary in-world filter for iRacing car slots, replacing the `LapDistPct < 0` check.
+
+**Context:** iRacing allocates 64 car slots in telemetry arrays. Registered-but-not-connected drivers (garage or not yet spawned) have `LapDistPct == 0.0` (not -1), so `pct < 0f` passes them through. These ghost entries appeared in the relative and standings lists with position 0 and no driver name, and caused the track map to show zero cars (the filter was correct, but 0.0 is a plausible position on track, so the logic was silently including/excluding the wrong cars).
+
+**Rationale:** `CarIdxTrackSurface == -1` (irsdk value `irsdk_NotInWorld`) is the authoritative "slot unused" signal. All other values (0=OffTrack, 1=InPitStall, 2=ApproachingPits, 3=OnTrack) mean the car is physically spawned. Added to `TelemetrySnapshot` so the stateless calculator can apply the filter without SDK dependency.
+
+**Consequences:** `TelemetrySnapshot` gained a `TrackSurfaces` array; test and benchmark helpers updated.
+
+---
+
+## 2026-04-12 — Smoothed session timing with local countdown
+
+**Decision:** `SessionInfoOverlay` maintains a local `(_syncedElapsed, _syncedRemaining, _syncWallClock)` reference that is updated from the SDK only when `SessionTimeElapsed > 0`. Between syncs, the display counts forward/backward using wall-clock delta.
+
+**Context:** The SDK occasionally returns 0 for `SessionTime` / `SessionTimeRemain` between valid samples (likely a read-torn frame or SDK internal state). Since `DriverData` is published at 60 Hz, this caused the session elapsed and remaining displays to blink between valid values and `"--:--:--"` every few seconds.
+
+**Rationale:** Simple monotonic-ish tracking: accept the SDK value if it is non-zero and not more than 5 s behind the current local estimate (tolerates brief backward jumps but rejects 0-blips). Between SDK syncs, `DateTime.UtcNow - _syncWallClock` is added to the last accepted value. This gives a smooth, stable display with effectively no computational cost and no additional dependencies.
+
+**Consequences:** Session elapsed no longer reflects the raw SDK value in real time — it may drift by up to ~60 ms per second between syncs. At 60 Hz syncs this is negligible. Reset on `SessionData` change to handle new sessions correctly.
+
+---
+
 ## 2026-04-06 — Alpha roadmap: OBS Mode toggle, LMU as second sim, flat track map
 
 **Decision:** The Alpha milestone (Phases 7-12) will:

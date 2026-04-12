@@ -11,6 +11,13 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 ## Current task
 **v0.0.1 Alpha shipped** — Phases 7–11 all `[x]`.
 
+**Pre-Phase-13 live-session hotfixes landed (2026-04-12):**
+- Live session elapsed/remaining/game-time in SessionInfoOverlay (FS-002, FS-003 fixed)
+- Standings LEADER bug fixed; track map fixed (`CarIdxTrackSurface` filter)
+- Relative/Standings: position 0 → `"-"`, right edge padding, LAST column
+- Weather overlay publishes on first telemetry frame; PitHelper disabled
+- Shutdown fixed: `MessagePump.Quit()` not `Environment.Exit()` — prevents iOverlay conflicts
+
 **Next priority: Phase 13 — Data Validation & Audit**
 First task: **TASK-1301** (iRacing field audit).
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for full post-alpha priority order.

@@ -252,6 +252,7 @@ internal sealed class LmuPoller : IDisposable
             Rpm:                   rpm,
             FuelLevelLiters:       fuelLiters,
             FuelConsumptionPerLap: _fuelTracker.PerLapAverage,
+            LastLapFuelLiters:     _fuelTracker.LastLapConsumption,
             IncidentCount:         -1  // not available in LMU
         ));
     }
@@ -302,7 +303,7 @@ internal sealed class LmuPoller : IDisposable
             WindSpeedMps:     info.WindSpeedMps,
             WindDirectionDeg: info.WindDirectionDeg,
             Humidity:         0f,
-            SkyCoverage:      0,
+            SkyCoverage:      null, // not available from LMU
             TrackWetness:     (float)Math.Clamp(info.MaxPathWetness, 0.0, 1.0),
             IsPrecipitating:  info.Raining > 0.05
         ));
@@ -379,10 +380,19 @@ internal sealed class LmuPoller : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        _timer?.Dispose();
-        _timer = null;
-        _reader.Dispose();
+        // Stop the timer and wait for any in-progress callback to finish before
+        // releasing the memory reader.  Timer.Dispose(WaitHandle) signals the handle
+        // when the timer is fully stopped (no pending callbacks remain), preventing a
+        // race where Poll() accesses _reader after it has been disposed.
+        if (_timer != null)
+        {
+            using var stopped = new ManualResetEvent(false);
+            _timer.Dispose(stopped);
+            stopped.WaitOne(TimeSpan.FromSeconds(2));
+            _timer = null;
+        }
 
+        _reader.Dispose();
         AppLog.Info("LmuPoller disposed.");
     }
 }

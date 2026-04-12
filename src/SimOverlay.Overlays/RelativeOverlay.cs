@@ -40,16 +40,16 @@ public sealed class RelativeOverlay : BaseOverlay
     {
         Entries =
         [
-            new() { Position =  1, CarNumber = "44", DriverName = "L. Hamilton",   IRating = 5843, LicenseClass = LicenseClass.A,   LicenseLevel = "A 3.0", GapToPlayerSeconds = -8.45f, LapDifference = 0 },
-            new() { Position =  2, CarNumber =  "1", DriverName = "M. Verstappen", IRating = 6210, LicenseClass = LicenseClass.A,   LicenseLevel = "A 4.8", GapToPlayerSeconds = -5.10f, LapDifference = 0 },
-            new() { Position =  3, CarNumber = "16", DriverName = "C. Leclerc",    IRating = 5102, LicenseClass = LicenseClass.A,   LicenseLevel = "A 2.1", GapToPlayerSeconds = -2.43f, LapDifference = 0 },
-            new() { Position =  4, CarNumber = "63", DriverName = "G. Russell",    IRating = 4891, LicenseClass = LicenseClass.B,   LicenseLevel = "B 4.1", GapToPlayerSeconds = -1.12f, LapDifference = 0 },
-            new() { Position =  5, CarNumber =  "4", DriverName = "L. Norris",     IRating = 4102, LicenseClass = LicenseClass.B,   LicenseLevel = "B 2.7", GapToPlayerSeconds =  0.00f, LapDifference = 0, IsPlayer = true },
-            new() { Position =  6, CarNumber = "81", DriverName = "O. Piastri",    IRating = 3892, LicenseClass = LicenseClass.B,   LicenseLevel = "B 0.9", GapToPlayerSeconds = +1.34f, LapDifference = 0 },
-            new() { Position =  7, CarNumber = "11", DriverName = "S. Perez",      IRating = 5102, LicenseClass = LicenseClass.A,   LicenseLevel = "A 1.5", GapToPlayerSeconds = +2.88f, LapDifference = 0 },
-            new() { Position =  8, CarNumber = "14", DriverName = "F. Alonso",     IRating = 4750, LicenseClass = LicenseClass.Pro, LicenseLevel = "Pro",   GapToPlayerSeconds = +4.21f, LapDifference = 0 },
-            new() { Position =  9, CarNumber = "55", DriverName = "C. Sainz",      IRating = 4350, LicenseClass = LicenseClass.B,   LicenseLevel = "B 4.7", GapToPlayerSeconds = +5.90f, LapDifference = 0 },
-            new() { Position = 10, CarNumber = "18", DriverName = "L. Stroll",     IRating = 3200, LicenseClass = LicenseClass.C,   LicenseLevel = "C 1.2", GapToPlayerSeconds = +7.15f, LapDifference = 0 },
+            new() { Position =  1, CarNumber = "44", DriverName = "L. Hamilton",   IRating = 5843, LicenseClass = LicenseClass.A,   LicenseLevel = "A 3.0", GapToPlayerSeconds = -8.45f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(93.102) },
+            new() { Position =  2, CarNumber =  "1", DriverName = "M. Verstappen", IRating = 6210, LicenseClass = LicenseClass.A,   LicenseLevel = "A 4.8", GapToPlayerSeconds = -5.10f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(93.388) },
+            new() { Position =  3, CarNumber = "16", DriverName = "C. Leclerc",    IRating = 5102, LicenseClass = LicenseClass.A,   LicenseLevel = "A 2.1", GapToPlayerSeconds = -2.43f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(93.521) },
+            new() { Position =  4, CarNumber = "63", DriverName = "G. Russell",    IRating = 4891, LicenseClass = LicenseClass.B,   LicenseLevel = "B 4.1", GapToPlayerSeconds = -1.12f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(93.887) },
+            new() { Position =  5, CarNumber =  "4", DriverName = "L. Norris",     IRating = 4102, LicenseClass = LicenseClass.B,   LicenseLevel = "B 2.7", GapToPlayerSeconds =  0.00f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(94.521), IsPlayer = true },
+            new() { Position =  6, CarNumber = "81", DriverName = "O. Piastri",    IRating = 3892, LicenseClass = LicenseClass.B,   LicenseLevel = "B 0.9", GapToPlayerSeconds = +1.34f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(94.233) },
+            new() { Position =  7, CarNumber = "11", DriverName = "S. Perez",      IRating = 5102, LicenseClass = LicenseClass.A,   LicenseLevel = "A 1.5", GapToPlayerSeconds = +2.88f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(94.102) },
+            new() { Position =  8, CarNumber = "14", DriverName = "F. Alonso",     IRating = 4750, LicenseClass = LicenseClass.Pro, LicenseLevel = "Pro",   GapToPlayerSeconds = +4.21f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(95.011) },
+            new() { Position =  9, CarNumber = "55", DriverName = "C. Sainz",      IRating = 4350, LicenseClass = LicenseClass.B,   LicenseLevel = "B 4.7", GapToPlayerSeconds = +5.90f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(94.788) },
+            new() { Position = 10, CarNumber = "18", DriverName = "L. Stroll",     IRating = 3200, LicenseClass = LicenseClass.C,   LicenseLevel = "C 1.2", GapToPlayerSeconds = +7.15f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(95.344) },
         ],
     };
 
@@ -76,13 +76,13 @@ public sealed class RelativeOverlay : BaseOverlay
         var h        = (float)config.Height;
 
         // ----- Column widths -----
-        // Fixed columns: POS(4ch) | gap | CAR(5ch) | gap | [iRTG(5ch) | gap] | [LIC(7ch) | gap] | GAP(7ch) | gap | LAP(4ch)
-        var posW  = 4f * charW;
-        var carW  = 5f * charW;
-        var irtgW = config.ShowIRating ? 5f * charW : 0f;
-        var licW  = config.ShowLicense ? 7f * charW : 0f;
-        var gapW  = 7f * charW;
-        var lapW  = 4f * charW;
+        // Fixed: POS(4ch) | CAR(5ch) | [iRTG(5ch)] | [LIC(7ch)] | GAP(7ch) | LAST(8ch)
+        var posW   = 4f * charW;
+        var carW   = 5f * charW;
+        var irtgW  = config.ShowIRating ? 5f * charW : 0f;
+        var licW   = config.ShowLicense ? 7f * charW : 0f;
+        var gapW   = 7f * charW;
+        var lastW  = 8f * charW;   // e.g. "1:23.456"
         var colGap = charW;
 
         var fixedW = pad + posW + colGap
@@ -90,7 +90,7 @@ public sealed class RelativeOverlay : BaseOverlay
                          + (irtgW > 0 ? irtgW + colGap : 0)
                          + (licW  > 0 ? licW  + colGap : 0)
                          + gapW  + colGap
-                         + lapW  + pad;
+                         + lastW + pad + 5f;
 
         var nameW = MathF.Max(w - fixedW, 60f);
 
@@ -101,7 +101,7 @@ public sealed class RelativeOverlay : BaseOverlay
         float xIrtg = xName + nameW + colGap;
         float xLic  = xIrtg + (irtgW > 0 ? irtgW + colGap : 0);
         float xGap  = xLic  + (licW  > 0 ? licW  + colGap : 0);
-        float xLap  = xGap  + gapW  + colGap;
+        float xLast = xGap  + gapW  + colGap;
 
         var dw       = Resources.WriteFactory;
         var fmt      = Resources.GetTextFormat("Consolas", fontSize);
@@ -126,8 +126,8 @@ public sealed class RelativeOverlay : BaseOverlay
             DrawR(context, dw, fmt, dimmed, "iRTG", xIrtg, y, irtgW, rowH);
         if (config.ShowLicense)
             DrawL(context, dw, fmt, dimmed, "LIC",  xLic,  y, licW,  rowH);
-        DrawR(context, dw, fmt, dimmed, "GAP",    xGap, y, gapW, rowH);
-        DrawR(context, dw, fmt, dimmed, "LAP",    xLap, y, lapW, rowH);
+        DrawR(context, dw, fmt, dimmed, "GAP",  xGap,  y, gapW,  rowH);
+        DrawR(context, dw, fmt, dimmed, "LAST", xLast, y, lastW, rowH);
 
         // ----- Separator -----
         y += rowH + 1f;
@@ -162,13 +162,16 @@ public sealed class RelativeOverlay : BaseOverlay
                 DrawL(context, dw, fmt, text, "\u25ba", pad - charW, y, charW + 2f, rowH);
 
             // POS
-            DrawR(context, dw, fmt, rowBrush, entry.Position.ToString(), xPos, y, posW, rowH);
+            var posStr = entry.Position > 0 ? entry.Position.ToString() : "-";
+            DrawR(context, dw, fmt, rowBrush, posStr, xPos, y, posW, rowH);
 
             // CAR
             DrawR(context, dw, fmt, rowBrush, "#" + entry.CarNumber, xCar, y, carW, rowH);
 
-            // DRIVER NAME (truncated with ellipsis)
-            var name = Truncate(entry.DriverName, nameW, charW);
+            // DRIVER NAME (truncated with ellipsis; "??" when unavailable)
+            var name = string.IsNullOrEmpty(entry.DriverName)
+                ? "??"
+                : Truncate(entry.DriverName, nameW, charW);
             DrawL(context, dw, fmt, rowBrush, name, xName, y, nameW, rowH);
 
             // iRTG
@@ -191,11 +194,11 @@ public sealed class RelativeOverlay : BaseOverlay
             // GAP
             DrawR(context, dw, fmt, rowBrush, FormatGap(entry), xGap, y, gapW, rowH);
 
-            // LAP
-            var lapText = entry.LapDifference == 0 ? "0"
-                        : entry.LapDifference > 0  ? $"+{entry.LapDifference}"
-                        : entry.LapDifference.ToString();
-            DrawR(context, dw, fmt, rowBrush, lapText, xLap, y, lapW, rowH);
+            // LAST (last completed lap time for this driver)
+            var lastStr = entry.LastLapTime > TimeSpan.Zero
+                ? FormatLapTime(entry.LastLapTime)
+                : "\u2014";
+            DrawR(context, dw, fmt, rowBrush, lastStr, xLast, y, lastW, rowH);
 
             y += rowH;
             rowIndex++;
@@ -269,6 +272,14 @@ public sealed class RelativeOverlay : BaseOverlay
         var gap = entry.GapToPlayerSeconds;
         var s   = Math.Abs(gap).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
         return gap < 0 ? $"-{s}" : $"+{s}";
+    }
+
+    private static string FormatLapTime(TimeSpan ts)
+    {
+        int m  = (int)ts.TotalMinutes;
+        int s  = ts.Seconds;
+        int ms = ts.Milliseconds;
+        return $"{m}:{s:D2}.{ms:D3}";
     }
 
     private static string Truncate(string text, float maxPixels, float charW)

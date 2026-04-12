@@ -135,7 +135,7 @@ internal static class LmuSessionDecoder
             TotalLaps            = info.MaxLaps > 0 ? info.MaxLaps : 0,
             AirTempC             = airTemp,
             TrackTempC           = trackTemp,
-            GameTimeOfDay        = TimeOnly.FromTimeSpan(TimeSpan.FromHours(12)), // not exposed by LMU scoring
+            GameTimeOfDay        = null, // not exposed by LMU scoring
             RelativeHumidity     = 0f,
             WeatherDeclaredWet   = info.Raining > 0.3,
             TrackWetness         = MapWetness(info.MaxPathWetness),

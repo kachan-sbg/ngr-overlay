@@ -95,14 +95,25 @@ internal static class IRacingSessionDecoder
         var weatherDeclaredWet = data.GetInt("WeatherDeclaredWet") != 0;
         var trackWetness      = data.GetInt("TrackWetness");
 
+        // SessionTime: session elapsed seconds (snapshot at YAML change; not real-time).
+        var sessionTimeSec = data.GetFloat("SessionTime");
+
+        // SessionTimeOfDay: seconds since midnight in the sim world (snapshot at YAML change time).
+        var timeOfDaySec = data.GetFloat("SessionTimeOfDay");
+        TimeOnly? gameTimeOfDay = timeOfDaySec > 0
+            ? TimeOnly.FromTimeSpan(TimeSpan.FromSeconds(timeOfDaySec % 86400))
+            : null;
+
         var session = new SessionData
         {
             TrackName            = trackName,
             SessionType          = sessionType,
             SessionTimeRemaining = sessionTimeRemaining,
+            SessionTimeElapsed   = sessionTimeSec > 0 ? TimeSpan.FromSeconds(sessionTimeSec) : TimeSpan.Zero,
             TotalLaps            = totalLaps,
             AirTempC             = airTempC,
             TrackTempC           = trackTempC,
+            GameTimeOfDay        = gameTimeOfDay,
             RelativeHumidity     = humidity,
             WeatherDeclaredWet   = weatherDeclaredWet,
             TrackWetness         = trackWetness,
