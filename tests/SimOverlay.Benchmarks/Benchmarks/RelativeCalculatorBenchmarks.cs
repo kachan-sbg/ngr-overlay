@@ -70,7 +70,10 @@ public class RelativeCalculatorBenchmarks
             pos[i]  = i + 1;
         }
 
-        return new TelemetrySnapshot(playerIdx, pcts, pos, laps, EstimatedLapTime: 90f, BestLapTimes: new float[MaxCars]);
+        var surfaces = new int[MaxCars];
+        for (int i = 0; i < MaxCars; i++) surfaces[i] = i < carCount ? 3 : -1; // OnTrack / NotInWorld
+
+        return new TelemetrySnapshot(playerIdx, pcts, pos, laps, EstimatedLapTime: 90f, BestLapTimes: new float[MaxCars], LastLapTimes: new float[MaxCars], TrackSurfaces: surfaces);
     }
 
     private static IReadOnlyList<DriverSnapshot> MakeDrivers(int count)

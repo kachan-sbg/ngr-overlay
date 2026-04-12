@@ -123,10 +123,11 @@ public sealed class WeatherOverlay : BaseOverlay
         // Sky
         string skyText = w.SkyCoverage switch
         {
-            0 => "Clear",
-            1 => "Partly \u2601",
-            2 => "Mostly \u2601",
-            _ => "Overcast",
+            null => "??",
+            0    => "Clear",
+            1    => "Partly \u2601",
+            2    => "Mostly \u2601",
+            _    => "Overcast",
         };
         DrawRow(ctx, dw, fmt, text, dimmed, "Sky", skyText, xL, xV, y, labelW, valueW, rowH);
         y += rowH;

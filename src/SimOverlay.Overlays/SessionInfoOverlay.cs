@@ -10,7 +10,7 @@ namespace SimOverlay.Overlays;
 
 /// <summary>
 /// Session info panel — track name, session type/remaining, elapsed, wall clock, game time,
-/// air/track temps, and current/last/best/delta lap times.
+/// air/track temps, and current/last/SB/PB lap times.
 /// </summary>
 public sealed class SessionInfoOverlay : BaseOverlay
 {
@@ -24,7 +24,7 @@ public sealed class SessionInfoOverlay : BaseOverlay
         X               = 100,
         Y               = 600,
         Width           = 260,
-        Height          = 280,
+        Height          = 310,
         Opacity         = 0.85f,
         BackgroundColor = new ColorConfig { R = 0f, G = 0f, B = 0f, A = 0.75f },
         FontSize        = 13f,
@@ -36,28 +36,38 @@ public sealed class SessionInfoOverlay : BaseOverlay
     private volatile SessionData? _session;
     private volatile DriverData?  _driver;
 
+    // Smoothed session timing — avoids display blinking caused by occasional SDK
+    // returning 0 for SessionTime/SessionTimeRemain between valid samples.
+    // Only updated when the SDK delivers a plausible (non-zero, non-decreasing) value.
+    private TimeSpan  _syncedElapsed   = TimeSpan.Zero;
+    private TimeSpan? _syncedRemaining;
+    private DateTime  _syncWallClock   = DateTime.MinValue;
+
+    private static readonly TimeSpan SyncTolerance = TimeSpan.FromSeconds(5);
+
     // ── Edit-mode mock data ───────────────────────────────────────────────────
     private static readonly SessionData MockSession = new()
     {
         TrackName            = "Silverstone GP",
         SessionType          = SessionType.Race,
-        SessionTimeRemaining = TimeSpan.FromMinutes(27),
-        SessionTimeElapsed   = TimeSpan.FromMinutes(18).Add(TimeSpan.FromSeconds(34)),
         TotalLaps            = 30,
         AirTempC             = 22.1f,
         TrackTempC           = 38.7f,
-        GameTimeOfDay        = new TimeOnly(14, 45, 0),
         RelativeHumidity     = 0.62f,
         WeatherDeclaredWet   = false,
-        TrackWetness         = 1, // dry
+        TrackWetness         = 1,
     };
     private static readonly DriverData MockDriver = new()
     {
-        Position            = 5,
-        Lap                 = 12,
-        LastLapTime         = TimeSpan.FromSeconds(94.521),
-        BestLapTime         = TimeSpan.FromSeconds(93.887),
-        LapDeltaVsBestLap   = -0.034f,
+        Position              = 5,
+        Lap                   = 12,
+        LastLapTime           = TimeSpan.FromSeconds(94.521),
+        BestLapTime           = TimeSpan.FromSeconds(93.887),
+        SessionBestLapTime    = TimeSpan.FromSeconds(93.102),
+        LapDeltaVsBestLap     = -0.034f,
+        SessionTimeElapsed    = TimeSpan.FromMinutes(18).Add(TimeSpan.FromSeconds(34)),
+        SessionTimeRemaining  = TimeSpan.FromMinutes(27),
+        GameTimeOfDay         = new TimeOnly(14, 45, 0),
     };
 
     public SessionInfoOverlay(
@@ -67,8 +77,36 @@ public sealed class SessionInfoOverlay : BaseOverlay
         AppConfig appConfig)
         : base(WindowTitle, config, bus, configStore, appConfig)
     {
-        Subscribe<SessionData>(data => _session = data);
-        Subscribe<DriverData>(data  => _driver  = data);
+        Subscribe<SessionData>(data =>
+        {
+            _session = data;
+            // Reset the timing sync reference on session change so the new
+            // session's elapsed starts fresh instead of inheriting stale values.
+            _syncedElapsed   = TimeSpan.Zero;
+            _syncedRemaining = null;
+            _syncWallClock   = DateTime.MinValue;
+        });
+
+        Subscribe<DriverData>(data =>
+        {
+            _driver = data;
+            // Accept SDK elapsed only when it is non-zero and not more than
+            // SyncTolerance behind our current local estimate (filters blips).
+            if (data.SessionTimeElapsed > TimeSpan.Zero)
+            {
+                var localNow = _syncWallClock == DateTime.MinValue
+                    ? TimeSpan.Zero
+                    : _syncedElapsed + (DateTime.UtcNow - _syncWallClock);
+
+                if (_syncWallClock == DateTime.MinValue ||
+                    data.SessionTimeElapsed >= localNow - SyncTolerance)
+                {
+                    _syncedElapsed   = data.SessionTimeElapsed;
+                    _syncedRemaining = data.SessionTimeRemaining;
+                    _syncWallClock   = DateTime.UtcNow;
+                }
+            }
+        });
     }
 
     protected override void OnRender(ID2D1RenderTarget context, OverlayConfig config)
@@ -91,11 +129,31 @@ public sealed class SessionInfoOverlay : BaseOverlay
                                          config.TextColor.B, 0.25f);
         var green  = Resources.GetBrush(0f, 0.867f, 0f, 1f);
         var red    = Resources.GetBrush(0.867f, 0.133f, 0.133f, 1f);
+        var purple = Resources.GetBrush(0.7f, 0.3f, 1f, 1f);
 
         // Label column: 9 chars wide; value takes the rest.
         float labelW = 9f * charW;
         float valueX = pad + labelW;
         float valueW = w - valueX - pad;
+
+        // ── Compute smoothed session timing (before any rendering) ────────────
+        TimeSpan smoothedElapsed;
+        TimeSpan? smoothedRemaining;
+        if (IsLocked)
+        {
+            var drift = _syncWallClock == DateTime.MinValue
+                ? TimeSpan.Zero
+                : DateTime.UtcNow - _syncWallClock;
+            smoothedElapsed   = _syncedElapsed + drift;
+            smoothedRemaining = _syncedRemaining.HasValue
+                ? _syncedRemaining.Value - drift
+                : (TimeSpan?)null;
+        }
+        else
+        {
+            smoothedElapsed   = MockDriver.SessionTimeElapsed;
+            smoothedRemaining = MockDriver.SessionTimeRemaining;
+        }
 
         float y = pad;
 
@@ -104,16 +162,16 @@ public sealed class SessionInfoOverlay : BaseOverlay
         y += rowH;
 
         // ── Session type + remaining/laps ──────────────────────────────
-        DrawL(context, dw, fmt, dimmed, FormatSessionLine(session, driver), pad, y, w - 2f * pad, rowH);
+        DrawL(context, dw, fmt, dimmed, FormatSessionLine(session, driver, smoothedRemaining), pad, y, w - 2f * pad, rowH);
         y += rowH + 2f;
 
         // ── Separator ─────────────────────────────────────────────────
         context.DrawLine(new Vector2(pad, y), new Vector2(w - pad, y), sep, 1f);
         y += 4f;
 
-        // ── Session elapsed ───────────────────────────────────────────
+        // ── Session elapsed ────────────────────────────────────────────
         DrawRow(context, dw, fmt, dimmed, text, "Session",
-            session != null ? FormatElapsed(session.SessionTimeElapsed) : "--:--:--",
+            smoothedElapsed > TimeSpan.Zero ? FormatElapsed(smoothedElapsed) : "--:--:--",
             pad, y, labelW, valueX, valueW, rowH);
         y += rowH;
 
@@ -124,12 +182,14 @@ public sealed class SessionInfoOverlay : BaseOverlay
         DrawRow(context, dw, fmt, dimmed, text, "Clock", clockStr, pad, y, labelW, valueX, valueW, rowH);
         y += rowH;
 
-        // ── Game time of day (optional) ───────────────────────────────
+        // ── Game time of day (live from DriverData, optional) ─────────
         if (config.ShowGameTime)
         {
-            var gameStr = session != null
-                ? $"{session.GameTimeOfDay:HH:mm} ({GetTimeOfDayDesc(session.GameTimeOfDay.Hour)})"
-                : "--:-- (--)";
+            // Prefer the live DriverData.GameTimeOfDay (60 Hz) over the stale session snapshot.
+            var gameToD = driver?.GameTimeOfDay ?? session?.GameTimeOfDay;
+            string gameStr = gameToD.HasValue
+                ? $"{gameToD.Value:HH:mm} ({GetTimeOfDayDesc(gameToD.Value.Hour)})"
+                : "--:-- (??)";
             DrawRow(context, dw, fmt, dimmed, text, "Game", gameStr, pad, y, labelW, valueX, valueW, rowH);
             y += rowH;
         }
@@ -180,7 +240,14 @@ public sealed class SessionInfoOverlay : BaseOverlay
             pad, y, labelW, valueX, valueW, rowH);
         y += rowH;
 
-        DrawRow(context, dw, fmt, dimmed, text, "Best",
+        // Session best (purple — typically the track authority)
+        var sbTime  = driver?.SessionBestLapTime ?? TimeSpan.Zero;
+        var sbStr   = sbTime > TimeSpan.Zero ? FormatLapTime(sbTime) : "--:--.---";
+        DrawRow(context, dw, fmt, dimmed, purple, "SB", sbStr, pad, y, labelW, valueX, valueW, rowH);
+        y += rowH;
+
+        // Personal best
+        DrawRow(context, dw, fmt, dimmed, text, "PB",
             driver?.BestLapTime > TimeSpan.Zero ? FormatLapTime(driver.BestLapTime) : "--:--.---",
             pad, y, labelW, valueX, valueW, rowH);
         y += rowH;
@@ -212,12 +279,12 @@ public sealed class SessionInfoOverlay : BaseOverlay
         ID2D1Brush brush, string text, float x, float y, float colW, float colH)
     {
         using var layout = dw.CreateTextLayout(text, fmt, colW, colH);
-        ctx.DrawTextLayout(new Vector2(x, y), layout, brush, DrawTextOptions.Clip);
+        ctx.DrawTextLayout(new System.Numerics.Vector2(x, y), layout, brush, DrawTextOptions.Clip);
     }
 
     // ── Formatting helpers ────────────────────────────────────────────────
 
-    private static string FormatSessionLine(SessionData? session, DriverData? driver)
+    private static string FormatSessionLine(SessionData? session, DriverData? driver, TimeSpan? smoothedRemaining)
     {
         if (session == null) return "Waiting for session";
 
@@ -239,7 +306,16 @@ public sealed class SessionInfoOverlay : BaseOverlay
             return $"{type} \u00b7 {rem} laps remaining";
         }
 
-        return $"{type} \u00b7 {FormatCountdown(session.SessionTimeRemaining)} remaining";
+        // Use smoothed remaining (locally counted down, synced from SDK).
+        // Fall back to YAML snapshot if no live data yet.
+        var timeLeft = smoothedRemaining
+                    ?? (session.SessionTimeRemaining > TimeSpan.Zero
+                           ? (TimeSpan?)session.SessionTimeRemaining
+                           : null);
+        if (timeLeft.HasValue && timeLeft.Value >= TimeSpan.Zero)
+            return $"{type} \u00b7 {FormatCountdown(timeLeft.Value)} remaining";
+
+        return type;
     }
 
     /// <summary>Always HH:MM:SS — for session elapsed display.</summary>
@@ -288,7 +364,8 @@ public sealed class SessionInfoOverlay : BaseOverlay
 
     private static string FormatTrackWetness(int wetness, bool declaredWet)
     {
-        var state = wetness switch
+        _ = declaredWet; // administrative flag not displayed — physically confusing when track is dry
+        return wetness switch
         {
             1 => "Dry",
             2 => "Mostly dry",
@@ -299,7 +376,6 @@ public sealed class SessionInfoOverlay : BaseOverlay
             7 => "Extreme wet",
             _ => "Unknown",
         };
-        return declaredWet ? state + " (wet declared)" : state;
     }
 
     private static string GetTimeOfDayDesc(int hour) => hour switch

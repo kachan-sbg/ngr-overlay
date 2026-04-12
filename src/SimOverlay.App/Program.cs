@@ -97,8 +97,13 @@ internal static class Program
             AppLog.Info("DI container built");
 
             // Resolve singletons — provider manages their lifetimes.
-            var detector       = provider.GetRequiredService<SimDetector>();
+            // IMPORTANT: OverlayManager must be resolved BEFORE SimDetector.
+            // SimDetector's constructor starts its poll timer with TimeSpan.Zero (fires immediately
+            // on a ThreadPool thread). If SimDetector were resolved first, it could detect the sim
+            // and publish SimStateChangedEvent before any overlays have subscribed to the bus,
+            // leaving all overlays stuck at SimState.Disconnected ("Sim not detected") forever.
             var overlayManager = provider.GetRequiredService<OverlayManager>();
+            var detector       = provider.GetRequiredService<SimDetector>();
             var factory        = provider.GetRequiredService<IOverlayFactory>();
             AppLog.Info("Core services resolved");
 
@@ -118,15 +123,29 @@ internal static class Program
             // Wire single-instance signal → open Settings (fired when a second instance starts).
             singleInstance.OpenSettingsRequested = OpenSettings;
 
+            // Shared shutdown — saves config and posts WM_QUIT so the message pump
+            // exits cleanly.  This lets the 'using var provider' block above unwind,
+            // which cascades: ServiceProvider → SimDetector → IRacingProvider/LmuProvider
+            // → IRacingPoller (GC.Collect for IRSDKSharper Win32 handles) / LmuPoller.
+            // Using Environment.Exit(0) directly would bypass this entire chain.
+            var shutdownRequested = false;
+            void Shutdown()
+            {
+                if (shutdownRequested) return;
+                shutdownRequested = true;
+                AppLog.Info("Shutdown requested — saving config and posting WM_QUIT.");
+                configStore.Save(appConfig);
+                MessagePump.Quit();
+            }
+
             // --- Tray icon ---
             using var tray = new TrayIconController(
                 overlayManager,
                 openSettings: OpenSettings,
                 quit: () =>
                 {
-                    AppLog.Info("Quit via tray — saving config and exiting.");
-                    configStore.Save(appConfig);
-                    Environment.Exit(0);
+                    AppLog.Info("Quit via tray.");
+                    Shutdown();
                 });
             AppLog.Info("TrayIconController started — entering message pump");
 
@@ -153,13 +172,16 @@ internal static class Program
 
                     if (id == hotkeyQuit)
                     {
-                        AppLog.Info("F10 quit — saving config and exiting.");
-                        zOrderHook.Dispose();
-                        configStore.Save(appConfig);
-                        Environment.Exit(0);
+                        AppLog.Info("F10 quit.");
+                        Shutdown();
                     }
                 }
             });
+
+            // Pump has exited — unregister hotkeys before the window is fully torn down.
+            MessagePump.UnregisterHotKey(hotkeySettings);
+            MessagePump.UnregisterHotKey(hotkeyQuit);
+            AppLog.Info("Message pump exited — unregistered hotkeys.");
         }
         catch (Exception ex)
         {

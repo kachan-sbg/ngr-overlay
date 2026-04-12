@@ -21,24 +21,30 @@ public class RelativeCalculatorTests
         (int carIdx, float pct, int lap, int pos)[] cars)
     {
         const int MaxCars = 64;
-        var pcts  = Enumerable.Repeat(-1f, MaxCars).ToArray();
-        var laps  = new int[MaxCars];
-        var pos   = new int[MaxCars];
+        var pcts     = Enumerable.Repeat(-1f, MaxCars).ToArray();
+        var laps     = new int[MaxCars];
+        var pos      = new int[MaxCars];
+        // Default TrackSurfaces to 3 (OnTrack) for all slots that have valid pct;
+        // slots left at pct=-1 are treated as NotInWorld (-1) by the calculator anyway.
+        var surfaces = Enumerable.Repeat(-1, MaxCars).ToArray();
 
         foreach (var (idx, pct, lap, position) in cars)
         {
-            pcts[idx] = pct;
-            laps[idx] = lap;
-            pos[idx]  = position;
+            pcts[idx]     = pct;
+            laps[idx]     = lap;
+            pos[idx]      = position;
+            surfaces[idx] = 3; // OnTrack
         }
 
         return new TelemetrySnapshot(
-            PlayerCarIdx:    playerCarIdx,
-            LapDistPcts:     pcts,
-            Positions:       pos,
-            Laps:            laps,
+            PlayerCarIdx:     playerCarIdx,
+            LapDistPcts:      pcts,
+            Positions:        pos,
+            Laps:             laps,
             EstimatedLapTime: estLapTime,
-            BestLapTimes:    new float[MaxCars]);
+            BestLapTimes:     new float[MaxCars],
+            LastLapTimes:     new float[MaxCars],
+            TrackSurfaces:    surfaces);
     }
 
     /// <summary>Creates a simple <see cref="DriverSnapshot"/> for a given car index.</summary>

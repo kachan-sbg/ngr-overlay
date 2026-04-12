@@ -44,6 +44,7 @@ public sealed class FuelCalculatorOverlay : BaseOverlay
         SpeedMps: 40f, Gear: 3, Rpm: 4000f,
         FuelLevelLiters: 12.4f,
         FuelConsumptionPerLap: 2.83f,
+        LastLapFuelLiters: 2.91f,
         IncidentCount: 0);
 
     private static readonly SessionData MockSession = new()
@@ -118,15 +119,18 @@ public sealed class FuelCalculatorOverlay : BaseOverlay
         bool isRace = session?.SessionType == SessionType.Race;
         bool isLapLimited = isRace && session?.TotalLaps > 0;
 
-        float fuelL   = telem?.FuelLevelLiters        ?? 0f;
-        float avgL    = telem?.FuelConsumptionPerLap  ?? 0f;
-        bool  hasAvg  = avgL > 0.001f;
+        float fuelL    = telem?.FuelLevelLiters        ?? 0f;
+        float avgL     = telem?.FuelConsumptionPerLap  ?? 0f;
+        float lastLapL = telem?.LastLapFuelLiters      ?? 0f;
+        bool  hasAvg   = avgL > 0.001f;
+        bool  hasLast  = lastLapL > 0.001f;
 
         // Convert to display unit
-        bool   gallons  = cfg.FuelUnit == FuelUnit.Gallons;
-        string unitStr  = gallons ? "gal" : "L";
-        float  fuelDisp = gallons ? fuelL * 0.264172f : fuelL;
-        float  avgDisp  = gallons ? avgL  * 0.264172f : avgL;
+        bool   gallons      = cfg.FuelUnit == FuelUnit.Gallons;
+        string unitStr      = gallons ? "gal" : "L";
+        float  fuelDisp     = gallons ? fuelL    * 0.264172f : fuelL;
+        float  avgDisp      = gallons ? avgL     * 0.264172f : avgL;
+        float  lastLapDisp  = gallons ? lastLapL * 0.264172f : lastLapL;
 
         // Laps remaining on current fuel
         float? lapsLeft = hasAvg ? fuelL / avgL : null;
@@ -171,7 +175,12 @@ public sealed class FuelCalculatorOverlay : BaseOverlay
         DrawRow(ctx, dw, fmt, text, dimmed, "Level", $"{fuelDisp:F1} {unitStr}", xLabel, xValue, y, labelW, valueW, rowH);
         y += rowH;
 
-        DrawRow(ctx, dw, fmt, text, dimmed, "Avg/Lap",
+        DrawRow(ctx, dw, fmt, text, dimmed, "Last Lap",
+            hasLast ? $"{lastLapDisp:F2} {unitStr}" : "\u2014",
+            xLabel, xValue, y, labelW, valueW, rowH);
+        y += rowH;
+
+        DrawRow(ctx, dw, fmt, text, dimmed, "Avg/Lap (5)",
             hasAvg ? $"{avgDisp:F2} {unitStr}" : "\u2014",
             xLabel, xValue, y, labelW, valueW, rowH);
         y += rowH;

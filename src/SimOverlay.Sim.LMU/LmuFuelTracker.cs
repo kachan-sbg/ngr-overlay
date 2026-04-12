@@ -22,6 +22,9 @@ internal sealed class LmuFuelTracker
     /// <summary>Rolling average fuel consumption per green-flag lap, in litres.  Zero until at least one lap is recorded.</summary>
     public float PerLapAverage { get; private set; }
 
+    /// <summary>Fuel consumed during the most recently completed green-flag lap, in litres.  Zero until one lap is recorded.</summary>
+    public float LastLapConsumption { get; private set; }
+
     /// <summary>
     /// Feed the tracker one scoring tick.
     /// </summary>
@@ -46,6 +49,8 @@ internal sealed class LmuFuelTracker
 
             if (!_cautionThisLap && consumed > 0f)
             {
+                LastLapConsumption = consumed;
+
                 _buffer.Enqueue(consumed);
                 if (_buffer.Count > BufferSize)
                     _buffer.Dequeue();
@@ -63,9 +68,10 @@ internal sealed class LmuFuelTracker
     public void Reset()
     {
         _buffer.Clear();
-        _lastLap        = -1;
-        _fuelAtLapStart = float.NaN;
-        _cautionThisLap = false;
-        PerLapAverage   = 0f;
+        _lastLap           = -1;
+        _fuelAtLapStart    = float.NaN;
+        _cautionThisLap    = false;
+        PerLapAverage      = 0f;
+        LastLapConsumption = 0f;
     }
 }
