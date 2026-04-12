@@ -5,211 +5,210 @@ using SimOverlay.Core;
 namespace SimOverlay.Sim.LMU.SharedMemory;
 
 /// <summary>
-/// Opens and reads the rF2/LMU shared memory mapped files:
-/// <list type="bullet">
-///   <item><c>$rFactor2SMMP_Scoring$</c> — session + per-vehicle scoring data</item>
-///   <item><c>$rFactor2SMMP_Telemetry$</c> — per-vehicle physics + driver inputs</item>
-/// </list>
-///
+/// Opens and reads the <c>LMU_Data</c> shared memory mapped file created by Le Mans Ultimate.
 /// <para>
-/// Scoring data is read using version-bump consistency: if a write was in progress
-/// (<c>VersionUpdateBegin != VersionUpdateEnd</c>), the tick is skipped.
+/// Scoring data (<see cref="LmuScoringInfo"/> + <see cref="LmuVehicleScoring"/> array) is
+/// read from fixed byte offsets within the buffer.  Player telemetry fields are read via
+/// unsafe pointer arithmetic using the per-field offsets defined in
+/// <see cref="LmuSharedMemoryLayout"/>.
 /// </para>
 /// <para>
-/// The telemetry vehicle stride is computed from the mapped file size at runtime
-/// (fileSize − versionBlock / MaxVehicles) to be robust against plugin version
-/// differences.  If the file does not open (plugin not installed), telemetry
-/// falls back to zero/default values.
+/// LMU does not use a version-bump consistency block, so torn-read protection is omitted.
+/// <see cref="ReadScoring"/> returns null only on exception.
 /// </para>
 /// </summary>
-internal sealed class Rf2MemoryReader : IDisposable
+internal sealed class LmuMemoryReader : IDisposable
 {
-    private const string ScoringMapName   = "$rFactor2SMMP_Scoring$";
-    private const string TelemetryMapName = "$rFactor2SMMP_Telemetry$";
+    private static readonly int ScoringInfoSize    = Marshal.SizeOf<LmuScoringInfo>();
+    private static readonly int VehicleScoringSize = Marshal.SizeOf<LmuVehicleScoring>();
 
-    // Cached marshal sizes (computed once — Marshal.SizeOf calls are not free).
-    private static readonly int ScoringInfoSize    = Marshal.SizeOf<Rf2ScoringInfo>();
-    private static readonly int VehicleScoringSize = Marshal.SizeOf<Rf2VehicleScoring>();
-    private static readonly int TelemetryInputSize = Marshal.SizeOf<Rf2VehicleTelemetryInputs>();
+    private MemoryMappedFile?         _file;
+    private MemoryMappedViewAccessor? _view;
+    private bool                      _disposed;
 
-    // Scoring: ScoringInfo immediately follows the 8-byte version block.
-    private static readonly int ScoringInfoOffset = Rf2Structs.VersionBlockSize;
-    // Vehicles immediately follow ScoringInfo.
-    private static readonly int VehiclesOffset    = Rf2Structs.VersionBlockSize + ScoringInfoSize;
-
-    private MemoryMappedFile?         _scoringFile;
-    private MemoryMappedViewAccessor? _scoringView;
-    private MemoryMappedFile?         _telemetryFile;
-    private MemoryMappedViewAccessor? _telemetryView;
-    private int                       _telemetryStride; // bytes per vehicle in telemetry file
-
-    private bool _disposed;
-
-    public bool IsScoringOpen    => _scoringView   != null;
-    public bool IsTelemetryOpen  => _telemetryView != null;
+    public bool IsOpen => _view != null;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Attempts to open the scoring mapped file.  Returns true on success.
-    /// The telemetry file is opened separately via <see cref="TryOpenTelemetry"/>.
+    /// Attempts to open the <c>LMU_Data</c> mapped file.
+    /// Returns <c>true</c> on success; leaves the reader closed on failure.
     /// </summary>
-    public bool TryOpenScoring()
+    public bool TryOpen()
     {
         try
         {
-            _scoringFile = MemoryMappedFile.OpenExisting(ScoringMapName);
-            _scoringView = _scoringFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+            _file = MemoryMappedFile.OpenExisting(LmuSharedMemoryLayout.DataFile);
+            _view = _file.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
             AppLog.Info(
-                $"Rf2MemoryReader: opened {ScoringMapName} " +
-                $"(ScoringInfo={ScoringInfoSize}B, VehicleScoring={VehicleScoringSize}B, " +
-                $"VehiclesAt={VehiclesOffset})");
+                $"LmuMemoryReader: opened {LmuSharedMemoryLayout.DataFile} " +
+                $"(ScoringInfoSize={ScoringInfoSize}B, VehicleScoringSize={VehicleScoringSize}B, " +
+                $"ScoringInfoAt={LmuSharedMemoryLayout.ScoringInfoOffset}, " +
+                $"VehiclesAt={LmuSharedMemoryLayout.ScoringVehiclesOffset})");
+            ValidateLayout();
             return true;
         }
         catch
         {
-            CloseScoring();
+            Close();
             return false;
         }
     }
 
     /// <summary>
-    /// Attempts to open the telemetry mapped file and compute the per-vehicle stride.
-    /// Returns true on success.  Safe to call even if LMU is not running.
+    /// Reads a few anchor fields at their expected offsets and logs a warning if the values
+    /// look implausible — a cheap guard against LMU updates shifting the struct layout.
+    /// Does NOT abort the open; data may still be usable even if one anchor looks odd.
     /// </summary>
-    public bool TryOpenTelemetry()
+    private unsafe void ValidateLayout()
     {
+        if (_view == null) return;
+        byte* ptr = null;
         try
         {
-            _telemetryFile = MemoryMappedFile.OpenExisting(TelemetryMapName);
-            _telemetryView = _telemetryFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+            _view.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
 
-            // Derive stride from file size so we're robust against plugin version differences.
-            long usable = _telemetryView.Capacity - Rf2Structs.VersionBlockSize;
-            _telemetryStride = (int)(usable / Rf2Structs.MaxVehicles);
+            // Anchor 1: NumVehicles at ScoringInfoOffset + 104 must be in [0, 104].
+            int numVeh = *(int*)(ptr + LmuSharedMemoryLayout.ScoringInfoOffset + 104);
+            bool numVehOk = numVeh >= 0 && numVeh <= LmuSharedMemoryLayout.MaxVehicles;
 
-            AppLog.Info(
-                $"Rf2MemoryReader: opened {TelemetryMapName} " +
-                $"(stride={_telemetryStride}B, inputsSize={TelemetryInputSize}B)");
+            // Anchor 2: CurrentET at ScoringInfoOffset + 68 must be >= 0.
+            double currentEt = *(double*)(ptr + LmuSharedMemoryLayout.ScoringInfoOffset + 68);
+            bool etOk = currentEt >= 0.0 && currentEt < 86400.0 * 7; // < 1 week in seconds
 
-            if (_telemetryStride < TelemetryInputSize)
+            if (!numVehOk || !etOk)
             {
-                AppLog.Error(
-                    $"Rf2MemoryReader: computed telemetry stride {_telemetryStride} < " +
-                    $"inputs struct {TelemetryInputSize} — telemetry disabled.");
-                CloseTelemetry();
-                return false;
+                AppLog.Info(
+                    $"LmuMemoryReader: layout anchor check — NumVehicles={numVeh} (ok={numVehOk}), " +
+                    $"CurrentET={currentEt:F1} (ok={etOk}). " +
+                    "If data looks wrong, LMU may have updated its struct layout.");
             }
-
-            return true;
+            else
+            {
+                AppLog.Info(
+                    $"LmuMemoryReader: layout anchors OK — NumVehicles={numVeh}, CurrentET={currentEt:F1}s.");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            CloseTelemetry();
-            return false;
+            AppLog.Exception("LmuMemoryReader.ValidateLayout", ex);
+        }
+        finally
+        {
+            if (ptr != null)
+                _view.SafeMemoryMappedViewHandle.ReleasePointer();
         }
     }
 
-    public void CloseScoring()
+    private void Close()
     {
-        _scoringView?.Dispose();
-        _scoringView = null;
-        _scoringFile?.Dispose();
-        _scoringFile = null;
-    }
-
-    public void CloseTelemetry()
-    {
-        _telemetryView?.Dispose();
-        _telemetryView = null;
-        _telemetryFile?.Dispose();
-        _telemetryFile = null;
+        _view?.Dispose();
+        _view = null;
+        _file?.Dispose();
+        _file = null;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Reads the current scoring snapshot.
-    /// Returns null if LMU is mid-write (version mismatch) or on any read error.
+    /// Reads the current scoring snapshot (session info + all active vehicles).
+    /// Returns <c>null</c> only on exception.
     /// </summary>
-    public unsafe Rf2ScoringSnapshot? ReadScoring()
+    public unsafe LmuScoringSnapshot? ReadScoring()
     {
-        if (_scoringView == null) return null;
+        if (_view == null) return null;
 
         byte* ptr = null;
         try
         {
-            _scoringView.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+            _view.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
 
-            uint vBegin = *(uint*)ptr;
+            var info = Marshal.PtrToStructure<LmuScoringInfo>(
+                (IntPtr)(ptr + LmuSharedMemoryLayout.ScoringInfoOffset));
 
-            var info = Marshal.PtrToStructure<Rf2ScoringInfo>((IntPtr)(ptr + ScoringInfoOffset));
-
-            int count = Math.Clamp(info.NumVehicles, 0, Rf2Structs.MaxVehicles);
-            var vehicles = new Rf2VehicleScoring[count];
+            int count = Math.Clamp(info.NumVehicles, 0, LmuSharedMemoryLayout.MaxVehicles);
+            var vehicles = new LmuVehicleScoring[count];
             for (int i = 0; i < count; i++)
             {
-                long off = VehiclesOffset + (long)i * VehicleScoringSize;
-                vehicles[i] = Marshal.PtrToStructure<Rf2VehicleScoring>((IntPtr)(ptr + off));
+                long off = LmuSharedMemoryLayout.ScoringVehiclesOffset
+                           + (long)i * LmuSharedMemoryLayout.VehicleScoringSize;
+                vehicles[i] = Marshal.PtrToStructure<LmuVehicleScoring>((IntPtr)(ptr + off));
             }
 
-            uint vEnd = *(uint*)(ptr + 4);
-
-            // Torn read — writer was active; skip this tick.
-            if (vBegin != vEnd) return null;
-
-            return new Rf2ScoringSnapshot(info, vehicles);
+            return new LmuScoringSnapshot(info, vehicles);
         }
         catch (Exception ex)
         {
-            AppLog.Exception("Rf2MemoryReader.ReadScoring", ex);
+            AppLog.Exception("LmuMemoryReader.ReadScoring", ex);
             return null;
         }
         finally
         {
             if (ptr != null)
-                _scoringView.SafeMemoryMappedViewHandle.ReleasePointer();
+                _view.SafeMemoryMappedViewHandle.ReleasePointer();
         }
     }
 
     /// <summary>
-    /// Reads the telemetry inputs for the vehicle whose slot ID matches <paramref name="playerId"/>.
-    /// Returns null if the telemetry file is not open, the player entry is not found,
-    /// or the stride is smaller than the inputs struct.
+    /// Reads player telemetry fields using the <c>playerVehicleIdx</c> byte that LMU writes into
+    /// the telemetry header (<c>TelemetryHeaderOffset + 1</c>).  This is the authoritative index
+    /// into the <c>telemInfo</c> array and is not necessarily equal to the scoring array index.
+    /// Returns <c>null</c> if the file is not open or <c>playerHasVehicle</c> is zero.
     /// </summary>
-    public unsafe Rf2VehicleTelemetryInputs? ReadPlayerTelemetry(int playerId)
+    public unsafe LmuPlayerInputs? ReadPlayerTelemetry()
     {
-        if (_telemetryView == null || _telemetryStride < TelemetryInputSize) return null;
+        if (_view == null) return null;
 
         byte* ptr = null;
         try
         {
-            _telemetryView.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+            _view.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
 
-            byte* dataStart = ptr + Rf2Structs.VersionBlockSize;
+            // SharedMemoryTelemetryData header layout:
+            //   [+0] uint8_t activeVehicles
+            //   [+1] uint8_t playerVehicleIdx   ← authoritative telemetry array index
+            //   [+2] bool    playerHasVehicle
+            //   [+3] 1-byte padding (pack4 aligns TelemInfoV01 array to 4B)
+            byte playerVehicleIdx = *(ptr + LmuSharedMemoryLayout.TelemetryHeaderOffset + 1);
+            byte playerHasVehicle = *(ptr + LmuSharedMemoryLayout.TelemetryHeaderOffset + 2);
 
-            for (int i = 0; i < Rf2Structs.MaxVehicles; i++)
-            {
-                byte* veh = dataStart + (long)i * _telemetryStride;
-                int slotId = *(int*)veh; // first field is int Id
+            if (playerHasVehicle == 0) return null;
+            if (playerVehicleIdx >= LmuSharedMemoryLayout.MaxVehicles) return null;
 
-                if (slotId == playerId)
-                {
-                    return Marshal.PtrToStructure<Rf2VehicleTelemetryInputs>((IntPtr)veh);
-                }
-            }
+            byte* veh = ptr
+                        + LmuSharedMemoryLayout.TelemetryVehOffset
+                        + (long)playerVehicleIdx * LmuSharedMemoryLayout.VehicleTelemSize;
 
-            return null;
+            int   gear     = *(int*)(veh + LmuSharedMemoryLayout.Telem_Gear);
+            float rpm      = (float)*(double*)(veh + LmuSharedMemoryLayout.Telem_EngineRPM);
+            float throttle = (float)*(double*)(veh + LmuSharedMemoryLayout.Telem_Throttle);
+            float brake    = (float)*(double*)(veh + LmuSharedMemoryLayout.Telem_Brake);
+            float steering = (float)*(double*)(veh + LmuSharedMemoryLayout.Telem_Steering);
+            float clutch   = (float)*(double*)(veh + LmuSharedMemoryLayout.Telem_Clutch);
+            float fuel     = (float)*(double*)(veh + LmuSharedMemoryLayout.Telem_Fuel);
+            float fuelCap  = (float)*(double*)(veh + LmuSharedMemoryLayout.Telem_FuelCapacity);
+            bool  limiter  = *(veh + LmuSharedMemoryLayout.Telem_SpeedLimiter) != 0;
+
+            return new LmuPlayerInputs(
+                Throttle:             throttle,
+                Brake:                brake,
+                Clutch:               clutch,
+                Steering:             steering,
+                Gear:                 gear,
+                EngineRpm:            rpm,
+                FuelLiters:           fuel,
+                FuelCapacityLiters:   fuelCap,
+                SpeedLimiterActive:   limiter);
         }
         catch (Exception ex)
         {
-            AppLog.Exception("Rf2MemoryReader.ReadPlayerTelemetry", ex);
+            AppLog.Exception("LmuMemoryReader.ReadPlayerTelemetry", ex);
             return null;
         }
         finally
         {
             if (ptr != null)
-                _telemetryView.SafeMemoryMappedViewHandle.ReleasePointer();
+                _view.SafeMemoryMappedViewHandle.ReleasePointer();
         }
     }
 
@@ -219,12 +218,18 @@ internal sealed class Rf2MemoryReader : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        CloseScoring();
-        CloseTelemetry();
+        Close();
     }
 }
 
-/// <summary>Immutable snapshot of rF2 scoring data for one polling tick.</summary>
-internal sealed record Rf2ScoringSnapshot(
-    Rf2ScoringInfo      Info,
-    Rf2VehicleScoring[] Vehicles);
+/// <summary>Player telemetry inputs read from the LMU_Data telemetry section.</summary>
+internal sealed record LmuPlayerInputs(
+    float Throttle,
+    float Brake,
+    float Clutch,
+    float Steering,
+    int   Gear,
+    float EngineRpm,
+    float FuelLiters,
+    float FuelCapacityLiters,
+    bool  SpeedLimiterActive);

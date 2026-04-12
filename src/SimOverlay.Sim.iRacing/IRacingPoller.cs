@@ -194,15 +194,17 @@ internal sealed class IRacingPoller : IDisposable
         if (estLapTimeSec <= 0f) estLapTimeSec = 90f; // safe fallback before any lap is complete
 
         // Build per-car arrays from the indexed telemetry variables.
-        var lapDistPcts = new float[MaxCars];
-        var positions   = new int[MaxCars];
-        var laps        = new int[MaxCars];
+        var lapDistPcts  = new float[MaxCars];
+        var positions    = new int[MaxCars];
+        var laps         = new int[MaxCars];
+        var bestLapTimes = new float[MaxCars];
 
         for (var i = 0; i < MaxCars; i++)
         {
-            lapDistPcts[i] = data.GetFloat("CarIdxLapDistPct", i);
-            positions[i]   = data.GetInt("CarIdxPosition",    i);
-            laps[i]        = data.GetInt("CarIdxLap",         i);
+            lapDistPcts[i]  = data.GetFloat("CarIdxLapDistPct",  i);
+            positions[i]    = data.GetInt("CarIdxPosition",      i);
+            laps[i]         = data.GetInt("CarIdxLap",           i);
+            bestLapTimes[i] = data.GetFloat("CarIdxBestLapTime", i);
         }
 
         var snapshot = new TelemetrySnapshot(
@@ -210,10 +212,12 @@ internal sealed class IRacingPoller : IDisposable
             LapDistPcts:      lapDistPcts,
             Positions:        positions,
             Laps:             laps,
-            EstimatedLapTime: estLapTimeSec);
+            EstimatedLapTime: estLapTimeSec,
+            BestLapTimes:     bestLapTimes);
 
-        var relativeData = IRacingRelativeCalculator.Compute(snapshot, _cachedDrivers);
+        var (relativeData, standingsData) = IRacingRelativeCalculator.Compute(snapshot, _cachedDrivers);
         _bus.Publish(relativeData);
+        _bus.Publish(standingsData);
     }
 
     private void PublishPitData()

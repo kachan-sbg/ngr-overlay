@@ -75,6 +75,68 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
     public ColorViewModel FasterColor { get; } = new();
     public ColorViewModel SlowerColor { get; } = new();
 
+    // ── Pit Helper-specific ───────────────────────────────────────────────────
+    private bool _showPitServices = true, _showNextPitEstimate = true;
+
+    public bool ShowPitServices     { get => _showPitServices;     set => Set(ref _showPitServices,     value); }
+    public bool ShowNextPitEstimate { get => _showNextPitEstimate; set => Set(ref _showNextPitEstimate, value); }
+
+    // ── Weather-specific ──────────────────────────────────────────────────────
+    private bool          _showHumidity = true, _showWind = true;
+    private WindSpeedUnit _windSpeedUnit = WindSpeedUnit.Kph;
+
+    public bool          ShowHumidity  { get => _showHumidity;  set => Set(ref _showHumidity,  value); }
+    public bool          ShowWind      { get => _showWind;      set => Set(ref _showWind,      value); }
+    public WindSpeedUnit WindSpeedUnit { get => _windSpeedUnit; set => Set(ref _windSpeedUnit, value); }
+
+    // ── Flat Track Map-specific ───────────────────────────────────────────────
+    private FlatMapLabelMode _flatMapLabelMode = FlatMapLabelMode.CarNumber;
+    private float            _playerMarkerSize = 8f, _carMarkerSize = 4f;
+    private bool             _showPitCars = true;
+
+    public FlatMapLabelMode FlatMapLabelMode { get => _flatMapLabelMode;  set => Set(ref _flatMapLabelMode,  value); }
+    public float            PlayerMarkerSize { get => _playerMarkerSize;  set => Set(ref _playerMarkerSize,  value); }
+    public float            CarMarkerSize    { get => _carMarkerSize;     set => Set(ref _carMarkerSize,     value); }
+    public bool             ShowPitCars      { get => _showPitCars;       set => Set(ref _showPitCars,       value); }
+
+    // ── Standings-specific ────────────────────────────────────────────────────
+    private StandingsDisplayMode _standingsMode = StandingsDisplayMode.Combined;
+    private bool _showClassBadge = true, _showBestLap = true;
+    private int  _maxStandingsRows = 30;
+
+    public StandingsDisplayMode StandingsDisplayMode { get => _standingsMode;    set => Set(ref _standingsMode,    value); }
+    public bool ShowClassBadge                       { get => _showClassBadge;   set => Set(ref _showClassBadge,   value); }
+    public bool ShowBestLap                          { get => _showBestLap;      set => Set(ref _showBestLap,      value); }
+    public int  MaxStandingsRows                     { get => _maxStandingsRows; set => Set(ref _maxStandingsRows, value); }
+
+    // ── Fuel Calculator-specific ──────────────────────────────────────────────
+    private FuelUnit _fuelUnit = FuelUnit.Liters;
+    private float    _fuelSafetyMarginLaps = 1.0f;
+    private bool     _showFuelMargin = true;
+
+    public FuelUnit FuelUnit             { get => _fuelUnit;             set => Set(ref _fuelUnit,             value); }
+    public float    FuelSafetyMarginLaps { get => _fuelSafetyMarginLaps; set => Set(ref _fuelSafetyMarginLaps, value); }
+    public bool     ShowFuelMargin       { get => _showFuelMargin;       set => Set(ref _showFuelMargin,       value); }
+
+    // ── Input Telemetry-specific ──────────────────────────────────────────────
+    private bool      _showThrottle   = true;
+    private bool      _showBrake      = true;
+    private bool      _showClutch     = true;
+    private bool      _showInputTrace = true;
+    private bool      _showGearSpeed  = true;
+    private SpeedUnit _speedUnit      = SpeedUnit.Kph;
+
+    public bool      ShowThrottle   { get => _showThrottle;   set => Set(ref _showThrottle,   value); }
+    public bool      ShowBrake      { get => _showBrake;      set => Set(ref _showBrake,      value); }
+    public bool      ShowClutch     { get => _showClutch;     set => Set(ref _showClutch,     value); }
+    public bool      ShowInputTrace { get => _showInputTrace; set => Set(ref _showInputTrace, value); }
+    public bool      ShowGearSpeed  { get => _showGearSpeed;  set => Set(ref _showGearSpeed,  value); }
+    public SpeedUnit SpeedUnit      { get => _speedUnit;      set => Set(ref _speedUnit,      value); }
+
+    public ColorViewModel ThrottleColor { get; } = new();
+    public ColorViewModel BrakeColor    { get; } = new();
+    public ColorViewModel ClutchColor   { get; } = new();
+
     // ── Stream override ───────────────────────────────────────────────────────
     public StreamOverrideViewModel StreamOverride { get; } = new();
 
@@ -109,6 +171,35 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
         FasterColor.LoadFrom(c.FasterColor);
         SlowerColor.LoadFrom(c.SlowerColor);
 
+        _showPitServices     = c.ShowPitServices;
+        _showNextPitEstimate = c.ShowNextPitEstimate;
+        _showHumidity        = c.ShowHumidity;
+        _showWind            = c.ShowWind;
+        _windSpeedUnit       = c.WindSpeedUnit;
+        _flatMapLabelMode    = c.FlatMapLabelMode;
+        _playerMarkerSize    = c.PlayerMarkerSize;
+        _carMarkerSize       = c.CarMarkerSize;
+        _showPitCars         = c.ShowPitCars;
+
+        _standingsMode    = c.StandingsDisplayMode;
+        _showClassBadge   = c.ShowClassBadge;
+        _showBestLap      = c.ShowBestLap;
+        _maxStandingsRows = c.MaxStandingsRows;
+
+        _fuelUnit             = c.FuelUnit;
+        _fuelSafetyMarginLaps = c.FuelSafetyMarginLaps;
+        _showFuelMargin       = c.ShowFuelMargin;
+
+        _showThrottle   = c.ShowThrottle;
+        _showBrake      = c.ShowBrake;
+        _showClutch     = c.ShowClutch;
+        _showInputTrace = c.ShowInputTrace;
+        _showGearSpeed  = c.ShowGearSpeed;
+        _speedUnit      = c.SpeedUnit;
+        ThrottleColor.LoadFrom(c.ThrottleColor);
+        BrakeColor.LoadFrom(c.BrakeColor);
+        ClutchColor.LoadFrom(c.ClutchColor);
+
         StreamOverride.LoadFrom(c.StreamOverride, c);
 
         // Notify all at once after bulk load.
@@ -139,6 +230,31 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
         ShowDeltaText      = _showDeltaTxt,
         FasterColor        = FasterColor.ToColorConfig(),
         SlowerColor        = SlowerColor.ToColorConfig(),
+        ShowPitServices     = _showPitServices,
+        ShowNextPitEstimate = _showNextPitEstimate,
+        ShowHumidity        = _showHumidity,
+        ShowWind            = _showWind,
+        WindSpeedUnit       = _windSpeedUnit,
+        FlatMapLabelMode    = _flatMapLabelMode,
+        PlayerMarkerSize    = _playerMarkerSize,
+        CarMarkerSize       = _carMarkerSize,
+        ShowPitCars         = _showPitCars,
+        StandingsDisplayMode = _standingsMode,
+        ShowClassBadge       = _showClassBadge,
+        ShowBestLap          = _showBestLap,
+        MaxStandingsRows     = _maxStandingsRows,
+        FuelUnit             = _fuelUnit,
+        FuelSafetyMarginLaps = _fuelSafetyMarginLaps,
+        ShowFuelMargin       = _showFuelMargin,
+        ShowThrottle       = _showThrottle,
+        ShowBrake          = _showBrake,
+        ShowClutch         = _showClutch,
+        ShowInputTrace     = _showInputTrace,
+        ShowGearSpeed      = _showGearSpeed,
+        SpeedUnit          = _speedUnit,
+        ThrottleColor      = ThrottleColor.ToColorConfig(),
+        BrakeColor         = BrakeColor.ToColorConfig(),
+        ClutchColor        = ClutchColor.ToColorConfig(),
         StreamOverride     = StreamOverride.ToConfig(),
     };
 

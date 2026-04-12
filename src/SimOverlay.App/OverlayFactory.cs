@@ -38,6 +38,30 @@ public sealed class OverlayFactory : IOverlayFactory
         (DeltaBarOverlay.OverlayId,    "Delta Bar",
             (bus, cfg, store, app) => new DeltaBarOverlay(bus, cfg, store, app),
             DeltaBarOverlay.DefaultConfig),
+
+        (InputTelemetryOverlay.OverlayId, "Input Telemetry",
+            (bus, cfg, store, app) => new InputTelemetryOverlay(bus, cfg, store, app),
+            InputTelemetryOverlay.DefaultConfig),
+
+        (FuelCalculatorOverlay.OverlayId, "Fuel Calculator",
+            (bus, cfg, store, app) => new FuelCalculatorOverlay(bus, cfg, store, app),
+            FuelCalculatorOverlay.DefaultConfig),
+
+        (StandingsOverlay.OverlayId, "Standings",
+            (bus, cfg, store, app) => new StandingsOverlay(bus, cfg, store, app),
+            StandingsOverlay.DefaultConfig),
+
+        (PitHelperOverlay.OverlayId, "Pit Helper",
+            (bus, cfg, store, app) => new PitHelperOverlay(bus, cfg, store, app),
+            PitHelperOverlay.DefaultConfig),
+
+        (WeatherOverlay.OverlayId, "Weather",
+            (bus, cfg, store, app) => new WeatherOverlay(bus, cfg, store, app),
+            WeatherOverlay.DefaultConfig),
+
+        (FlatTrackMapOverlay.OverlayId, "Track Map",
+            (bus, cfg, store, app) => new FlatTrackMapOverlay(bus, cfg, store, app),
+            FlatTrackMapOverlay.DefaultConfig),
     ];
 
     public OverlayFactory(ISimDataBus bus, ConfigStore configStore, AppConfig appConfig)

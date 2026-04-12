@@ -1,4 +1,4 @@
-using System.IO.MemoryMappedFiles;
+using System.Diagnostics;
 using SimOverlay.Core;
 using SimOverlay.Sim.Contracts;
 
@@ -7,7 +7,7 @@ namespace SimOverlay.Sim.iRacing;
 /// <summary>
 /// <see cref="ISimProvider"/> implementation for iRacing.
 /// <para>
-/// Detection uses a lightweight named MMF open attempt so the caller can check
+/// Detection checks for the <c>iRacingSim64.exe</c> process so the caller can check
 /// <see cref="IsRunning"/> at any time without starting the full SDK stack.
 /// The polling machinery (<see cref="IRacingPoller"/> / IRSDKSharper) is only
 /// started when <see cref="Start"/> is called.
@@ -15,8 +15,11 @@ namespace SimOverlay.Sim.iRacing;
 /// </summary>
 public sealed class IRacingProvider : ISimProvider
 {
-    // iRacing creates this shared memory segment when the process starts.
-    private const string IracingMmfName = "Local\\IRSDKMemMapFileName";
+    // The iRacing sim executable name (without .exe).
+    // iRacingSVC.exe (the background service) also creates the IRSDK MMF at Windows startup,
+    // so an MMF open-check incorrectly returns true even when the sim is not running.
+    // Process detection is the reliable way to distinguish "sim open" from "service running".
+    private const string IracingProcessName = "iRacingSim64";
 
     private readonly ISimDataBus _bus;
     private IRacingPoller?       _poller;
@@ -34,21 +37,21 @@ public sealed class IRacingProvider : ISimProvider
     }
 
     /// <summary>
-    /// Returns <c>true</c> if the iRacing shared memory mapped file exists, which
-    /// indicates the iRacing process is running (regardless of whether a session is active).
-    /// This call is intentionally lightweight — it does not start or touch any SDK state.
+    /// Returns <c>true</c> if the iRacing sim process (<c>iRacingSim64.exe</c>) is running.
+    /// <para>
+    /// We intentionally do NOT check the <c>Local\IRSDKMemMapFileName</c> MMF here because
+    /// the iRacing background service (<c>iRacingSVC.exe</c>) creates and holds that file
+    /// permanently at Windows startup — making the MMF check return <c>true</c> even when
+    /// the sim itself is not open, which would prevent other providers (e.g. LMU) from
+    /// ever being detected.
+    /// </para>
     /// </summary>
     public bool IsRunning()
     {
-        try
-        {
-            using var mmf = MemoryMappedFile.OpenExisting(IracingMmfName);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        var procs = Process.GetProcessesByName(IracingProcessName);
+        bool running = procs.Length > 0;
+        foreach (var p in procs) p.Dispose();
+        return running;
     }
 
     /// <summary>

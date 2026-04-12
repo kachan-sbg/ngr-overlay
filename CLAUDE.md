@@ -9,9 +9,9 @@ Windows racing simulator overlay app. Transparent HUD overlays on top of racing 
 - Target: `net8.0-windows`, x64 only
 
 ## Current task
-**Phase 10 — New overlays (Part 1)** `[ ]` Not started
-File: `docs/tasks/PHASE-10-overlays-part1.md`
-Next: **TASK-1001** — first task in Phase 10
+**Alpha complete** — Phases 7–11 all `[x]`.
+Phase 12 (OBS Mode & Enhanced UX) deferred — user to confirm next priorities.
+Next: **TASK-1201** — first task in Phase 12 when resumed.
 
 ## Codebase map
 
@@ -43,13 +43,14 @@ Depends: Core. Sim-agnostic DTOs.
 - `CarClassInfo.cs` — ClassId, ClassName, ClassColor, CarCount
 - `LicenseClass.cs` — enum: R, D, C, B, A, Pro, WC
 - `SessionType.cs` — Practice, Qualify, Race, etc.
+- `StandingsData.cs` / `StandingsEntry.cs` — full-field leaderboard with BestLapTime + GapToLeader (published 10 Hz)
 
 ### Sim.iRacing (`src/SimOverlay.Sim.iRacing/`)
 Depends: Sim.Contracts + Core. Uses `IRSDKSharper` NuGet.
 - `IRacingProvider.cs` — ISimProvider implementation, connection lifecycle
 - `IRacingPoller.cs` — wraps IRSDKSharper, 60 Hz events → bus publishing (all 6 DTO types)
 - `IRacingSessionDecoder.cs` — YAML session info → SessionData + DriverSnapshot (with class info)
-- `IRacingRelativeCalculator.cs` — LapDistPct gap calc → RelativeData with ClassPosition (10 Hz)
+- `IRacingRelativeCalculator.cs` — LapDistPct gap calc → (RelativeData, StandingsData) with ClassPosition (10 Hz)
 - `FuelConsumptionTracker.cs` — rolling average over last 5 green-flag laps
 - `DriverSnapshot.cs` / `TelemetrySnapshot.cs` — intermediate data types
 
@@ -68,6 +69,9 @@ Depends: Rendering + Sim.Contracts + Core. Concrete overlay implementations.
 - `RelativeOverlay.cs` — relative position board
 - `SessionInfoOverlay.cs` — session/track/weather info
 - `DeltaBarOverlay.cs` — lap delta visualization
+- `InputTelemetryOverlay.cs` — pedal bars, gear+speed, scrolling trace
+- `FuelCalculatorOverlay.cs` — fuel level, avg/lap, laps remaining, pit-add
+- `StandingsOverlay.cs` — full-field leaderboard, Combined + ClassGrouped modes
 
 ### App (`src/SimOverlay.App/`)
 Depends: everything. Entry point, orchestration.

@@ -6,7 +6,7 @@ using SimOverlay.Sim.LMU.SharedMemory;
 namespace SimOverlay.Sim.LMU;
 
 /// <summary>
-/// Polls the rF2/LMU shared memory at ~60 Hz and publishes data to the
+/// Polls the <c>LMU_Data</c> shared memory at ~60 Hz and publishes data to the
 /// <see cref="ISimDataBus"/>:
 /// <list type="bullet">
 ///   <item><see cref="DriverData"/> — 60 Hz</item>
@@ -15,7 +15,7 @@ namespace SimOverlay.Sim.LMU;
 ///   <item><see cref="PitData"/> — 10 Hz</item>
 ///   <item><see cref="TrackMapData"/> — 10 Hz</item>
 ///   <item><see cref="WeatherData"/> — 1 Hz</item>
-///   <item><see cref="SessionData"/> — on session change (track / vehicle count)</item>
+///   <item><see cref="SessionData"/> — on session change (track / vehicle count / session)</item>
 /// </list>
 /// </summary>
 internal sealed class LmuPoller : IDisposable
@@ -25,7 +25,7 @@ internal sealed class LmuPoller : IDisposable
 
     private readonly ISimDataBus      _bus;
     private readonly Action<SimState> _onStateChanged;
-    private readonly Rf2MemoryReader  _reader;
+    private readonly LmuMemoryReader  _reader;
     private readonly LmuFuelTracker   _fuelTracker = new();
 
     // Cached driver list, rebuilt when track or vehicle count changes.
@@ -36,11 +36,12 @@ internal sealed class LmuPoller : IDisposable
     private string _lastTrackName     = "";
     private int    _lastNumVehicles   = -1;
     private int    _lastSession       = -1;
+    private byte   _lastInRealtime    = 255; // 255 = sentinel so first read always fires
 
     // Track length cached from session data (metres).
     private double _trackLengthMeters;
 
-    // Player's slot ID (from matching PlayerName against scoring entries).
+    // Player slot ID (used for relative/standings/trackmap lookups).
     private int _playerSlotId = -1;
 
     private int  _frameCount;
@@ -55,22 +56,16 @@ internal sealed class LmuPoller : IDisposable
     {
         _bus            = bus;
         _onStateChanged = onStateChanged;
-        _reader         = new Rf2MemoryReader();
+        _reader         = new LmuMemoryReader();
     }
 
     public void Start()
     {
-        // Open scoring first; telemetry is optional.
-        if (!_reader.TryOpenScoring())
-        {
-            AppLog.Error("LmuPoller: failed to open scoring shared memory.");
-            return;
-        }
-        _reader.TryOpenTelemetry(); // best-effort; silently ignored if unavailable
-
-        // Poll at ~60 Hz (16 ms interval).
+        // Always start the timer even if the MMF isn't open yet.
+        // Poll() retries TryOpen() on every tick until it succeeds, so startup
+        // order (overlay before or after LMU) does not matter.
         _timer = new Timer(Poll, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(16));
-        AppLog.Info("LmuPoller started.");
+        AppLog.Info("LmuPoller started — will open LMU_Data on first successful poll.");
     }
 
     // ── Polling ───────────────────────────────────────────────────────────────
@@ -81,36 +76,51 @@ internal sealed class LmuPoller : IDisposable
 
         try
         {
+            // If the reader isn't open yet (LMU_Data not created yet, or a transient
+            // failure on startup), try again every tick until it succeeds.
+            if (!_reader.IsOpen && !_reader.TryOpen())
+                return;
+
             var snapshot = _reader.ReadScoring();
-            if (snapshot == null) return; // torn read — skip tick
+            if (snapshot == null) return;
 
             var info = snapshot.Info;
 
-            // Detect session start / track change.
-            bool sessionChanged = info.TrackName != _lastTrackName
-                               || info.NumVehicles != _lastNumVehicles
-                               || info.Session != _lastSession;
+            // Detect session / track changes that require a full re-decode.
+            bool sessionChanged = info.TrackName    != _lastTrackName
+                               || info.NumVehicles  != _lastNumVehicles
+                               || info.Session      != _lastSession;
 
             if (sessionChanged)
                 HandleSessionChange(snapshot);
 
+            // Always evaluate in-session state each tick — InRealtime can flip
+            // 0→1 when the race starts without any TrackName/Session/NumVehicles
+            // change, so state transitions must happen here, not just on session change.
+            UpdateSessionState(info);
+
             if (!_inSession) return;
 
-            // Find player vehicle.
-            var playerNullable = FindPlayer(snapshot.Vehicles, info.PlayerName);
+            // Find player vehicle by IsPlayer flag.
+            var playerNullable = FindPlayer(snapshot.Vehicles, out _);
             if (playerNullable == null) return;
             var player = playerNullable.Value;
+            _playerSlotId = player.Id;
+
+            // Read player telemetry; LMU writes the correct telemInfo array index
+            // into the telemetry header — use that instead of the scoring array index.
+            var telem = _reader.ReadPlayerTelemetry();
 
             // Publish high-frequency data every tick.
-            PublishDriverData(player, info);
-            PublishTelemetryData(player, info);
+            PublishDriverData(player);
+            PublishTelemetryData(player, telem);
 
             // Throttle lower-frequency data.
             if (++_frameCount % RelativePublishInterval == 0)
             {
                 PublishRelativeData(snapshot, player);
-                PublishPitData(player, info);
-                PublishTrackMapData(snapshot, player);
+                PublishPitData(player, telem);
+                PublishTrackMapData(snapshot);
             }
 
             if (_frameCount % WeatherPublishInterval == 0)
@@ -124,108 +134,112 @@ internal sealed class LmuPoller : IDisposable
 
     // ── Session handling ──────────────────────────────────────────────────────
 
-    private void HandleSessionChange(Rf2ScoringSnapshot snapshot)
+    /// <summary>
+    /// Called when TrackName / NumVehicles / Session changes.
+    /// Decodes the session data and rebuilds the driver list.
+    /// </summary>
+    private void HandleSessionChange(LmuScoringSnapshot snapshot)
     {
         var info = snapshot.Info;
 
-        _lastTrackName   = info.TrackName;
-        _lastNumVehicles = info.NumVehicles;
-        _lastSession     = info.Session;
+        _lastTrackName     = info.TrackName;
+        _lastNumVehicles   = info.NumVehicles;
+        _lastSession       = info.Session;
         _trackLengthMeters = info.LapDist > 0 ? info.LapDist : _trackLengthMeters;
 
         var (session, drivers) = LmuSessionDecoder.Decode(info, snapshot.Vehicles);
         _cachedDrivers = drivers.ToImmutableArray();
 
-        // Resolve player slot ID.
-        _playerSlotId = -1;
-        foreach (var v in snapshot.Vehicles)
-        {
-            if (v.DriverName == info.PlayerName)
-            {
-                _playerSlotId = v.Id;
-                break;
-            }
-        }
-
         _bus.Publish(session);
-
-        bool wasInSession = _inSession;
-        _inSession = info.InRealtime != 0 && info.NumVehicles > 0;
-
-        if (!wasInSession && _inSession)
-        {
-            _fuelTracker.Reset();
-            _onStateChanged(SimState.InSession);
-            AppLog.Info($"LmuPoller: session started — {info.TrackName} / session {info.Session}");
-        }
-        else if (wasInSession && !_inSession)
-        {
-            _onStateChanged(SimState.Connected);
-            AppLog.Info("LmuPoller: session ended — waiting for new session.");
-        }
-        else if (!_inSession && info.NumVehicles > 0)
-        {
-            _inSession = true;
-            _fuelTracker.Reset();
-            _onStateChanged(SimState.InSession);
-            AppLog.Info($"LmuPoller: session active — {info.TrackName}");
-        }
 
         AppLog.Info(
             $"LmuPoller: session info updated — track={info.TrackName}, " +
             $"vehicles={info.NumVehicles}, session={info.Session}, " +
-            $"trackLen={_trackLengthMeters:F0}m, playerSlot={_playerSlotId}");
+            $"inRealtime={info.InRealtime}, " +
+            $"trackLen={_trackLengthMeters:F0}m");
+    }
+
+    /// <summary>
+    /// Evaluates whether we are in an active session on every poll tick.
+    /// Must run outside <see cref="HandleSessionChange"/> because
+    /// <c>InRealtime</c> can flip 0→1 (race start) without any change to
+    /// TrackName, NumVehicles, or Session.
+    /// </summary>
+    private void UpdateSessionState(LmuScoringInfo info)
+    {
+        if (info.InRealtime == _lastInRealtime) return;
+        _lastInRealtime = info.InRealtime;
+
+        bool nowInSession = info.InRealtime != 0 && info.NumVehicles > 0;
+
+        if (nowInSession == _inSession) return;
+        _inSession = nowInSession;
+
+        if (_inSession)
+        {
+            _fuelTracker.Reset();
+            _onStateChanged(SimState.InSession);
+            AppLog.Info($"LmuPoller: InRealtime→1 — session active ({info.TrackName})");
+        }
+        else
+        {
+            _onStateChanged(SimState.Connected);
+            AppLog.Info("LmuPoller: InRealtime→0 — session paused/ended.");
+        }
     }
 
     // ── Data publication ──────────────────────────────────────────────────────
 
-    private void PublishDriverData(Rf2VehicleScoring player, Rf2ScoringInfo info)
+    private void PublishDriverData(LmuVehicleScoring player)
     {
-        // Compute position from the player's cached snapshot (V02 Place field, else 0).
-        var playerDriver = _cachedDrivers.FirstOrDefault(d => d.SlotId == _playerSlotId);
-        int position = 0;
-        if (playerDriver != null)
-        {
-            // Resolve from the live scoring entry's Place expansion field.
-            foreach (var v in _cachedDrivers)
-            {
-                if (v.SlotId == _playerSlotId)
-                    break;
-            }
-        }
-
-        // Try Place from scoring expansion first, fall back to counting.
-        position = FindPlayerPosition(player);
+        int position = player.Place > 0 ? player.Place : 0;
 
         _bus.Publish(new DriverData
         {
             Position              = position,
             Lap                   = player.TotalLaps + 1,
-            BestLapTime           = player.BestLapTime > 0 ? TimeSpan.FromSeconds(player.BestLapTime) : TimeSpan.Zero,
-            LastLapTime           = player.LastLapTime > 0 ? TimeSpan.FromSeconds(player.LastLapTime) : TimeSpan.Zero,
-            // rF2 does not expose a direct delta-to-best; approximate as (LastLap - BestLap).
+            BestLapTime           = player.BestLapTime > 0
+                                        ? TimeSpan.FromSeconds(player.BestLapTime)
+                                        : TimeSpan.Zero,
+            LastLapTime           = player.LastLapTime > 0
+                                        ? TimeSpan.FromSeconds(player.LastLapTime)
+                                        : TimeSpan.Zero,
             LapDeltaVsBestLap     = ComputeDelta(player),
-            LapDeltaVsSessionBest = 0f, // not available from rF2 scoring
+            LapDeltaVsSessionBest = 0f, // not available from LMU scoring
         });
     }
 
-    private void PublishTelemetryData(Rf2VehicleScoring player, Rf2ScoringInfo info)
+    private void PublishTelemetryData(LmuVehicleScoring player, LmuPlayerInputs? telem)
     {
-        // Try to read driver inputs from the telemetry MMF.
-        var telem = _reader.ReadPlayerTelemetry(_playerSlotId);
+        float throttle, brake, clutch, steering, rpm, fuelLiters;
+        int   gear;
 
-        float throttle = telem.HasValue ? (float)telem.Value.UnfilteredThrottle : 0f;
-        float brake    = telem.HasValue ? (float)telem.Value.UnfilteredBrake    : 0f;
-        float clutch   = telem.HasValue ? (float)telem.Value.UnfilteredClutch   : 0f;
-        float steering = telem.HasValue ? (float)telem.Value.UnfilteredSteering : 0f;
-        int   gear     = telem.HasValue ? telem.Value.Gear                      : 0;
-        float rpm      = telem.HasValue ? (float)telem.Value.EngineRPM          : 0f;
+        if (telem != null)
+        {
+            throttle  = telem.Throttle;
+            brake     = telem.Brake;
+            clutch    = telem.Clutch;
+            steering  = telem.Steering;
+            gear      = telem.Gear;
+            rpm       = telem.EngineRpm;
+            fuelLiters = telem.FuelLiters;
+        }
+        else
+        {
+            throttle  = 0f;
+            brake     = 0f;
+            clutch    = 0f;
+            steering  = 0f;
+            gear      = 0;
+            rpm       = 0f;
+            // Fallback: derive fuel from FuelFraction scoring field.
+            float capFallback = telem?.FuelCapacityLiters ?? 0f;
+            fuelLiters = player.FuelFraction / 255f * capFallback;
+        }
 
-        // Speed from scoring velocity vector (available regardless of telemetry).
+        // Speed from LocalVel magnitude (always available in scoring).
         float speed = player.SpeedMps;
 
-        // Fuel from scoring (absolute litres = FuelLevel × FuelCapacity).
-        float fuelLiters = player.FuelLiters;
         _fuelTracker.Update(player.TotalLaps, fuelLiters, player.UnderYellow);
 
         _bus.Publish(new TelemetryData(
@@ -242,11 +256,11 @@ internal sealed class LmuPoller : IDisposable
         ));
     }
 
-    private void PublishRelativeData(Rf2ScoringSnapshot snapshot, Rf2VehicleScoring player)
+    private void PublishRelativeData(LmuScoringSnapshot snapshot, LmuVehicleScoring player)
     {
         if (_trackLengthMeters <= 0) return;
 
-        var relative = LmuRelativeCalculator.Compute(
+        var (relative, standings) = LmuRelativeCalculator.Compute(
             snapshot.Vehicles,
             _cachedDrivers,
             _playerSlotId,
@@ -254,50 +268,47 @@ internal sealed class LmuPoller : IDisposable
             player.EstimatedLapTime > 0 ? player.EstimatedLapTime : 90.0);
 
         _bus.Publish(relative);
+        _bus.Publish(standings);
     }
 
-    private void PublishPitData(Rf2VehicleScoring player, Rf2ScoringInfo info)
+    private void PublishPitData(LmuVehicleScoring player, LmuPlayerInputs? telem)
     {
         bool isOnPitRoad  = player.PitState is 2 or 3 or 4; // entering, stopped, exiting
-        bool isInPitStall = player.PitState == 3;            // stopped
-        bool pitLimiter   = player.PitState is 2 or 4;      // entering or exiting (best proxy)
+        bool isInPitStall = player.PitState == 3;
+        bool pitLimiter   = telem?.SpeedLimiterActive
+                            ?? (player.PitState is 2 or 4); // fallback: entering or exiting
 
         _bus.Publish(new PitData(
             IsOnPitRoad:        isOnPitRoad,
             IsInPitStall:       isInPitStall,
-            PitLimiterSpeedMps: 0f,   // rF2 scoring does not expose the pit speed limit directly
+            PitLimiterSpeedMps: 0f,
             CurrentSpeedMps:    player.SpeedMps,
             PitLimiterActive:   pitLimiter,
-            PitStopCount:       player.PitStopCount,
-            RequestedService:   PitServiceFlags.None, // rF2 pit menu not exposed via scoring
+            PitStopCount:       player.NumPitstops,
+            RequestedService:   PitServiceFlags.None,
             FuelToAddLiters:    0f
         ));
     }
 
-    private void PublishWeatherData(Rf2ScoringInfo info)
+    private void PublishWeatherData(LmuScoringInfo info)
     {
-        // rF2 MaxPathWetness (0–1) maps to our 1–7 wetness scale.
-        // 0.0 = dry (1), 1.0 = extremely wet (7).
         int wetness = info.MaxPathWetness <= 0.0
             ? 1
             : Math.Clamp((int)(info.MaxPathWetness * 6f) + 1, 1, 7);
 
-        float airTemp   = (float)info.Temperature;
-        float trackTemp = info.TrackTempC is float t and not float.NaN ? t : airTemp;
-
         _bus.Publish(new WeatherData(
-            AirTempC:         airTemp,
-            TrackTempC:       trackTemp,
-            WindSpeedMps:     0f,   // rF2 scoring does not expose wind speed
-            WindDirectionDeg: 0f,
-            Humidity:         0f,   // not in base scoring struct (expansion varies)
+            AirTempC:         (float)info.AmbientTempC,
+            TrackTempC:       (float)info.TrackTempC,
+            WindSpeedMps:     info.WindSpeedMps,
+            WindDirectionDeg: info.WindDirectionDeg,
+            Humidity:         0f,
             SkyCoverage:      0,
             TrackWetness:     (float)Math.Clamp(info.MaxPathWetness, 0.0, 1.0),
             IsPrecipitating:  info.Raining > 0.05
         ));
     }
 
-    private void PublishTrackMapData(Rf2ScoringSnapshot snapshot, Rf2VehicleScoring player)
+    private void PublishTrackMapData(LmuScoringSnapshot snapshot)
     {
         if (_trackLengthMeters <= 0) return;
 
@@ -306,12 +317,12 @@ internal sealed class LmuPoller : IDisposable
             driverBySlot[d.SlotId] = d;
 
         var cars = new List<TrackMapCarEntry>(snapshot.Vehicles.Length);
-        foreach (var v in snapshot.Vehicles)
+        foreach (ref readonly var v in snapshot.Vehicles.AsSpan())
         {
             if (!v.IsActive || v.InGarageStall != 0) continue;
 
             float pct = (float)(v.LapDist / _trackLengthMeters);
-            if (pct < 0f || pct > 1.05f) continue; // sanity guard
+            if (pct < 0f || pct > 1.05f) continue;
 
             driverBySlot.TryGetValue(v.Id, out var driver);
 
@@ -321,7 +332,7 @@ internal sealed class LmuPoller : IDisposable
                 Position:   v.Place > 0 ? v.Place : 0,
                 LapDistPct: Math.Clamp(pct, 0f, 1f),
                 CarClass:   driver?.VehicleClass ?? "",
-                IsPlayer:   v.Id == _playerSlotId,
+                IsPlayer:   v.IsPlayer != 0,
                 IsInPit:    v.PitState != 0
             ));
         }
@@ -333,34 +344,32 @@ internal sealed class LmuPoller : IDisposable
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static Rf2VehicleScoring? FindPlayer(
-        Rf2VehicleScoring[] vehicles, string playerName)
+    /// <summary>
+    /// Finds the player vehicle by the <see cref="LmuVehicleScoring.IsPlayer"/> flag.
+    /// Returns <c>null</c> if not found; sets <paramref name="arrayIndex"/> to the index
+    /// within <paramref name="vehicles"/>.
+    /// </summary>
+    private static LmuVehicleScoring? FindPlayer(LmuVehicleScoring[] vehicles, out int arrayIndex)
     {
-        if (string.IsNullOrEmpty(playerName)) return null;
-
-        foreach (ref readonly var v in vehicles.AsSpan())
+        for (int i = 0; i < vehicles.Length; i++)
         {
-            if (v.DriverName == playerName)
-                return v;
+            if (vehicles[i].IsPlayer != 0)
+            {
+                arrayIndex = i;
+                return vehicles[i];
+            }
         }
+        arrayIndex = -1;
         return null;
     }
 
-    private static int FindPlayerPosition(Rf2VehicleScoring player)
-    {
-        int place = player.Place;
-        return place > 0 ? place : 0;
-    }
-
-    private static float ComputeDelta(Rf2VehicleScoring player)
+    private static float ComputeDelta(LmuVehicleScoring player)
     {
         if (player.BestLapTime <= 0 || player.LastLapTime <= 0)
             return 0f;
 
-        // Approximate: current lap time compared to personal best.
-        // rF2 doesn't provide a real-time delta like iRacing does.
         float approx = (float)(player.LastLapTime - player.BestLapTime);
-        return Math.Abs(approx) < 60f ? approx : 0f; // guard against stale values
+        return Math.Abs(approx) < 60f ? approx : 0f;
     }
 
     // ── Disposal ──────────────────────────────────────────────────────────────

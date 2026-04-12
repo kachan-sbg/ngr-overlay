@@ -38,4 +38,41 @@ public sealed class StreamOverrideConfig
     public ColorConfig? SlowerColor { get; set; }
     public bool? ShowTrendArrow { get; set; }
     public bool? ShowDeltaText { get; set; }
+
+    // --- Standings overlay ---
+    public StandingsDisplayMode? StandingsDisplayMode { get; set; }
+    public bool? ShowClassBadge { get; set; }
+    public bool? ShowBestLap { get; set; }
+    public int? MaxStandingsRows { get; set; }
+
+    // --- Fuel Calculator overlay ---
+    public FuelUnit? FuelUnit { get; set; }
+    public float? FuelSafetyMarginLaps { get; set; }
+    public bool? ShowFuelMargin { get; set; }
+
+    // --- Pit Helper overlay ---
+    public bool? ShowPitServices { get; set; }
+    public bool? ShowNextPitEstimate { get; set; }
+
+    // --- Weather overlay ---
+    public bool? ShowHumidity { get; set; }
+    public bool? ShowWind { get; set; }
+    public WindSpeedUnit? WindSpeedUnit { get; set; }
+
+    // --- Flat Track Map overlay ---
+    public FlatMapLabelMode? FlatMapLabelMode { get; set; }
+    public float? PlayerMarkerSize { get; set; }
+    public float? CarMarkerSize { get; set; }
+    public bool? ShowPitCars { get; set; }
+
+    // --- Input Telemetry overlay ---
+    public bool? ShowThrottle { get; set; }
+    public bool? ShowBrake { get; set; }
+    public bool? ShowClutch { get; set; }
+    public bool? ShowInputTrace { get; set; }
+    public bool? ShowGearSpeed { get; set; }
+    public SpeedUnit? SpeedUnit { get; set; }
+    public ColorConfig? ThrottleColor { get; set; }
+    public ColorConfig? BrakeColor { get; set; }
+    public ColorConfig? ClutchColor { get; set; }
 }

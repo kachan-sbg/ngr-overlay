@@ -39,17 +39,17 @@ public class RelativeCalculatorBenchmarks
 
     /// <summary>Worst case: full 40-car field (e.g. iRacing oval with AI).</summary>
     [Benchmark(Baseline = true)]
-    public RelativeData Compute40Cars() =>
+    public (RelativeData, StandingsData) Compute40Cars() =>
         IRacingRelativeCalculator.Compute(_snapshot40, _drivers40);
 
     /// <summary>Typical road-course field size.</summary>
     [Benchmark]
-    public RelativeData Compute15Cars() =>
+    public (RelativeData, StandingsData) Compute15Cars() =>
         IRacingRelativeCalculator.Compute(_snapshot15, _drivers15);
 
     /// <summary>Edge case: single car (e.g. testing alone).</summary>
     [Benchmark]
-    public RelativeData Compute1Car() =>
+    public (RelativeData, StandingsData) Compute1Car() =>
         IRacingRelativeCalculator.Compute(_snapshot1, _drivers1);
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ public class RelativeCalculatorBenchmarks
             pos[i]  = i + 1;
         }
 
-        return new TelemetrySnapshot(playerIdx, pcts, pos, laps, EstimatedLapTime: 90f);
+        return new TelemetrySnapshot(playerIdx, pcts, pos, laps, EstimatedLapTime: 90f, BestLapTimes: new float[MaxCars]);
     }
 
     private static IReadOnlyList<DriverSnapshot> MakeDrivers(int count)

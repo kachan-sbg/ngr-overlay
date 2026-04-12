@@ -25,11 +25,11 @@ internal static class IRacingRelativeCalculator
         DriverSnapshot? Driver);
 
     /// <summary>
-    /// Computes the relative display list.
+    /// Computes the relative display list and full-field standings.
     /// </summary>
     /// <param name="snapshot">Live telemetry snapshot.</param>
     /// <param name="drivers">Driver list from the latest session YAML.</param>
-    public static RelativeData Compute(
+    public static (RelativeData Relative, StandingsData Standings) Compute(
         TelemetrySnapshot snapshot,
         IReadOnlyList<DriverSnapshot> drivers)
     {
@@ -86,13 +86,13 @@ internal static class IRacingRelativeCalculator
         var isMultiClass = distinctClasses > 1;
 
         // ── Build candidates list ─────────────────────────────────────────────
-        var candidates = new List<(float Gap, RelativeEntry Entry)>(allCars.Count);
+        var candidates = new List<(float Gap, int CarIdx, RelativeEntry Entry)>(allCars.Count);
         foreach (var car in allCars)
         {
             var driver        = car.Driver;
             var classPosition = classPositionByCarIdx.TryGetValue(car.CarIdx, out var cp) ? cp : car.OverallPosition;
 
-            candidates.Add((car.Gap, new RelativeEntry
+            candidates.Add((car.Gap, car.CarIdx, new RelativeEntry
             {
                 Position           = car.OverallPosition,
                 CarNumber          = driver?.CarNumber   ?? car.CarIdx.ToString(),
@@ -109,35 +109,91 @@ internal static class IRacingRelativeCalculator
             }));
         }
 
-        // Sort: negative (ahead) first → player → positive (behind)
+        // Sort by gap: negative (ahead) first → player → positive (behind)
         candidates.Sort((a, b) => a.Gap.CompareTo(b.Gap));
 
-        // Select a window of MaxEntries centred on the player
+        // ── Build standings (all cars sorted by overall position) ─────────────
+        // Leader is the car with the smallest positive position number, closest ahead of the rest.
+        // Gap-to-leader: use position sort and compute cumulative time deltas.
+        // Simpler approach: use the gap values we already have. Leader's gap to themselves is 0;
+        // everyone else's gap-to-leader = gap-to-player − leader's gap-to-player.
+        var standings = BuildStandings(candidates, snapshot, isMultiClass);
+
+        // ── Select relative window ─────────────────────────────────────────────
         int playerIdx = candidates.FindIndex(c => c.Entry.IsPlayer);
+        RelativeData relative;
+
         if (playerIdx < 0)
         {
-            // Player not on track — return whatever we have, up to MaxEntries
-            return new RelativeData
+            relative = new RelativeData
             {
                 Entries = candidates.Take(MaxEntries).Select(c => c.Entry).ToList()
             };
         }
-
-        int half  = MaxEntries / 2;
-        int start = Math.Max(0, playerIdx - half);
-        int end   = Math.Min(candidates.Count, start + MaxEntries);
-
-        // If not enough entries below, shift window up
-        if (end - start < MaxEntries)
-            start = Math.Max(0, end - MaxEntries);
-
-        return new RelativeData
+        else
         {
-            Entries = candidates
-                .Skip(start)
-                .Take(end - start)
-                .Select(c => c.Entry)
-                .ToList()
-        };
+            int half  = MaxEntries / 2;
+            int start = Math.Max(0, playerIdx - half);
+            int end   = Math.Min(candidates.Count, start + MaxEntries);
+            if (end - start < MaxEntries)
+                start = Math.Max(0, end - MaxEntries);
+
+            relative = new RelativeData
+            {
+                Entries = candidates
+                    .Skip(start)
+                    .Take(end - start)
+                    .Select(c => c.Entry)
+                    .ToList()
+            };
+        }
+
+        return (relative, standings);
+    }
+
+    private static StandingsData BuildStandings(
+        List<(float Gap, int CarIdx, RelativeEntry Entry)> candidates,
+        TelemetrySnapshot snapshot,
+        bool isMultiClass)
+    {
+        // Sort by overall race position; unpositioned cars (pos=0) go to the end.
+        var sorted = candidates
+            .OrderBy(c => c.Entry.Position == 0 ? int.MaxValue : c.Entry.Position)
+            .ToList();
+
+        if (sorted.Count == 0) return new StandingsData();
+
+        // Leader is P1; use their gap value as the reference point.
+        float leaderGap = sorted[0].Entry.GapToPlayerSeconds;
+
+        var entries = new List<StandingsEntry>(sorted.Count);
+        foreach (var (gap, carIdx, rel) in sorted)
+        {
+            float gapToLeader = gap - leaderGap;
+
+            // Lap difference relative to leader (same car: 0).
+            int lapsBehindLeader = rel.LapDifference - sorted[0].Entry.LapDifference;
+
+            float bestLapSec = carIdx < snapshot.BestLapTimes.Length
+                ? snapshot.BestLapTimes[carIdx]
+                : 0f;
+
+            entries.Add(new StandingsEntry
+            {
+                Position          = rel.Position,
+                ClassPosition     = rel.ClassPosition,
+                CarNumber         = rel.CarNumber,
+                DriverName        = rel.DriverName,
+                IRating           = rel.IRating,
+                CarClass          = isMultiClass ? rel.CarClass : "",
+                ClassColor        = rel.ClassColor,
+                GapToLeaderSeconds = gapToLeader,
+                LapDifference     = lapsBehindLeader,
+                BestLapTime       = bestLapSec > 0 ? TimeSpan.FromSeconds(bestLapSec) : TimeSpan.Zero,
+                IsPlayer          = rel.IsPlayer,
+            });
+        }
+
+        return new StandingsData { Entries = entries };
     }
 }

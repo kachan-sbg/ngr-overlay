@@ -29,6 +29,6 @@ All MVP phases (0–6) are complete. Task files archived to `docs/archive/mvp/ta
 | 7 — Infrastructure hardening | `[x]` | [PHASE-7-infrastructure.md](PHASE-7-infrastructure.md) | TASK-701 to TASK-706 |
 | 8 — Data pipeline extensions | `[x]` | [PHASE-8-data-pipeline.md](PHASE-8-data-pipeline.md) | TASK-801 to TASK-804 |
 | 9 — LMU integration | `[x]` | [PHASE-9-lmu.md](PHASE-9-lmu.md) | TASK-901 to TASK-905 |
-| 10 — New overlays (Part 1) | `[ ]` | [PHASE-10-overlays-part1.md](PHASE-10-overlays-part1.md) | TASK-1001 to TASK-1003 |
-| 11 — New overlays (Part 2) | `[ ]` | [PHASE-11-overlays-part2.md](PHASE-11-overlays-part2.md) | TASK-1101 to TASK-1103 |
+| 10 — New overlays (Part 1) | `[x]` | [PHASE-10-overlays-part1.md](PHASE-10-overlays-part1.md) | TASK-1001 to TASK-1003 |
+| 11 — New overlays (Part 2) | `[x]` | [PHASE-11-overlays-part2.md](PHASE-11-overlays-part2.md) | TASK-1101 to TASK-1103 |
 | 12 — OBS Mode & Enhanced UX | `[ ]` | [PHASE-12-obs-and-ux.md](PHASE-12-obs-and-ux.md) | TASK-1201 to TASK-1207 |
