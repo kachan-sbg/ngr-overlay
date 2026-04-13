@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace SimOverlay.App;
@@ -118,14 +119,24 @@ public sealed class TrayIconController : IDisposable
     private static Icon CreateFallbackIcon()
     {
         using var bmp = new Bitmap(16, 16);
+        using var font = new Font("Arial", 7f, FontStyle.Bold);
         using (var g = Graphics.FromImage(bmp))
         {
             g.Clear(Color.Transparent);
             g.FillEllipse(Brushes.DodgerBlue, 1, 1, 13, 13);
-            g.DrawString("S", new Font("Arial", 7f, FontStyle.Bold),
+            g.DrawString("S", font,
                          Brushes.White, 3f, 2f);
         }
-        return Icon.FromHandle(bmp.GetHicon());
+        var hIcon = bmp.GetHicon();
+        try
+        {
+            using var icon = Icon.FromHandle(hIcon);
+            return (Icon)icon.Clone();
+        }
+        finally
+        {
+            DestroyIcon(hIcon);
+        }
     }
 
     // ── IDisposable ───────────────────────────────────────────────────────────
@@ -135,4 +146,8 @@ public sealed class TrayIconController : IDisposable
         _icon.Visible = false;
         _icon.Dispose();
     }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyIcon(nint hIcon);
 }

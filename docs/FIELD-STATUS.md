@@ -149,7 +149,6 @@ Updated as sims are tested and fixes are merged.
 |----|-----|---------|-------|-------------|
 | FS-001 | LMU | Relative, Standings, TrackMap | Car number | `v.Id` (slot index) shown instead of actual car number — `VehicleScoring` struct has no dedicated car number field |
 | FS-004 | LMU | InputTelemetry | Throttle/Brake/Clutch | Silent zeros when `LmuPlayerInputs` struct is unavailable; no "inputs unavailable" indicator |
-| FS-005 | LMU | FuelCalculator | Fuel level | Falls back to `FuelFraction/255 × capacity`; if telemetry struct is null, capacity is 0 → fuel shows 0.0 |
 
 ## Fixed bugs
 
@@ -157,3 +156,4 @@ Updated as sims are tested and fixes are merged.
 |----|-------|-------------|
 | FS-002 | 2026-04-12 | Session elapsed now live from `DriverData.SessionTimeElapsed` (60 Hz) with local smoothing — SDK blips (0/-1) are filtered, display never blinks |
 | FS-003 | 2026-04-12 | Game time of day now live from `DriverData.GameTimeOfDay` (60 Hz) |
+| FS-005 | 2026-04-13 | LMU fuel fallback no longer multiplies by null capacity; now uses last known telemetry capacity/fuel with guarded fallback logging |

@@ -154,3 +154,11 @@ Add recorded-session snapshot tests so future changes can't silently break field
 - [ ] At least one LMU snapshot test per DTO type
 - [ ] Tests run in CI with no live sim required (pure data, no MMF)
 - [ ] Snapshots stored under `tests/Snapshots/`
+
+---
+
+## Critical Reliability Issues
+
+Session-stability blockers (crash/hang/data corruption risks) are tracked in
+[`docs/CRITICAL-ISSUES.md`](../CRITICAL-ISSUES.md) and must remain resolved while
+Phase 13 field validation work proceeds.

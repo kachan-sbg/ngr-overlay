@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.ComponentModel;
 
 namespace SimOverlay.App;
 
@@ -25,6 +26,7 @@ public sealed class SingleInstanceGuard : IDisposable
     private Mutex?         _mutex;
     private readonly nint  _hwnd;
     private readonly WndProcDelegate? _wndProcDelegate; // field keeps delegate alive (prevents GC)
+    private bool _classRegistered;
 
     /// <summary>True when another instance was already running; this instance should exit.</summary>
     public bool IsAlreadyRunning { get; }
@@ -67,7 +69,10 @@ public sealed class SingleInstanceGuard : IDisposable
             lpszClassName = WndClassName,
         };
 
-        RegisterClassEx(ref wc);
+        var atom = RegisterClassEx(ref wc);
+        if (atom == 0)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Failed to register single-instance command window class.");
+        _classRegistered = true;
 
         _hwnd = CreateWindowEx(
             dwExStyle:    0,
@@ -79,6 +84,8 @@ public sealed class SingleInstanceGuard : IDisposable
             hMenu:        nint.Zero,
             hInstance:    hInst,
             lpParam:      nint.Zero);
+        if (_hwnd == nint.Zero)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Failed to create single-instance command window.");
     }
 
     private nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
@@ -96,7 +103,8 @@ public sealed class SingleInstanceGuard : IDisposable
         if (_hwnd != nint.Zero)
         {
             DestroyWindow(_hwnd);
-            UnregisterClass(WndClassName, GetModuleHandle(null));
+            if (_classRegistered)
+                UnregisterClass(WndClassName, GetModuleHandle(null));
         }
 
         if (_mutex is not null)
@@ -129,7 +137,7 @@ public sealed class SingleInstanceGuard : IDisposable
         public nint    hIconSm;
     }
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern ushort RegisterClassEx(ref WNDCLASSEX lpwcx);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

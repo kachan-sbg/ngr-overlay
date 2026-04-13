@@ -187,3 +187,8 @@ a hotkey, session-type profiles, buddy highlighting, positions-gained indicator,
 multi-class colour configuration — is fully specced in
 [`docs/tasks/PHASE-12-obs-and-ux.md`](tasks/PHASE-12-obs-and-ux.md) and will be
 scheduled when priorities allow.
+
+### Reliability (Current)
+
+Long-session crash/hang/data-integrity risks are tracked in
+[`docs/CRITICAL-ISSUES.md`](CRITICAL-ISSUES.md).
