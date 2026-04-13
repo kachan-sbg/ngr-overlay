@@ -17,6 +17,9 @@ internal sealed record DriverSnapshot(
     string LicenseLevel,
     bool   IsSpectator,
     bool   IsPaceCar,
-    int    CarClassId   = 0,
-    string CarClass     = "",
-    ColorConfig? ClassColor = null);
+    int    CarClassId     = 0,
+    string CarClass       = "",
+    ColorConfig? ClassColor = null,
+    string TeamName       = "",
+    string CarScreenName  = "",
+    string ClubName       = "");

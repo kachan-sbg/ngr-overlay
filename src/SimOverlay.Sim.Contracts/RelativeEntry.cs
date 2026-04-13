@@ -14,10 +14,7 @@ public sealed class RelativeEntry
     public int LapDifference { get; init; }          // 0 = same lap, +1 = one lap ahead
     public bool IsPlayer { get; init; }
 
-    /// <summary>
-    /// Last completed lap time for this driver.
-    /// <see cref="TimeSpan.Zero"/> = no lap completed yet or unavailable.
-    /// </summary>
+    /// <summary>Last completed lap time. Zero = no lap yet or unavailable.</summary>
     public TimeSpan LastLapTime { get; init; }
 
     // ── Multi-class fields ────────────────────────────────────────────────────
@@ -27,4 +24,19 @@ public sealed class RelativeEntry
     public int ClassPosition { get; init; }
     /// <summary>Display colour for the car's class. White in single-class sessions.</summary>
     public ColorConfig ClassColor { get; init; } = ColorConfig.White;
+
+    // ── Extra fields ──────────────────────────────────────────────────────────
+    /// <summary>iRacing club/country name, e.g. "Germany", "USA - Southeast".</summary>
+    public string ClubName { get; init; } = "";
+    /// <summary>Car is currently on pit road.</summary>
+    public bool IsOnPitRoad { get; init; }
+    /// <summary>Car just exited the pits and has not yet completed one full lap since the last pit stop.</summary>
+    public bool IsOutLap { get; init; }
+    /// <summary>
+    /// Car is in the garage (irsdk_NotInWorld) — not yet spawned onto the track.
+    /// <see cref="GapToPlayerSeconds"/> is a large sentinel value; display "GAR" instead of a numeric gap.
+    /// </summary>
+    public bool IsInGarage { get; init; }
+    /// <summary>Tire compound index. 0 = unavailable/not applicable.</summary>
+    public int TireCompound { get; init; }
 }

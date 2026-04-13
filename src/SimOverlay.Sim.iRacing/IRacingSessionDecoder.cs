@@ -42,17 +42,20 @@ internal static class IRacingSessionDecoder
                     classMap[classId] = (existing.Name, existing.Color, existing.Count + 1);
 
                 drivers.Add(new DriverSnapshot(
-                    CarIdx:       d.CarIdx,
-                    UserName:     d.UserName    ?? string.Empty,
-                    CarNumber:    d.CarNumber   ?? d.CarIdx.ToString(),
-                    IRating:      d.IRating,
-                    LicenseClass: ParseLicenseClass(d.LicString),
-                    LicenseLevel: d.LicString   ?? "R 0.00",
-                    IsSpectator:  d.IsSpectator != 0,
-                    IsPaceCar:    d.CarIsPaceCar != 0,
-                    CarClassId:   classId,
-                    CarClass:     className,
-                    ClassColor:   classColor
+                    CarIdx:        d.CarIdx,
+                    UserName:      d.UserName         ?? string.Empty,
+                    CarNumber:     d.CarNumber        ?? d.CarIdx.ToString(),
+                    IRating:       d.IRating,
+                    LicenseClass:  ParseLicenseClass(d.LicString),
+                    LicenseLevel:  d.LicString        ?? "R 0.00",
+                    IsSpectator:   d.IsSpectator != 0,
+                    IsPaceCar:     d.CarIsPaceCar != 0,
+                    CarClassId:    classId,
+                    CarClass:      className,
+                    ClassColor:    classColor,
+                    TeamName:      d.TeamName         ?? string.Empty,
+                    CarScreenName: d.CarScreenName    ?? string.Empty,
+                    ClubName:      d.ClubName         ?? string.Empty
                 ));
             }
         }

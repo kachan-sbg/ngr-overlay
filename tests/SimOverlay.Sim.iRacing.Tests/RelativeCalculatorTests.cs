@@ -44,7 +44,12 @@ public class RelativeCalculatorTests
             EstimatedLapTime: estLapTime,
             BestLapTimes:     new float[MaxCars],
             LastLapTimes:     new float[MaxCars],
-            TrackSurfaces:    surfaces);
+            TrackSurfaces:    surfaces,
+            OnPitRoad:        new bool[MaxCars],
+            F2Times:          new float[MaxCars],
+            PitStopCounts:    new int[MaxCars],
+            PitLaneTimes:     new float[MaxCars],
+            TireCompounds:    new int[MaxCars]);
     }
 
     /// <summary>Creates a simple <see cref="DriverSnapshot"/> for a given car index.</summary>
@@ -68,7 +73,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         var player = result.Relative.Entries.Single(e => e.IsPlayer);
         Assert.Equal("0", player.CarNumber);
@@ -84,7 +89,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         var ahead = result.Relative.Entries.Single(e => !e.IsPlayer);
         Assert.True(ahead.GapToPlayerSeconds < 0, "Car ahead should have a negative gap.");
@@ -101,7 +106,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         var behind = result.Relative.Entries.Single(e => !e.IsPlayer);
         Assert.True(behind.GapToPlayerSeconds > 0, "Car behind should have a positive gap.");
@@ -119,7 +124,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1), MakeDriver(2) };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
         var gaps   = result.Relative.Entries.Select(e => e.GapToPlayerSeconds).ToList();
 
         // Gaps must be monotonically non-decreasing.
@@ -146,7 +151,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
         var carGap = result.Relative.Entries.Single(e => !e.IsPlayer).GapToPlayerSeconds;
 
         Assert.True(carGap < 0f, "Car physically ahead of S/F line should have negative gap.");
@@ -166,7 +171,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
         var carGap = result.Relative.Entries.Single(e => !e.IsPlayer).GapToPlayerSeconds;
 
         Assert.True(carGap > 0f, "Car physically behind S/F line should have positive gap.");
@@ -185,7 +190,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1), MakeDriver(2) };
 
-        var result    = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result    = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
         var gapCar1   = result.Relative.Entries.Single(e => e.CarNumber == "1").GapToPlayerSeconds;
         var gapCar2   = result.Relative.Entries.Single(e => e.CarNumber == "2").GapToPlayerSeconds;
 
@@ -205,7 +210,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result    = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result    = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
         var lapDiff   = result.Relative.Entries.Single(e => !e.IsPlayer).LapDifference;
 
         Assert.Equal(1, lapDiff);
@@ -221,7 +226,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result  = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result  = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
         var lapDiff = result.Relative.Entries.Single(e => !e.IsPlayer).LapDifference;
 
         Assert.Equal(-1, lapDiff);
@@ -230,19 +235,20 @@ public class RelativeCalculatorTests
     // ── Window selection ──────────────────────────────────────────────────────
 
     [Fact]
-    public void OutputContainsAtMost15Entries()
+    public void OutputContainsAllOnTrackEntries()
     {
-        // Create 20 cars spread evenly around the track.
-        var cars = Enumerable.Range(0, 20)
-            .Select(i => (carIdx: i, pct: i / 20f, lap: 1, pos: i + 1))
+        // Calculator now returns all on-track cars; windowing is done in the overlay.
+        const int carCount = 20;
+        var cars = Enumerable.Range(0, carCount)
+            .Select(i => (carIdx: i, pct: i / (float)carCount, lap: 1, pos: i + 1))
             .ToArray();
 
         var snapshot = MakeSnapshot(0, 90f, cars);
-        var drivers  = Enumerable.Range(0, 20).Select(i => MakeDriver(i)).ToArray();
+        var drivers  = Enumerable.Range(0, carCount).Select(i => MakeDriver(i)).ToArray();
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
-        Assert.True(result.Relative.Entries.Count <= 15);
+        Assert.Equal(carCount, result.Relative.Entries.Count);
     }
 
     [Fact]
@@ -256,7 +262,7 @@ public class RelativeCalculatorTests
         var snapshot = MakeSnapshot(0, 90f, cars);
         var drivers  = Enumerable.Range(0, 20).Select(i => MakeDriver(i)).ToArray();
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         Assert.Contains(result.Relative.Entries, e => e.IsPlayer);
     }
@@ -276,7 +282,7 @@ public class RelativeCalculatorTests
             MakeDriver(1, isSpectator: true),   // should be filtered out
         };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         Assert.DoesNotContain(result.Relative.Entries, e => e.CarNumber == "1");
     }
@@ -294,24 +300,27 @@ public class RelativeCalculatorTests
             MakeDriver(1, isPaceCar: true),   // should be filtered out
         };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         Assert.DoesNotContain(result.Relative.Entries, e => e.CarNumber == "1");
     }
 
     [Fact]
-    public void CarsWithNegativePct_AreExcluded()
+    public void CarsWithNegativePct_IncludedAsGarageEntries()
     {
-        // Negative pct signals that the car is not on track (in pit box, not started, etc.)
+        // Negative pct = car is in the garage (irsdk_NotInWorld).
+        // Registered session drivers should still appear in the relative as garage entries
+        // so the user can see connected drivers who haven't spawned yet.
         var snapshot = MakeSnapshot(0, 90f, [
             (0,  0.5f, 1, 1),
-            (1, -1.0f, 0, 0),   // not on track
+            (1, -1.0f, 0, 0),   // in garage
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1) };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
-        Assert.DoesNotContain(result.Relative.Entries, e => e.CarNumber == "1");
+        var garageEntry = result.Relative.Entries.Single(e => e.CarNumber == "1");
+        Assert.True(garageEntry.IsInGarage);
     }
 
     // ── Driver info join ──────────────────────────────────────────────────────
@@ -329,7 +338,7 @@ public class RelativeCalculatorTests
             new DriverSnapshot(1, "Bob",   "12", 1800, LicenseClass.B, "B 2.00", false, false),
         };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         var alice = result.Relative.Entries.Single(e => e.IsPlayer);
         Assert.Equal("Alice",  alice.DriverName);
@@ -353,7 +362,7 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0) };   // no entry for car 1
 
-        var result  = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result  = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
         var unknown = result.Relative.Entries.Single(e => !e.IsPlayer);
 
         Assert.Equal("1", unknown.CarNumber);   // falls back to carIdx.ToString()
@@ -363,9 +372,10 @@ public class RelativeCalculatorTests
     // ── Edge cases ────────────────────────────────────────────────────────────
 
     [Fact]
-    public void PlayerNotOnTrack_ReturnsUpToMaxEntries()
+    public void PlayerNotOnTrack_IncludedAsGarageEntry()
     {
-        // Player's pct is -1 (not on track) — calculator should return whatever is available.
+        // Player's pct is -1 (in garage) — the player entry must still appear in the relative
+        // so the widget is not empty, and on-track cars are still shown around them.
         var snapshot = MakeSnapshot(0, 90f, [
             (1, 0.3f, 1, 1),
             (2, 0.6f, 1, 2),
@@ -373,11 +383,13 @@ public class RelativeCalculatorTests
         ]);
         var drivers = new[] { MakeDriver(0), MakeDriver(1), MakeDriver(2) };
 
-        // Should not throw; may return up to 15 entries.
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        // Should not throw; player is present as a garage entry.
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         Assert.True(result.Relative.Entries.Count <= 15);
-        Assert.DoesNotContain(result.Relative.Entries, e => e.IsPlayer);
+        var player = result.Relative.Entries.Single(e => e.IsPlayer);
+        Assert.True(player.IsInGarage);
+        Assert.Equal(0f, player.GapToPlayerSeconds);
     }
 
     [Fact]
@@ -386,7 +398,7 @@ public class RelativeCalculatorTests
         var snapshot = MakeSnapshot(0, 90f, [(0, 0.5f, 1, 1)]);
         var drivers  = new[] { MakeDriver(0) };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         Assert.Single(result.Relative.Entries);
         Assert.True(result.Relative.Entries[0].IsPlayer);
@@ -414,7 +426,7 @@ public class RelativeCalculatorTests
             MakeDriver(3, carClassId: 2, carClass: "GT3"),
         };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         var gtp1 = result.Relative.Entries.Single(e => e.CarNumber == "0");
         var gt31 = result.Relative.Entries.Single(e => e.CarNumber == "1");
@@ -440,7 +452,7 @@ public class RelativeCalculatorTests
             MakeDriver(1, carClassId: 2, carClass: "GT3"),
         };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         Assert.Equal("GTP", result.Relative.Entries.Single(e => e.CarNumber == "0").CarClass);
         Assert.Equal("GT3", result.Relative.Entries.Single(e => e.CarNumber == "1").CarClass);
@@ -462,7 +474,7 @@ public class RelativeCalculatorTests
             MakeDriver(2, carClassId: 1, carClass: "GT3"),
         };
 
-        var result = IRacingRelativeCalculator.Compute(snapshot, drivers);
+        var result = IRacingRelativeCalculator.Compute(snapshot, drivers, new CarStateTracker());
 
         // CarClass must be empty in single-class session
         Assert.All(result.Relative.Entries, e => Assert.Equal("", e.CarClass));
