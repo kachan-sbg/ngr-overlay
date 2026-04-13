@@ -56,13 +56,29 @@ public sealed class ConfigStore
         // on the .tmp file.
         lock (_saveLock)
         {
-            var dir = Path.GetDirectoryName(_path)!;
-            Directory.CreateDirectory(dir);
+            var tmp = _path + ".tmp";
+            try
+            {
+                var dir = Path.GetDirectoryName(_path)!;
+                Directory.CreateDirectory(dir);
 
-            var tmp  = _path + ".tmp";
-            var json = JsonSerializer.Serialize(config, JsonOptions);
-            File.WriteAllText(tmp, json);
-            File.Move(tmp, _path, overwrite: true);
+                var json = JsonSerializer.Serialize(config, JsonOptions);
+                File.WriteAllText(tmp, json);
+                File.Move(tmp, _path, overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception("Failed to save config", ex);
+                try
+                {
+                    if (File.Exists(tmp))
+                        File.Delete(tmp);
+                }
+                catch
+                {
+                    // best effort cleanup
+                }
+            }
         }
     }
 }

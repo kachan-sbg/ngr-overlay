@@ -43,3 +43,8 @@ See [ROADMAP.md](ROADMAP.md) for full rationale and scope.
 | 19 — ACC integration | `[ ]` | 7 | _(to be specced)_ |
 | 20 — Session-state-aware visibility | `[ ]` | 8 | _(to be specced)_ |
 | 12 — OBS Mode & Enhanced UX | `[ ]` | deferred | [PHASE-12-obs-and-ux.md](tasks/PHASE-12-obs-and-ux.md) |
+
+## Reliability Tracking
+
+Critical crash/hang/data-integrity risks are tracked in
+[`docs/CRITICAL-ISSUES.md`](CRITICAL-ISSUES.md).

@@ -140,7 +140,8 @@ public sealed class FlatTrackMapOverlay : BaseOverlay
             .ToList();
 
         int labelRow = 0; // alternates 0=above, 1=below
-        float lastLabelX = float.MinValue;
+        float lastLabelXAbove = float.MinValue;
+        float lastLabelXBelow = float.MinValue;
 
         foreach (var car in sorted)
         {
@@ -190,13 +191,16 @@ public sealed class FlatTrackMapOverlay : BaseOverlay
                 float ly   = above ? aboveY : belowY;
 
                 // Skip if overlapping with previous label on same row
-                if (cx - lastLabelX > cfg.FontSize * 1.2f || above != (labelRow % 2 == 0))
+                float minGap = cfg.FontSize * 1.2f;
+                float lastRowX = above ? lastLabelXAbove : lastLabelXBelow;
+                if (cx - lastRowX > minGap)
                 {
                     var   lBrush = inPit ? dimmed : markerBrush;
                     using var ll = dw.CreateTextLayout(labelStr, fmt, labelW + 4f, labelH);
                     ll.TextAlignment = TextAlignment.Center;
                     ctx.DrawTextLayout(new Vector2(labelX, ly), ll, lBrush, DrawTextOptions.Clip);
-                    lastLabelX = cx;
+                    if (above) lastLabelXAbove = cx;
+                    else lastLabelXBelow = cx;
                 }
 
                 labelRow++;

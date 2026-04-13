@@ -92,8 +92,17 @@ public abstract class BaseOverlay : OverlayWindow
         _resources   = new RenderResources(D2DContext);
 
         if (_configStore is not null && _appConfig is not null)
-            _saveTimer = new Timer(_ => _configStore.Save(_appConfig),
-                state: null, Timeout.Infinite, Timeout.Infinite);
+            _saveTimer = new Timer(_ =>
+            {
+                try
+                {
+                    _configStore.Save(_appConfig);
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Exception($"Debounced config save failed for '{DisplayName}'", ex);
+                }
+            }, state: null, Timeout.Infinite, Timeout.Infinite);
 
         Subscribe<EditModeChangedEvent>(e => IsLocked = e.IsLocked);
         Subscribe<SimStateChangedEvent>(e =>

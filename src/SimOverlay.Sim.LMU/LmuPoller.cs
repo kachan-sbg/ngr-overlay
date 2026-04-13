@@ -27,6 +27,7 @@ internal sealed class LmuPoller : IDisposable
     private readonly Action<SimState> _onStateChanged;
     private readonly LmuMemoryReader  _reader;
     private readonly LmuFuelTracker   _fuelTracker = new();
+    private int _pollInProgress;
 
     // Cached driver list, rebuilt when track or vehicle count changes.
     private ImmutableArray<LmuDriverSnapshot> _cachedDrivers =
@@ -47,6 +48,9 @@ internal sealed class LmuPoller : IDisposable
     private int  _frameCount;
     private bool _inSession;
     private bool _disposed;
+    private float _lastFuelCapacityLiters;
+    private float _lastFuelLevelLiters = -1f;
+    private bool _loggedMissingFuelCapacity;
 
     private Timer? _timer;
 
@@ -73,6 +77,8 @@ internal sealed class LmuPoller : IDisposable
     private void Poll(object? state)
     {
         if (_disposed) return;
+        if (System.Threading.Interlocked.Exchange(ref _pollInProgress, 1) == 1)
+            return;
 
         try
         {
@@ -129,6 +135,10 @@ internal sealed class LmuPoller : IDisposable
         catch (Exception ex)
         {
             AppLog.Exception("LmuPoller.Poll", ex);
+        }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _pollInProgress, 0);
         }
     }
 
@@ -223,6 +233,10 @@ internal sealed class LmuPoller : IDisposable
             gear      = telem.Gear;
             rpm       = telem.EngineRpm;
             fuelLiters = telem.FuelLiters;
+            if (telem.FuelCapacityLiters > 0f)
+                _lastFuelCapacityLiters = telem.FuelCapacityLiters;
+            _lastFuelLevelLiters = fuelLiters;
+            _loggedMissingFuelCapacity = false;
         }
         else
         {
@@ -232,9 +246,26 @@ internal sealed class LmuPoller : IDisposable
             steering  = 0f;
             gear      = 0;
             rpm       = 0f;
-            // Fallback: derive fuel from FuelFraction scoring field.
-            float capFallback = telem?.FuelCapacityLiters ?? 0f;
-            fuelLiters = player.FuelFraction / 255f * capFallback;
+            // Fallback: derive fuel from FuelFraction scoring field using last known capacity.
+            if (_lastFuelCapacityLiters > 0f)
+            {
+                fuelLiters = player.FuelFraction / 255f * _lastFuelCapacityLiters;
+                _lastFuelLevelLiters = fuelLiters;
+                _loggedMissingFuelCapacity = false;
+            }
+            else if (_lastFuelLevelLiters >= 0f)
+            {
+                fuelLiters = _lastFuelLevelLiters;
+            }
+            else
+            {
+                fuelLiters = 0f;
+                if (!_loggedMissingFuelCapacity)
+                {
+                    AppLog.Warn("LmuPoller: player telemetry unavailable and no known fuel capacity; fuel falls back to 0 until telemetry appears.");
+                    _loggedMissingFuelCapacity = true;
+                }
+            }
         }
 
         // Speed from LocalVel magnitude (always available in scoring).

@@ -159,6 +159,8 @@ internal static class Program
             //   F10 = quit
             int hotkeySettings = MessagePump.RegisterHotKey(modifiers: 0, virtualKey: 0x78 /* F9  */);
             int hotkeyQuit     = MessagePump.RegisterHotKey(modifiers: 0, virtualKey: 0x79 /* F10 */);
+            if (hotkeySettings < 0) AppLog.Warn("F9 hotkey registration failed.");
+            if (hotkeyQuit < 0) AppLog.Warn("F10 hotkey registration failed.");
             AppLog.Info("DEV: F9 = Settings, F10 = quit.");
 
             MessagePump.Run((msgId, wParam) =>
@@ -179,8 +181,8 @@ internal static class Program
             });
 
             // Pump has exited — unregister hotkeys before the window is fully torn down.
-            MessagePump.UnregisterHotKey(hotkeySettings);
-            MessagePump.UnregisterHotKey(hotkeyQuit);
+            if (hotkeySettings > 0) MessagePump.UnregisterHotKey(hotkeySettings);
+            if (hotkeyQuit > 0) MessagePump.UnregisterHotKey(hotkeyQuit);
             AppLog.Info("Message pump exited — unregistered hotkeys.");
         }
         catch (Exception ex)

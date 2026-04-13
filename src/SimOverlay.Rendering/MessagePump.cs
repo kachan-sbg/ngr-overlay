@@ -1,4 +1,6 @@
 using SimOverlay.Rendering.Win32;
+using System.Runtime.InteropServices;
+using SimOverlay.Core;
 
 namespace SimOverlay.Rendering;
 
@@ -42,7 +44,12 @@ public static class MessagePump
     {
         // Use the next available id (start at 1; 0 is reserved by Windows).
         var id = System.Threading.Interlocked.Increment(ref _nextHotkeyId);
-        return NativeMethods.RegisterHotKey(nint.Zero, id, modifiers, virtualKey) ? id : -1;
+        if (NativeMethods.RegisterHotKey(nint.Zero, id, modifiers, virtualKey))
+            return id;
+
+        var err = Marshal.GetLastWin32Error();
+        AppLog.Warn($"RegisterHotKey failed (id={id}, modifiers={modifiers}, vk=0x{virtualKey:X2}, win32={err}).");
+        return -1;
     }
 
     /// <summary>Unregisters a hotkey previously registered with <see cref="RegisterHotKey"/>.</summary>
