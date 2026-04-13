@@ -37,6 +37,7 @@ Each overlay has a **Screen profile** (the driver's view) and an optional **Stre
 | **[OVERLAYS.md](OVERLAYS.md)** | Specification for each overlay: layout, data fields, update frequency, customization options. |
 | **[TASKS.md](TASKS.md)** | Ordered implementation task list grouped by phase. |
 | **[CRITICAL-ISSUES.md](CRITICAL-ISSUES.md)** | Crash/hang/data-corruption risks and reliability-hardening status. |
+| **[AI-DOCS-GUIDE.md](AI-DOCS-GUIDE.md)** | AI-first documentation loading policy (minimal context, archive usage rules). |
 | **[REVIEW-MVP.md](REVIEW-MVP.md)** | Code and architecture review conducted after MVP completion. |
 | **[archive/mvp/](archive/mvp/README.md)** | Archived MVP-era documentation (phases 0–6, known issues, verification checklists). |
 

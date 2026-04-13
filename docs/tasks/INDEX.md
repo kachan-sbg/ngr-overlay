@@ -1,34 +1,36 @@
 # SimOverlay — Task Index
 
-> Full design context: [ARCHITECTURE.md](../ARCHITECTURE.md) · [OVERLAYS.md](../OVERLAYS.md) · [DECISIONS.md](../DECISIONS.md)
-> MVP archive: [docs/archive/mvp/](../archive/mvp/README.md)
+> Navigation: [CODE-NAV.md](../CODE-NAV.md) · [ARCHITECTURE.md](../ARCHITECTURE.md) · [ROADMAP.md](../ROADMAP.md)
+> AI docs policy: [AI-DOCS-GUIDE.md](../AI-DOCS-GUIDE.md)
 
-## Status Legend
-- `[ ]` Not started
-- `[~]` In progress
-- `[x]` Done
+## Status legend
+`[ ]` Not started · `[~]` In progress · `[x]` Done
 
-## MVP (Complete)
+---
 
-All MVP phases (0–6) are complete. Task files archived to `docs/archive/mvp/tasks/`.
+## MVP (Phases 0–6) — Complete
+All archived to `docs/archive/mvp/tasks/`.
 
-| Phase | Status | Tasks |
-|---|---|---|
-| 0 — Scaffolding | `[x]` | TASK-001 to TASK-004 |
-| 1 — Rendering core | `[x]` | TASK-101 to TASK-108 |
-| 2 — iRacing data | `[x]` | TASK-201 to TASK-205 |
-| 3 — Overlay framework | `[x]` | TASK-301 to TASK-304 |
-| 4 — MVP overlays | `[x]` | TASK-401 to TASK-405 |
-| 5 — Settings UI | `[x]` | TASK-501 to TASK-504 |
-| 6 — Polish | `[x]` | TASK-601 to TASK-606 |
+## Alpha — Phases 7–11 — Complete
+All archived to [`docs/archive/alpha/tasks/`](../archive/alpha/tasks/README.md).
 
-## Alpha
+---
 
-| Phase | Status | File | Tasks |
+## Active
+
+| Phase | Status | File | Summary |
 |---|---|---|---|
-| 7 — Infrastructure hardening | `[x]` | [PHASE-7-infrastructure.md](PHASE-7-infrastructure.md) | TASK-701 to TASK-706 |
-| 8 — Data pipeline extensions | `[x]` | [PHASE-8-data-pipeline.md](PHASE-8-data-pipeline.md) | TASK-801 to TASK-804 |
-| 9 — LMU integration | `[x]` | [PHASE-9-lmu.md](PHASE-9-lmu.md) | TASK-901 to TASK-905 |
-| 10 — New overlays (Part 1) | `[x]` | [PHASE-10-overlays-part1.md](PHASE-10-overlays-part1.md) | TASK-1001 to TASK-1003 |
-| 11 — New overlays (Part 2) | `[x]` | [PHASE-11-overlays-part2.md](PHASE-11-overlays-part2.md) | TASK-1101 to TASK-1103 |
-| 12 — OBS Mode & Enhanced UX | `[ ]` | [PHASE-12-obs-and-ux.md](PHASE-12-obs-and-ux.md) | TASK-1201 to TASK-1207 |
+| 13 — Data Validation & Audit | `[~]` | [PHASE-13-data-validation.md](PHASE-13-data-validation.md) | Audit every field in every overlay against iRacing + LMU SDK; fix wrong values |
+
+## Upcoming
+
+| Phase | Status | Summary |
+|---|---|---|
+| 12 — OBS Mode & Enhanced UX | `[ ]` | Deferred — spec in [PHASE-12-obs-and-ux.md](PHASE-12-obs-and-ux.md) |
+| 14 — WebSocket Server | `[ ]` | Live telemetry over WebSocket for custom HTML widgets |
+| 15 — Field Visibility & Layout | `[ ]` | Per-overlay column show/hide/reorder |
+| 16 — Cross-sim Normalization | `[ ]` | Common rating/license/session-type across sims |
+| 17 — Radar Overlay | `[ ]` | Top-down proximity radar |
+| 18 — Map Overlay | `[ ]` | SVG track map + auto-trace |
+| 19 — ACC Integration | `[ ]` | Assetto Corsa Competizione sim provider |
+| 20 — Session-State Visibility | `[ ]` | Auto show/hide overlays by session phase |
