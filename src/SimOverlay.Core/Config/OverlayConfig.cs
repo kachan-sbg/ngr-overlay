@@ -57,9 +57,15 @@ public sealed class OverlayConfig
 
     // --- Standings overlay ---
     public StandingsDisplayMode StandingsDisplayMode { get; set; } = StandingsDisplayMode.Combined;
-    public bool ShowClassBadge { get; set; } = true;
-    public bool ShowBestLap { get; set; } = true;
-    public int MaxStandingsRows { get; set; } = 30;
+    public bool ShowClassBadge      { get; set; } = true;
+    public bool ShowBestLap         { get; set; } = true;
+    public bool ShowLastLap         { get; set; } = true;
+    public bool ShowInterval        { get; set; } = true;
+    public bool ShowStint           { get; set; } = true;
+    public bool ShowPositionsGained { get; set; } = true;
+    public bool ShowTeam            { get; set; } = false;
+    public bool ShowPitTime         { get; set; } = false;
+    public int MaxStandingsRows     { get; set; } = 30;
 
     // --- Fuel Calculator overlay ---
     public FuelUnit FuelUnit { get; set; } = FuelUnit.Liters;
@@ -134,9 +140,15 @@ public sealed class OverlayConfig
             ShowTrendArrow = o.ShowTrendArrow ?? ShowTrendArrow,
             ShowDeltaText = o.ShowDeltaText ?? ShowDeltaText,
             StandingsDisplayMode = o.StandingsDisplayMode ?? StandingsDisplayMode,
-            ShowClassBadge = o.ShowClassBadge ?? ShowClassBadge,
-            ShowBestLap = o.ShowBestLap ?? ShowBestLap,
-            MaxStandingsRows = o.MaxStandingsRows ?? MaxStandingsRows,
+            ShowClassBadge       = o.ShowClassBadge       ?? ShowClassBadge,
+            ShowBestLap          = o.ShowBestLap          ?? ShowBestLap,
+            ShowLastLap          = o.ShowLastLap          ?? ShowLastLap,
+            ShowInterval         = o.ShowInterval         ?? ShowInterval,
+            ShowStint            = o.ShowStint            ?? ShowStint,
+            ShowPositionsGained  = o.ShowPositionsGained  ?? ShowPositionsGained,
+            ShowTeam             = o.ShowTeam             ?? ShowTeam,
+            ShowPitTime          = o.ShowPitTime          ?? ShowPitTime,
+            MaxStandingsRows     = o.MaxStandingsRows     ?? MaxStandingsRows,
             FuelUnit = o.FuelUnit ?? FuelUnit,
             FuelSafetyMarginLaps = o.FuelSafetyMarginLaps ?? FuelSafetyMarginLaps,
             ShowFuelMargin = o.ShowFuelMargin ?? ShowFuelMargin,

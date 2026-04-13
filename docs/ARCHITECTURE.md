@@ -3,7 +3,7 @@
 ## Racing Simulator Overlay — Technical Architecture
 
 > **Don't read this whole file.** Use the index below to read only sections relevant to your task.
-> CLAUDE.md has the codebase map, dependency rules, and key constraints — start there.
+> For file-level navigation start with [`docs/CODE-NAV.md`](CODE-NAV.md). CLAUDE.md has dependency rules and critical constraints.
 
 ### Section index
 | # | Section | Lines | Read when... |

@@ -65,10 +65,16 @@ public sealed class IRacingProvider : ISimProvider, IDisposable
 
     /// <summary>
     /// Starts the IRSDKSharper polling loop and immediately fires
-    /// <see cref="StateChanged"/> with <see cref="SimState.Connected"/>
-    /// (iRacing is known to be running when <c>Start</c> is called by the
-    /// detection loop). <see cref="SimState.InSession"/> fires once IRSDKSharper
-    /// confirms an active SDK connection.
+    /// <see cref="StateChanged"/> with <see cref="SimState.InSession"/>.
+    /// <para>
+    /// We skip the intermediate <c>Connected</c> state because <see cref="IsRunning"/>
+    /// already confirmed the sim is live before this method is called. Waiting for
+    /// IRSDKSharper's <c>OnConnected</c> event is unreliable when iRacing is already
+    /// running at SDK init time — the event sometimes never fires, leaving overlays locked.
+    /// Firing <c>InSession</c> immediately unblocks overlays; IRSDKSharper will connect
+    /// internally and telemetry will start flowing within a second or two. If the SDK stalls,
+    /// the watchdog inside <see cref="IRacingPoller"/> detects it and restarts the SDK.
+    /// </para>
     /// </summary>
     public void Start()
     {
@@ -79,8 +85,10 @@ public sealed class IRacingProvider : ISimProvider, IDisposable
         _poller = new IRacingPoller(_bus, FireStateChanged);
         _poller.Start();
 
-        // Signal that iRacing is running — session state will follow via OnConnected.
-        FireStateChanged(SimState.Connected);
+        // iRacing is confirmed running — fire InSession immediately so overlays unlock.
+        // IRSDKSharper will also fire HandleConnected once its loop attaches, which
+        // re-fires InSession (idempotent — SimDetector ignores repeated same-state transitions).
+        FireStateChanged(SimState.InSession);
     }
 
     /// <summary>

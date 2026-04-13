@@ -25,6 +25,8 @@ public class RelativeCalculatorBenchmarks
     private IReadOnlyList<DriverSnapshot> _drivers15 = null!;
     private IReadOnlyList<DriverSnapshot> _drivers1 = null!;
 
+    private readonly CarStateTracker _carState = new();
+
     [GlobalSetup]
     public void Setup()
     {
@@ -40,17 +42,17 @@ public class RelativeCalculatorBenchmarks
     /// <summary>Worst case: full 40-car field (e.g. iRacing oval with AI).</summary>
     [Benchmark(Baseline = true)]
     public (RelativeData, StandingsData) Compute40Cars() =>
-        IRacingRelativeCalculator.Compute(_snapshot40, _drivers40);
+        IRacingRelativeCalculator.Compute(_snapshot40, _drivers40, _carState);
 
     /// <summary>Typical road-course field size.</summary>
     [Benchmark]
     public (RelativeData, StandingsData) Compute15Cars() =>
-        IRacingRelativeCalculator.Compute(_snapshot15, _drivers15);
+        IRacingRelativeCalculator.Compute(_snapshot15, _drivers15, _carState);
 
     /// <summary>Edge case: single car (e.g. testing alone).</summary>
     [Benchmark]
     public (RelativeData, StandingsData) Compute1Car() =>
-        IRacingRelativeCalculator.Compute(_snapshot1, _drivers1);
+        IRacingRelativeCalculator.Compute(_snapshot1, _drivers1, _carState);
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -73,7 +75,20 @@ public class RelativeCalculatorBenchmarks
         var surfaces = new int[MaxCars];
         for (int i = 0; i < MaxCars; i++) surfaces[i] = i < carCount ? 3 : -1; // OnTrack / NotInWorld
 
-        return new TelemetrySnapshot(playerIdx, pcts, pos, laps, EstimatedLapTime: 90f, BestLapTimes: new float[MaxCars], LastLapTimes: new float[MaxCars], TrackSurfaces: surfaces);
+        return new TelemetrySnapshot(
+            PlayerCarIdx:     playerIdx,
+            LapDistPcts:      pcts,
+            Positions:        pos,
+            Laps:             laps,
+            EstimatedLapTime: 90f,
+            BestLapTimes:     new float[MaxCars],
+            LastLapTimes:     new float[MaxCars],
+            TrackSurfaces:    surfaces,
+            OnPitRoad:        new bool[MaxCars],
+            F2Times:          new float[MaxCars],
+            PitStopCounts:    new int[MaxCars],
+            PitLaneTimes:     new float[MaxCars],
+            TireCompounds:    new int[MaxCars]);
     }
 
     private static IReadOnlyList<DriverSnapshot> MakeDrivers(int count)

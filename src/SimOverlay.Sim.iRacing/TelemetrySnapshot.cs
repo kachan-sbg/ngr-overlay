@@ -14,4 +14,9 @@ internal sealed record TelemetrySnapshot(
     float   EstimatedLapTime,   // seconds; used to convert lap-pct delta → gap
     float[] BestLapTimes,       // CarIdxBestLapTime[64]: best lap in seconds; 0 = no lap
     float[] LastLapTimes,       // CarIdxLastLapTime[64]: last completed lap in seconds; 0 = no lap
-    int[]   TrackSurfaces);     // CarIdxTrackSurface[64]: -1=NotInWorld, 0=OffTrack, 1=Pit, 2=ApproachingPits, 3=OnTrack
+    int[]   TrackSurfaces,      // CarIdxTrackSurface[64]: -1=NotInWorld, 0=OffTrack, 1=Pit, 2=ApproachingPits, 3=OnTrack
+    bool[]  OnPitRoad,          // CarIdxOnPitRoad[64]
+    float[] F2Times,            // CarIdxF2Time[64]: seconds behind leader (or 0 for leader)
+    int[]   PitStopCounts,      // CarIdxNumPitStops[64]
+    float[] PitLaneTimes,       // CarIdxLastPitLaneTimeAppro[64]: last pit-lane traversal seconds; 0 if none
+    int[]   TireCompounds);     // CarIdxTireCompound[64]: compound index; 0 = unknown/unavailable

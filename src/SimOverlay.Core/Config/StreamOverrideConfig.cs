@@ -41,9 +41,15 @@ public sealed class StreamOverrideConfig
 
     // --- Standings overlay ---
     public StandingsDisplayMode? StandingsDisplayMode { get; set; }
-    public bool? ShowClassBadge { get; set; }
-    public bool? ShowBestLap { get; set; }
-    public int? MaxStandingsRows { get; set; }
+    public bool? ShowClassBadge      { get; set; }
+    public bool? ShowBestLap         { get; set; }
+    public bool? ShowLastLap         { get; set; }
+    public bool? ShowInterval        { get; set; }
+    public bool? ShowStint           { get; set; }
+    public bool? ShowPositionsGained { get; set; }
+    public bool? ShowTeam            { get; set; }
+    public bool? ShowPitTime         { get; set; }
+    public int?  MaxStandingsRows    { get; set; }
 
     // --- Fuel Calculator overlay ---
     public FuelUnit? FuelUnit { get; set; }

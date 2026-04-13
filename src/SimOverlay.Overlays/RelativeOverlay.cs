@@ -9,8 +9,8 @@ using Vortice.DirectWrite;
 namespace SimOverlay.Overlays;
 
 /// <summary>
-/// Relative timing tower — shows up to <c>MaxDriversShown</c> drivers centered on
-/// the player by track position, with POS / CAR / NAME / iRTG / LIC / GAP / LAP columns.
+/// Relative timing tower — shows ±<c>MaxDriversShown/2</c> drivers centered on the player.
+/// Columns: POS | CC | CAR# | DRIVER NAME | TYRE | STATUS | GAP | LAST
 /// </summary>
 public sealed class RelativeOverlay : BaseOverlay
 {
@@ -23,14 +23,14 @@ public sealed class RelativeOverlay : BaseOverlay
         Enabled         = true,
         X               = 100,
         Y               = 200,
-        Width           = 500,
-        Height          = 380,
+        Width           = 480,
+        Height          = 310,
         Opacity         = 0.85f,
         BackgroundColor = new ColorConfig { R = 0f, G = 0f, B = 0f, A = 0.75f },
         FontSize        = 13f,
         ShowIRating     = false,
         ShowLicense     = false,
-        MaxDriversShown = 15,
+        MaxDriversShown = 11,   // ±5 + player
     };
 
     private volatile RelativeData? _latest;
@@ -40,16 +40,17 @@ public sealed class RelativeOverlay : BaseOverlay
     {
         Entries =
         [
-            new() { Position =  1, CarNumber = "44", DriverName = "L. Hamilton",   IRating = 5843, LicenseClass = LicenseClass.A,   LicenseLevel = "A 3.0", GapToPlayerSeconds = -8.45f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(93.102) },
-            new() { Position =  2, CarNumber =  "1", DriverName = "M. Verstappen", IRating = 6210, LicenseClass = LicenseClass.A,   LicenseLevel = "A 4.8", GapToPlayerSeconds = -5.10f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(93.388) },
-            new() { Position =  3, CarNumber = "16", DriverName = "C. Leclerc",    IRating = 5102, LicenseClass = LicenseClass.A,   LicenseLevel = "A 2.1", GapToPlayerSeconds = -2.43f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(93.521) },
-            new() { Position =  4, CarNumber = "63", DriverName = "G. Russell",    IRating = 4891, LicenseClass = LicenseClass.B,   LicenseLevel = "B 4.1", GapToPlayerSeconds = -1.12f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(93.887) },
-            new() { Position =  5, CarNumber =  "4", DriverName = "L. Norris",     IRating = 4102, LicenseClass = LicenseClass.B,   LicenseLevel = "B 2.7", GapToPlayerSeconds =  0.00f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(94.521), IsPlayer = true },
-            new() { Position =  6, CarNumber = "81", DriverName = "O. Piastri",    IRating = 3892, LicenseClass = LicenseClass.B,   LicenseLevel = "B 0.9", GapToPlayerSeconds = +1.34f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(94.233) },
-            new() { Position =  7, CarNumber = "11", DriverName = "S. Perez",      IRating = 5102, LicenseClass = LicenseClass.A,   LicenseLevel = "A 1.5", GapToPlayerSeconds = +2.88f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(94.102) },
-            new() { Position =  8, CarNumber = "14", DriverName = "F. Alonso",     IRating = 4750, LicenseClass = LicenseClass.Pro, LicenseLevel = "Pro",   GapToPlayerSeconds = +4.21f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(95.011) },
-            new() { Position =  9, CarNumber = "55", DriverName = "C. Sainz",      IRating = 4350, LicenseClass = LicenseClass.B,   LicenseLevel = "B 4.7", GapToPlayerSeconds = +5.90f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(94.788) },
-            new() { Position = 10, CarNumber = "18", DriverName = "L. Stroll",     IRating = 3200, LicenseClass = LicenseClass.C,   LicenseLevel = "C 1.2", GapToPlayerSeconds = +7.15f, LapDifference = 0, LastLapTime = TimeSpan.FromSeconds(95.344) },
+            new() { Position =  1, CarNumber = "44", DriverName = "L. Hamilton",   ClubName = "Germany",         TireCompound = 1, GapToPlayerSeconds = -8.45f, LastLapTime = TimeSpan.FromSeconds(93.102) },
+            new() { Position =  2, CarNumber =  "1", DriverName = "M. Verstappen", ClubName = "Netherlands",     TireCompound = 1, GapToPlayerSeconds = -5.10f, LastLapTime = TimeSpan.FromSeconds(93.388) },
+            new() { Position =  3, CarNumber = "16", DriverName = "C. Leclerc",    ClubName = "France",          TireCompound = 2, GapToPlayerSeconds = -2.43f, LastLapTime = TimeSpan.FromSeconds(93.521) },
+            new() { Position =  4, CarNumber = "63", DriverName = "G. Russell",    ClubName = "Great Britain",   TireCompound = 1, GapToPlayerSeconds = -1.12f, LastLapTime = TimeSpan.FromSeconds(93.887) },
+            new() { Position =  5, CarNumber =  "4", DriverName = "L. Norris",     ClubName = "Great Britain",   TireCompound = 1, GapToPlayerSeconds =  0.00f, LastLapTime = TimeSpan.FromSeconds(94.521), IsPlayer = true },
+            new() { Position =  6, CarNumber = "81", DriverName = "O. Piastri",    ClubName = "Australia",       TireCompound = 1, GapToPlayerSeconds = +1.34f, LastLapTime = TimeSpan.FromSeconds(94.233), IsOnPitRoad = false, IsOutLap = true },
+            new() { Position =  7, CarNumber = "11", DriverName = "S. Perez",      ClubName = "Mexico",          TireCompound = 2, GapToPlayerSeconds = +2.88f, LastLapTime = TimeSpan.FromSeconds(94.102) },
+            new() { Position =  8, CarNumber = "14", DriverName = "F. Alonso",     ClubName = "Spain",           TireCompound = 1, GapToPlayerSeconds = +4.21f, LastLapTime = TimeSpan.FromSeconds(95.011), IsOnPitRoad = true },
+            new() { Position =  9, CarNumber = "55", DriverName = "C. Sainz",      ClubName = "Spain",           TireCompound = 2, GapToPlayerSeconds = +5.90f, LastLapTime = TimeSpan.FromSeconds(94.788) },
+            new() { Position = 10, CarNumber = "18", DriverName = "L. Stroll",     ClubName = "Canada",          TireCompound = 1, GapToPlayerSeconds = +7.15f, LastLapTime = TimeSpan.FromSeconds(95.344) },
+            new() { Position = 11, CarNumber = "31", DriverName = "E. Ocon",       ClubName = "France",          TireCompound = 1, GapToPlayerSeconds = +9.02f, LastLapTime = TimeSpan.FromSeconds(95.712) },
         ],
     };
 
@@ -69,38 +70,41 @@ public sealed class RelativeOverlay : BaseOverlay
         var entries = data?.Entries ?? [];
 
         var fontSize = config.FontSize;
-        var charW    = fontSize * 0.615f;   // Consolas character width approximation
+        var charW    = fontSize * 0.615f;
         var rowH     = fontSize + 6f;
         var pad      = 8f;
         var w        = (float)config.Width;
         var h        = (float)config.Height;
 
         // ----- Column widths -----
-        // Fixed: POS(4ch) | CAR(5ch) | [iRTG(5ch)] | [LIC(7ch)] | GAP(7ch) | LAST(8ch)
-        var posW   = 4f * charW;
-        var carW   = 5f * charW;
-        var irtgW  = config.ShowIRating ? 5f * charW : 0f;
-        var licW   = config.ShowLicense ? 7f * charW : 0f;
-        var gapW   = 7f * charW;
-        var lastW  = 8f * charW;   // e.g. "1:23.456"
-        var colGap = charW;
+        // POS(3ch) | CC(2ch) | CAR(5ch) | NAME(variable) | TYRE(2ch) | STATUS(3ch) | GAP(7ch) | LAST(8ch)
+        var posW    = 3f * charW;
+        var ccW     = 2f * charW;
+        var carW    = 5f * charW;
+        var tyreW   = 2f * charW;
+        var statW   = 3f * charW;
+        var gapW    = 7f * charW;
+        var lastW   = 8f * charW;
+        var colGap  = charW;
 
         var fixedW = pad + posW + colGap
-                         + carW + colGap
-                         + (irtgW > 0 ? irtgW + colGap : 0)
-                         + (licW  > 0 ? licW  + colGap : 0)
-                         + gapW  + colGap
-                         + lastW + pad + 5f;
+                        + ccW   + colGap
+                        + carW  + colGap
+                        + tyreW + colGap
+                        + statW + colGap
+                        + gapW  + colGap
+                        + lastW + pad + 5f;
 
-        var nameW = MathF.Max(w - fixedW, 60f);
+        var nameW = MathF.Max(w - fixedW, 50f);
 
         // ----- Column left edges -----
         float xPos  = pad;
-        float xCar  = xPos  + posW  + colGap;
+        float xCc   = xPos  + posW  + colGap;
+        float xCar  = xCc   + ccW   + colGap;
         float xName = xCar  + carW  + colGap;
-        float xIrtg = xName + nameW + colGap;
-        float xLic  = xIrtg + (irtgW > 0 ? irtgW + colGap : 0);
-        float xGap  = xLic  + (licW  > 0 ? licW  + colGap : 0);
+        float xTyre = xName + nameW + colGap;
+        float xStat = xTyre + tyreW + colGap;
+        float xGap  = xStat + statW + colGap;
         float xLast = xGap  + gapW  + colGap;
 
         var dw       = Resources.WriteFactory;
@@ -108,33 +112,31 @@ public sealed class RelativeOverlay : BaseOverlay
         var text     = Resources.GetBrush(config.TextColor);
         var dimmed   = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
                                            config.TextColor.B, config.TextColor.A * 0.45f);
-        // Non-player rows use a slightly dimmed brush so the player row stands out clearly.
         var otherText = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
                                             config.TextColor.B, config.TextColor.A * 0.70f);
         var sep      = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
                                            config.TextColor.B, 0.25f);
-        // Subtle alternating row background for non-player rows.
         var rowAlt   = Resources.GetBrush(1f, 1f, 1f, 0.04f);
-        var black    = Resources.GetBrush(0f, 0f, 0f, 1f);
+        var pitColor = Resources.GetBrush(0.8f, 0.5f, 0.1f, 1f);   // amber for pit/outlap status
+        var ccColor  = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
+                                           config.TextColor.B, config.TextColor.A * 0.55f);
 
-        // ----- Header row -----
+        // ----- Header -----
         float y = pad;
-        DrawR(context, dw, fmt, dimmed, "POS",         xPos,  y, posW,  rowH);
-        DrawR(context, dw, fmt, dimmed, "CAR",         xCar,  y, carW,  rowH);
-        DrawL(context, dw, fmt, dimmed, "DRIVER NAME", xName, y, nameW, rowH);
-        if (config.ShowIRating)
-            DrawR(context, dw, fmt, dimmed, "iRTG", xIrtg, y, irtgW, rowH);
-        if (config.ShowLicense)
-            DrawL(context, dw, fmt, dimmed, "LIC",  xLic,  y, licW,  rowH);
-        DrawR(context, dw, fmt, dimmed, "GAP",  xGap,  y, gapW,  rowH);
-        DrawR(context, dw, fmt, dimmed, "LAST", xLast, y, lastW, rowH);
+        DrawR(context, dw, fmt, dimmed, "P",      xPos,  y, posW,  rowH);
+        DrawL(context, dw, fmt, dimmed, "CC",     xCc,   y, ccW,   rowH);
+        DrawR(context, dw, fmt, dimmed, "CAR",    xCar,  y, carW,  rowH);
+        DrawL(context, dw, fmt, dimmed, "DRIVER", xName, y, nameW, rowH);
+        DrawL(context, dw, fmt, dimmed, "T",      xTyre, y, tyreW, rowH);
+        DrawL(context, dw, fmt, dimmed, "ST",     xStat, y, statW, rowH);
+        DrawR(context, dw, fmt, dimmed, "GAP",    xGap,  y, gapW,  rowH);
+        DrawR(context, dw, fmt, dimmed, "LAST",   xLast, y, lastW, rowH);
 
-        // ----- Separator -----
         y += rowH + 1f;
         context.DrawLine(new Vector2(pad, y), new Vector2(w - pad, y), sep, 1f);
         y += 3f;
 
-        // ----- Select visible entries centered on player -----
+        // ----- Select visible window centered on player -----
         var visible = SelectVisible(entries, config.MaxDriversShown);
 
         int rowIndex = 0;
@@ -146,58 +148,51 @@ public sealed class RelativeOverlay : BaseOverlay
 
             if (entry.IsPlayer)
             {
-                // Player row: solid highlight background.
                 var hc = config.PlayerHighlightColor;
                 var hl = Resources.GetBrush(hc.R, hc.G, hc.B, hc.A);
                 context.FillRectangle(new Vortice.RawRectF(0, y - 1, w, y + rowH + 1), hl);
             }
             else if (rowIndex % 2 == 0)
             {
-                // Alternating subtle background on even non-player rows.
                 context.FillRectangle(new Vortice.RawRectF(0, y, w, y + rowH), rowAlt);
             }
 
-            // Player arrow marker
             if (entry.IsPlayer)
                 DrawL(context, dw, fmt, text, "\u25ba", pad - charW, y, charW + 2f, rowH);
 
             // POS
-            var posStr = entry.Position > 0 ? entry.Position.ToString() : "-";
-            DrawR(context, dw, fmt, rowBrush, posStr, xPos, y, posW, rowH);
+            DrawR(context, dw, fmt, rowBrush, entry.Position > 0 ? entry.Position.ToString() : "-",
+                  xPos, y, posW, rowH);
 
-            // CAR
+            // CC — 2-char country code
+            DrawL(context, dw, fmt, ccColor, ClubToCode(entry.ClubName), xCc, y, ccW, rowH);
+
+            // CAR#
             DrawR(context, dw, fmt, rowBrush, "#" + entry.CarNumber, xCar, y, carW, rowH);
 
-            // DRIVER NAME (truncated with ellipsis; "??" when unavailable)
+            // DRIVER NAME
             var name = string.IsNullOrEmpty(entry.DriverName)
-                ? "??"
-                : Truncate(entry.DriverName, nameW, charW);
+                ? "??" : Truncate(entry.DriverName, nameW, charW);
             DrawL(context, dw, fmt, rowBrush, name, xName, y, nameW, rowH);
 
-            // iRTG
-            if (config.ShowIRating)
-            {
-                var irtgText = entry.IRating > 0 ? entry.IRating.ToString() : "----";
-                DrawR(context, dw, fmt, rowBrush, irtgText, xIrtg, y, irtgW, rowH);
-            }
+            // TYRE — compound index → letter; 0 = "-"
+            DrawL(context, dw, fmt, rowBrush, FormatTyre(entry.TireCompound), xTyre, y, tyreW, rowH);
 
-            // LIC (colored background cell)
-            if (config.ShowLicense && !string.IsNullOrEmpty(entry.LicenseLevel))
-            {
-                var (lr, lg, lb, la) = entry.LicenseClass.GetColor();
-                var licBg = Resources.GetBrush(lr, lg, lb, la);
-                context.FillRectangle(new Vortice.RawRectF(xLic, y + 1f, xLic + licW - 2f, y + rowH - 1f), licBg);
-                var licText = entry.LicenseClass.RequiresDarkText() ? black : rowBrush;
-                DrawL(context, dw, fmt, licText, entry.LicenseLevel, xLic + 2f, y, licW - 4f, rowH);
-            }
+            // STATUS — GAR / PIT / OUT / ""
+            if (entry.IsInGarage)
+                DrawL(context, dw, fmt, dimmed, "GAR", xStat, y, statW, rowH);
+            else if (entry.IsOnPitRoad)
+                DrawL(context, dw, fmt, pitColor, "PIT", xStat, y, statW, rowH);
+            else if (entry.IsOutLap)
+                DrawL(context, dw, fmt, pitColor, "OUT", xStat, y, statW, rowH);
 
-            // GAP
-            DrawR(context, dw, fmt, rowBrush, FormatGap(entry), xGap, y, gapW, rowH);
+            // GAP — suppress numeric gap for garage cars
+            if (!entry.IsInGarage)
+                DrawR(context, dw, fmt, rowBrush, FormatGap(entry), xGap, y, gapW, rowH);
 
-            // LAST (last completed lap time for this driver)
+            // LAST
             var lastStr = entry.LastLapTime > TimeSpan.Zero
-                ? FormatLapTime(entry.LastLapTime)
-                : "\u2014";
+                ? FormatLapTime(entry.LastLapTime) : "\u2014";
             DrawR(context, dw, fmt, rowBrush, lastStr, xLast, y, lastW, rowH);
 
             y += rowH;
@@ -205,37 +200,7 @@ public sealed class RelativeOverlay : BaseOverlay
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Layout helpers
-    // -------------------------------------------------------------------------
-
-    // Draw text left-aligned in a column rect.
-    private static void DrawL(ID2D1RenderTarget ctx, IDWriteFactory dw, IDWriteTextFormat fmt,
-        ID2D1Brush brush, string text, float x, float y, float colW, float colH)
-    {
-        using var layout = CreateLayout(dw, fmt, text, colW, colH, TextAlignment.Leading);
-        ctx.DrawTextLayout(new Vector2(x, y), layout, brush, DrawTextOptions.Clip);
-    }
-
-    // Draw text right-aligned in a column rect.
-    private static void DrawR(ID2D1RenderTarget ctx, IDWriteFactory dw, IDWriteTextFormat fmt,
-        ID2D1Brush brush, string text, float x, float y, float colW, float colH)
-    {
-        using var layout = CreateLayout(dw, fmt, text, colW, colH, TextAlignment.Trailing);
-        ctx.DrawTextLayout(new Vector2(x, y), layout, brush, DrawTextOptions.Clip);
-    }
-
-    private static IDWriteTextLayout CreateLayout(IDWriteFactory dw, IDWriteTextFormat fmt,
-        string text, float w, float h, TextAlignment alignment)
-    {
-        var layout = dw.CreateTextLayout(text, fmt, w, h);
-        layout.TextAlignment = alignment;
-        return layout;
-    }
-
-    // -------------------------------------------------------------------------
-    // Entry selection — center list on player
-    // -------------------------------------------------------------------------
+    // ── Entry selection ───────────────────────────────────────────────────────
 
     private static IReadOnlyList<RelativeEntry> SelectVisible(
         IReadOnlyList<RelativeEntry> entries, int maxShown)
@@ -249,9 +214,9 @@ public sealed class RelativeOverlay : BaseOverlay
         if (playerIdx < 0)
             return entries.Count <= maxShown ? entries : entries.Take(maxShown).ToArray();
 
-        int ahead  = maxShown / 2;
-        int start  = Math.Max(0, playerIdx - ahead);
-        int end    = start + maxShown;
+        int ahead = maxShown / 2;
+        int start = Math.Max(0, playerIdx - ahead);
+        int end   = start + maxShown;
 
         if (end > entries.Count)
         {
@@ -262,9 +227,7 @@ public sealed class RelativeOverlay : BaseOverlay
         return entries.Skip(start).Take(end - start).ToArray();
     }
 
-    // -------------------------------------------------------------------------
-    // Formatting helpers
-    // -------------------------------------------------------------------------
+    // ── Formatting ────────────────────────────────────────────────────────────
 
     private static string FormatGap(RelativeEntry entry)
     {
@@ -282,11 +245,90 @@ public sealed class RelativeOverlay : BaseOverlay
         return $"{m}:{s:D2}.{ms:D3}";
     }
 
+    private static string FormatTyre(int compound) => compound switch
+    {
+        0 => "-",
+        1 => "D",   // Dry / Hard
+        2 => "W",   // Wet
+        3 => "S",   // Soft (some series)
+        4 => "M",   // Medium
+        _ => compound.ToString(),
+    };
+
+    /// <summary>
+    /// Maps an iRacing ClubName (e.g. "Germany", "USA - Southeast") to a 2-char display code.
+    /// Unknown clubs return the first 2 characters of the club name.
+    /// </summary>
+    internal static string ClubToCode(string club)
+    {
+        if (string.IsNullOrEmpty(club)) return "  ";
+        return club switch
+        {
+            "Australia"             or "Australia and NZ"  => "AU",
+            "Austria"                                       => "AT",
+            "Belgium"                                       => "BE",
+            "Brazil"                                        => "BR",
+            "Canada"                                        => "CA",
+            "China"                                         => "CN",
+            "Czech Republic"                                => "CZ",
+            "Denmark"                                       => "DK",
+            "Finland"                                       => "FI",
+            "France"                                        => "FR",
+            "Germany"                                       => "DE",
+            "Great Britain"                                 => "GB",
+            "Greece"                                        => "GR",
+            "Hungary"                                       => "HU",
+            "India"                                         => "IN",
+            "Italy"                                         => "IT",
+            "Japan"                                         => "JP",
+            "Korea"                                         => "KR",
+            "Mexico"                                        => "MX",
+            "Netherlands"                                   => "NL",
+            "New Zealand"                                   => "NZ",
+            "Norway"                                        => "NO",
+            "Poland"                                        => "PL",
+            "Portugal"                                      => "PT",
+            "Romania"                                       => "RO",
+            "Russia"                                        => "RU",
+            "South Africa"                                  => "ZA",
+            "Spain"                                         => "ES",
+            "Sweden"                                        => "SE",
+            "Switzerland"                                   => "CH",
+            "Turkey"                                        => "TR",
+            "Ukraine"                                       => "UA",
+            "Argentina"                                     => "AR",
+            "Colombia"                                      => "CO",
+            "Chile"                                         => "CL",
+            var s when s.StartsWith("USA")                  => "US",
+            var s when s.StartsWith("Iberia")               => "ES",
+            var s when s.StartsWith("Mid-South")            => "US",
+            _ => club.Length >= 2 ? club[..2].ToUpperInvariant() : club.ToUpperInvariant(),
+        };
+    }
+
     private static string Truncate(string text, float maxPixels, float charW)
     {
         int maxChars = (int)(maxPixels / charW);
         if (maxChars <= 1) return "";
         if (text.Length <= maxChars) return text;
         return text[..(maxChars - 1)] + "\u2026";
+    }
+
+    // ── Draw helpers ──────────────────────────────────────────────────────────
+
+    private static void DrawL(ID2D1RenderTarget ctx, IDWriteFactory dw, IDWriteTextFormat fmt,
+        ID2D1Brush brush, string text, float x, float y, float colW, float colH)
+    {
+        using var layout = dw.CreateTextLayout(text, fmt, colW, colH);
+        layout.TextAlignment = TextAlignment.Leading;
+        ctx.DrawTextLayout(new Vector2(x, y), layout, brush, DrawTextOptions.Clip);
+    }
+
+    private static void DrawR(ID2D1RenderTarget ctx, IDWriteFactory dw, IDWriteTextFormat fmt,
+        ID2D1Brush brush, string text, float x, float y, float colW, float colH)
+    {
+        using var layout = dw.CreateTextLayout(text, fmt, colW, colH);
+        layout.TextAlignment = TextAlignment.Trailing;
+        ctx.DrawTextLayout(new Vector2(x, y), layout, brush, DrawTextOptions.Clip);
     }
 }
