@@ -108,6 +108,21 @@ public class ConfigStoreTests : IDisposable
         Assert.True(loaded.GlobalSettings.StreamModeActive);
     }
 
+    [Fact]
+    public void Save_PathFailure_DoesNotThrow_AndTempFileIsCleanedUp()
+    {
+        var invalidTarget = Path.Combine(_tempDir, "as-directory");
+        Directory.CreateDirectory(invalidTarget);
+
+        var store = new ConfigStore(invalidTarget);
+        var tmp = invalidTarget + ".tmp";
+
+        var ex = Record.Exception(() => store.Save(new AppConfig()));
+
+        Assert.Null(ex);
+        Assert.False(File.Exists(tmp));
+    }
+
     // --- Version / migration tests ---
 
     [Fact]

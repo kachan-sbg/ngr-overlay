@@ -467,4 +467,61 @@ public class SimDetectorTests
 
         Assert.False(p1.Started);
     }
+
+    [Fact]
+    public async Task Poll_Reentry_IsIgnored_WhenPreviousPollStillRunning()
+    {
+        var bus = new MockBus();
+        var p1 = new BlockingProvider("iRacing");
+        using var det = Make(bus, [p1]);
+
+        var firstPoll = Task.Run(() => det.Poll());
+        Assert.True(p1.Entered.Wait(TimeSpan.FromSeconds(2)));
+
+        det.Poll(); // should return immediately due _pollInProgress guard
+
+        p1.Release.Set();
+        await firstPoll;
+
+        Assert.Equal(1, p1.IsRunningCallCount);
+    }
+
+    [Fact]
+    public void Poll_WhenConnected_PublishesHeartbeatStateEachTick()
+    {
+        var bus = new MockBus();
+        var p1 = new MockProvider("iRacing", running: true);
+        using var det = Make(bus, [p1]);
+
+        det.Poll(); // activate
+        p1.FireState(SimState.InSession);
+        bus.Events.Clear();
+
+        det.Poll();
+
+        Assert.Contains(bus.Events, e => e is SimStateChangedEvent { State: SimState.InSession });
+    }
+
+    private sealed class BlockingProvider : ISimProvider
+    {
+        public string SimId { get; }
+        private int _isRunningCallCount;
+        public int IsRunningCallCount => _isRunningCallCount;
+        public ManualResetEventSlim Entered { get; } = new(initialState: false);
+        public ManualResetEventSlim Release { get; } = new(initialState: false);
+
+        public BlockingProvider(string simId) => SimId = simId;
+
+        public bool IsRunning()
+        {
+            Interlocked.Increment(ref _isRunningCallCount);
+            Entered.Set();
+            Release.Wait(TimeSpan.FromSeconds(5));
+            return false;
+        }
+
+        public void Start() { }
+        public void Stop() { }
+        public event Action<SimState>? StateChanged { add { } remove { } }
+    }
 }
