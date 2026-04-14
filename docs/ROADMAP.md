@@ -192,3 +192,12 @@ scheduled when priorities allow.
 
 Long-session crash/hang/data-integrity risks are tracked in
 [`docs/CRITICAL-ISSUES.md`](CRITICAL-ISSUES.md).
+
+### Planning Updates (2026-04-14)
+
+- Cross-sim normalization now has a dedicated task spec:
+  [`docs/tasks/PHASE-16-cross-sim-normalization.md`](tasks/PHASE-16-cross-sim-normalization.md).
+- Rating display format target (configurable template) includes examples:
+  iRacing `[A2.2] 2345`, LMU `[R2] S2`, default template `[{Safety}] {Primary}`.
+- New mid-priority performance phase added:
+  [`docs/tasks/PHASE-21-performance-and-soak.md`](tasks/PHASE-21-performance-and-soak.md).

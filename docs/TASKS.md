@@ -37,7 +37,8 @@ See [ROADMAP.md](ROADMAP.md) for full rationale and scope.
 | 13 — Data validation & audit | `[ ]` | **1 — next** | [PHASE-13-data-validation.md](tasks/PHASE-13-data-validation.md) |
 | 14 — WebSocket server | `[ ]` | 2 | _(to be specced)_ |
 | 15 — Field visibility & layout config | `[ ]` | 3 | _(to be specced)_ |
-| 16 — Cross-sim data normalization | `[ ]` | 4 | _(to be specced)_ |
+| 16 - Cross-sim data normalization | `[ ]` | 4 | [PHASE-16-cross-sim-normalization.md](tasks/PHASE-16-cross-sim-normalization.md) |
+| 21 - Performance & soak validation | `[ ]` | **mid** | [PHASE-21-performance-and-soak.md](tasks/PHASE-21-performance-and-soak.md) |
 | 17 — Radar overlay | `[ ]` | 5 | _(to be specced)_ |
 | 18 — Map overlay | `[ ]` | 6 | _(to be specced)_ |
 | 19 — ACC integration | `[ ]` | 7 | _(to be specced)_ |
@@ -48,3 +49,4 @@ See [ROADMAP.md](ROADMAP.md) for full rationale and scope.
 
 Critical crash/hang/data-integrity risks are tracked in
 [`docs/CRITICAL-ISSUES.md`](CRITICAL-ISSUES.md).
+
