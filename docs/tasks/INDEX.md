@@ -29,8 +29,10 @@ All archived to [`docs/archive/alpha/tasks/`](../archive/alpha/tasks/README.md).
 | 12 — OBS Mode & Enhanced UX | `[ ]` | Deferred — spec in [PHASE-12-obs-and-ux.md](PHASE-12-obs-and-ux.md) |
 | 14 — WebSocket Server | `[ ]` | Live telemetry over WebSocket for custom HTML widgets |
 | 15 — Field Visibility & Layout | `[ ]` | Per-overlay column show/hide/reorder |
-| 16 — Cross-sim Normalization | `[ ]` | Common rating/license/session-type across sims |
+| 16 - Cross-sim Normalization | `[ ]` | Spec: [PHASE-16-cross-sim-normalization.md](PHASE-16-cross-sim-normalization.md) |
+| 21 - Performance & Soak Validation | `[ ]` | Mid priority: [PHASE-21-performance-and-soak.md](PHASE-21-performance-and-soak.md) |
 | 17 — Radar Overlay | `[ ]` | Top-down proximity radar |
 | 18 — Map Overlay | `[ ]` | SVG track map + auto-trace |
 | 19 — ACC Integration | `[ ]` | Assetto Corsa Competizione sim provider |
 | 20 — Session-State Visibility | `[ ]` | Auto show/hide overlays by session phase |
+
