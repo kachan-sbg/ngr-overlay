@@ -64,8 +64,9 @@ internal sealed class IRacingPoller : IDisposable
     // Cached track length (metres), parsed from session YAML.
     private float _trackLengthMeters;
 
-    private readonly FuelConsumptionTracker _fuelTracker    = new();
-    private readonly CarStateTracker        _carStateTracker = new();
+    private readonly FuelConsumptionTracker    _fuelTracker    = new();
+    private readonly CarStateTracker           _carStateTracker = new();
+    private readonly IRacingRelativeCalculator _calculator      = new();
 
     // Telemetry frame counter — incremented on every HandleTelemetryData call.
     // The watchdog reads this on a different thread; volatile ensures visibility.
@@ -144,6 +145,7 @@ internal sealed class IRacingPoller : IDisposable
         _hasConnected = true;
         _fuelTracker.Reset();
         _carStateTracker.Reset();
+        _calculator.Reset();
         _onStateChanged(SimState.InSession);
     }
 
@@ -152,6 +154,7 @@ internal sealed class IRacingPoller : IDisposable
         AppLog.Info("iRacing SDK disconnected — waiting for session.");
         _fuelTracker.Reset();
         _carStateTracker.Reset();
+        _calculator.Reset();
         _onStateChanged(SimState.Connected);
     }
 
@@ -483,7 +486,7 @@ internal sealed class IRacingPoller : IDisposable
 
         _carStateTracker.Update(snapshot);
 
-        var (relativeData, standingsData) = IRacingRelativeCalculator.Compute(snapshot, _cachedDrivers, _carStateTracker);
+        var (relativeData, standingsData) = _calculator.Compute(snapshot, _cachedDrivers, _carStateTracker);
         _bus.Publish(relativeData);
         _bus.Publish(standingsData);
     }

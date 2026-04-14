@@ -256,13 +256,15 @@ public sealed class RelativeOverlay : BaseOverlay
     };
 
     /// <summary>
-    /// Maps an iRacing ClubName (e.g. "Germany", "USA - Southeast") to a 2-char display code.
-    /// Unknown clubs return the first 2 characters of the club name.
+    /// Maps an iRacing ClubName (e.g. "Germany", "USA - Southeast") to a flag emoji
+    /// (e.g. "🇩🇪"). Falls back to a 2-letter ISO code when the club name is not in
+    /// the known list. Flag emoji are composed from Unicode regional indicator symbols
+    /// and render correctly when the font stack includes Segoe UI Emoji.
     /// </summary>
     internal static string ClubToCode(string club)
     {
         if (string.IsNullOrEmpty(club)) return "  ";
-        return club switch
+        var iso = club switch
         {
             "Australia"             or "Australia and NZ"  => "AU",
             "Austria"                                       => "AT",
@@ -304,6 +306,15 @@ public sealed class RelativeOverlay : BaseOverlay
             var s when s.StartsWith("Mid-South")            => "US",
             _ => club.Length >= 2 ? club[..2].ToUpperInvariant() : club.ToUpperInvariant(),
         };
+
+        // Convert 2-letter ISO code to flag emoji via Unicode regional indicator symbols.
+        // Each letter A-Z maps to U+1F1E6..U+1F1FF; two in sequence form a flag.
+        if (iso.Length == 2 && char.IsAsciiLetter(iso[0]) && char.IsAsciiLetter(iso[1]))
+        {
+            return char.ConvertFromUtf32(0x1F1E6 + (char.ToUpperInvariant(iso[0]) - 'A'))
+                 + char.ConvertFromUtf32(0x1F1E6 + (char.ToUpperInvariant(iso[1]) - 'A'));
+        }
+        return iso;
     }
 
     private static string Truncate(string text, float maxPixels, float charW)

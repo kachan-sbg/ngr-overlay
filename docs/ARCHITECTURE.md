@@ -368,6 +368,10 @@ SimDataBus (in-process, thread-safe)
 
 `ISimDataBus` subscriber callbacks run on the data thread. They must be fast (just a field store). No rendering, no locking on heavy resources.
 
+**`IRacingRelativeCalculator`** is a stateful instance class (not static) held by `IRacingPoller`. It runs once per ~10 Hz publish cycle and produces both `RelativeData` and `StandingsData` in a single two-pass computation. State held:
+- `EmaFilter[64]` per-car — smooths `GapToPlayerSeconds` (relative) and `GapToLeaderSeconds` (standings). α=0.15 (see `EmaConstants` in `SimOverlay.Core`). Reset on connect/disconnect.
+- Real-time positions (race mode only): computed once per call as `rank(laps[i] + lapDistPct[i])` descending. Used in both passes so relative and standings are always consistent. Replaces `CarIdxPosition` which only updates at the finish line.
+
 ### 6. Configuration System
 
 Configuration file location: `%APPDATA%\SimOverlay\config.json`

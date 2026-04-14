@@ -1,10 +1,11 @@
+using SimOverlay.Core;
 using SimOverlay.Core.Config;
 using SimOverlay.Sim.Contracts;
 
 namespace SimOverlay.Sim.iRacing;
 
 /// <summary>
-/// Pure calculator that converts a <see cref="TelemetrySnapshot"/> +
+/// Stateful processor that converts a <see cref="TelemetrySnapshot"/> +
 /// cached driver list + <see cref="CarStateTracker"/> into a sorted
 /// <see cref="RelativeData"/> and <see cref="StandingsData"/>.
 /// No SDK dependency — fully unit-testable.
@@ -12,19 +13,29 @@ namespace SimOverlay.Sim.iRacing;
 /// <para>
 /// <b>Session modes</b>:
 /// <list type="bullet">
-///   <item><b>Race</b> (any <c>CarIdxPosition &gt; 0</c>): standings sorted by track position;
-///     gaps expressed as time behind leader by track progress.</item>
+///   <item><b>Race</b> (any <c>CarIdxPosition &gt; 0</c>): standings sorted by real-time
+///     track progress (laps + lapDistPct); gaps expressed as time behind leader.</item>
 ///   <item><b>Practice / Qualify</b> (all positions = 0): standings sorted by best lap time;
 ///     gaps expressed as delta from leader's best lap.  All registered session drivers
-///     are included even when in the garage (irsdk_NotInWorld, pct = -1), because the
-///     session YAML has their data and omitting them makes the widget look empty.</item>
+///     are included even when in the garage (irsdk_NotInWorld, pct = -1).</item>
 /// </list>
 /// </para>
+///
+/// <para>
+/// <b>Smoothing</b>: gap and interval values are passed through per-car EMA filters
+/// (see <see cref="EmaConstants"/>) to reduce 10 Hz jitter in the display.
+/// Call <see cref="Reset"/> when starting a new session so stale filter state
+/// does not bleed into the new session.
+/// </para>
 /// </summary>
-internal static class IRacingRelativeCalculator
+internal sealed class IRacingRelativeCalculator
 {
-    // Large sentinel gap assigned to garage cars — sorts them to the bottom of the relative.
+    private const int   MaxCars          = 64;
     private const float GarageGapSentinel = 99_999f;
+
+    // Per-car EMA filters — indexed by CarIdx.
+    private readonly EmaFilter[] _gapFilters        = new EmaFilter[MaxCars]; // GapToPlayerSeconds
+    private readonly EmaFilter[] _leaderGapFilters   = new EmaFilter[MaxCars]; // GapToLeaderSeconds
 
     // Intermediate record used between the two passes.
     private sealed record CarCandidate(
@@ -36,9 +47,22 @@ internal static class IRacingRelativeCalculator
         bool            IsGarage = false);
 
     /// <summary>
+    /// Resets all EMA filters. Call on session connect/disconnect so stale state
+    /// does not carry over from a previous session.
+    /// </summary>
+    public void Reset()
+    {
+        for (int i = 0; i < MaxCars; i++)
+        {
+            _gapFilters[i].Reset();
+            _leaderGapFilters[i].Reset();
+        }
+    }
+
+    /// <summary>
     /// Computes the relative display list and full-field standings.
     /// </summary>
-    public static (RelativeData Relative, StandingsData Standings) Compute(
+    public (RelativeData Relative, StandingsData Standings) Compute(
         TelemetrySnapshot            snapshot,
         IReadOnlyList<DriverSnapshot> drivers,
         CarStateTracker              carState)
@@ -92,7 +116,6 @@ internal static class IRacingRelativeCalculator
             else
             {
                 // Player in garage — on-track cars appear "ahead" sorted by pct descending.
-                // Use negative pct-based value so they sort before the player's 0.
                 gap = -(pct * estLapTime);
             }
 
@@ -125,8 +148,8 @@ internal static class IRacingRelativeCalculator
         foreach (var driver in drivers)
         {
             if (driver.IsSpectator || driver.IsPaceCar) continue;
-            if (driver.CarIdx == snapshot.PlayerCarIdx) continue; // already handled above
-            if (onTrackSet.Contains(driver.CarIdx))     continue; // already in on-track pass
+            if (driver.CarIdx == snapshot.PlayerCarIdx) continue;
+            if (onTrackSet.Contains(driver.CarIdx))     continue;
 
             onTrackCars.Add(new CarCandidate(
                 CarIdx:          driver.CarIdx,
@@ -142,14 +165,34 @@ internal static class IRacingRelativeCalculator
         // In practice/qualify all positions are 0 — use best lap time ordering.
         bool isRace = onTrackCars.Any(c => c.OverallPosition > 0);
 
-        // ── Pass 2: per-class positions ───────────────────────────────────────
-        // Class positions are computed across on-track cars only (for the relative).
-        // Standings re-computes them across all session drivers below.
+        // ── Real-time positions (race mode only) ──────────────────────────────
+        // iRacing's CarIdxPosition only updates when a car crosses the finish line,
+        // so it stays stale mid-race. We re-rank by (laps + lapDistPct) for immediate
+        // position updates when cars pass each other.
+        var rtPositions = new int[snapshot.LapDistPcts.Length]; // 0 = garage / practice
+        if (isRace)
+        {
+            var scored = onTrackCars
+                .Where(c => !c.IsGarage)
+                .Select(c => (c.CarIdx,
+                              Score: (float)snapshot.Laps[c.CarIdx]
+                                     + Math.Max(0f, snapshot.LapDistPcts[c.CarIdx])))
+                .OrderByDescending(x => x.Score)
+                .ToList();
+            for (int rank = 0; rank < scored.Count; rank++)
+                rtPositions[scored[rank].CarIdx] = rank + 1;
+        }
+
+        // ── Per-class positions (relative board) ──────────────────────────────
         var classPositionByCarIdx = new Dictionary<int, int>(onTrackCars.Count);
         foreach (var group in onTrackCars.GroupBy(c => c.Driver?.CarClassId ?? 0))
         {
             var sortedGroup = group
-                .OrderBy(c => c.OverallPosition == 0 ? int.MaxValue : c.OverallPosition)
+                .OrderBy(c =>
+                {
+                    var pos = isRace ? rtPositions[c.CarIdx] : c.OverallPosition;
+                    return pos == 0 ? int.MaxValue : pos;
+                })
                 .ToList();
             for (int rank = 0; rank < sortedGroup.Count; rank++)
                 classPositionByCarIdx[sortedGroup[rank].CarIdx] = rank + 1;
@@ -161,28 +204,33 @@ internal static class IRacingRelativeCalculator
             .Count();
         var isMultiClass = distinctOnTrackClasses > 1;
 
-        // ── Build relative candidates (on-track only, sorted by gap) ─────────
+        // ── Build relative candidates (on-track only, sorted by smoothed gap) ─
         var candidates = new List<(float Gap, int CarIdx, RelativeEntry Entry)>(onTrackCars.Count);
         foreach (var car in onTrackCars)
         {
             var driver        = car.Driver;
             var classPosition = classPositionByCarIdx.TryGetValue(car.CarIdx, out var cp)
-                ? cp : car.OverallPosition;
+                ? cp : (isRace ? rtPositions[car.CarIdx] : car.OverallPosition);
             var lastLapSec    = car.CarIdx < snapshot.LastLapTimes.Length
                 ? snapshot.LastLapTimes[car.CarIdx] : 0f;
             var isOnPit  = car.CarIdx < snapshot.OnPitRoad.Length && snapshot.OnPitRoad[car.CarIdx];
             var isOutLap = carState.IsOnOutLap(car.CarIdx);
             var tire     = car.CarIdx < snapshot.TireCompounds.Length ? snapshot.TireCompounds[car.CarIdx] : 0;
 
-            candidates.Add((car.Gap, car.CarIdx, new RelativeEntry
+            // Smooth gap — skip EMA for garage sentinel values so filter state stays clean.
+            var smoothedGap = car.IsGarage
+                ? car.Gap
+                : _gapFilters[car.CarIdx].Update(car.Gap, EmaConstants.GapAlpha);
+
+            candidates.Add((smoothedGap, car.CarIdx, new RelativeEntry
             {
-                Position           = car.OverallPosition,
+                Position           = isRace ? rtPositions[car.CarIdx] : car.OverallPosition,
                 CarNumber          = driver?.CarNumber   ?? car.CarIdx.ToString(),
                 DriverName         = driver?.UserName    ?? string.Empty,
                 IRating            = driver?.IRating     ?? 0,
                 LicenseClass       = driver?.LicenseClass ?? LicenseClass.R,
                 LicenseLevel       = driver?.LicenseLevel ?? "R 0.00",
-                GapToPlayerSeconds = car.Gap,
+                GapToPlayerSeconds = smoothedGap,
                 LapDifference      = car.LapDiff,
                 LastLapTime        = lastLapSec > 0f ? TimeSpan.FromSeconds(lastLapSec) : TimeSpan.Zero,
                 IsPlayer           = car.CarIdx == snapshot.PlayerCarIdx,
@@ -197,16 +245,13 @@ internal static class IRacingRelativeCalculator
             }));
         }
 
-        // Sort by gap: most-ahead first
+        // Sort by smoothed gap: most-ahead first
         candidates.Sort((a, b) => a.Gap.CompareTo(b.Gap));
 
         // ── Standings: include ALL registered session drivers ─────────────────
-        // Not just on-track — drivers in the garage (NotInWorld) appear in the
-        // session YAML and should be shown in the standings widget just like
-        // iOverlay and similar tools do.
         var standings = BuildStandings(
             candidates, onTrackSet, snapshot,
-            isRace, isMultiClass, drivers, driverByIdx, carState);
+            isRace, isMultiClass, rtPositions, drivers, driverByIdx, carState);
 
         var relative = new RelativeData
         {
@@ -216,20 +261,17 @@ internal static class IRacingRelativeCalculator
         return (relative, standings);
     }
 
-    private static StandingsData BuildStandings(
+    private StandingsData BuildStandings(
         List<(float Gap, int CarIdx, RelativeEntry Entry)> allRelCandidates,
         HashSet<int>                                       onTrackSet,
         TelemetrySnapshot                                  snapshot,
         bool                                               isRace,
         bool                                               isMultiClass,
+        int[]                                              rtPositions,
         IReadOnlyList<DriverSnapshot>                      allDrivers,
         Dictionary<int, DriverSnapshot>                    driverByIdx,
         CarStateTracker                                    carState)
     {
-        // ── Collect all entries: on-track + garage ────────────────────────────
-        // onTrackSet contains cars that are genuinely spawned on track (not garage).
-        // allRelCandidates may also include garage cars from the relative list —
-        // use onTrackSet to distinguish the two groups for standings sort/gap logic.
         var allEntries = new List<(int CarIdx, bool IsOnTrack, int Position, float BestLap, float Progress, RelativeEntry? RelEntry)>();
 
         foreach (var (_, carIdx, rel) in allRelCandidates)
@@ -238,17 +280,16 @@ internal static class IRacingRelativeCalculator
             var bestLap  = carIdx < snapshot.BestLapTimes.Length ? snapshot.BestLapTimes[carIdx] : 0f;
             var pct      = snapshot.LapDistPcts[carIdx];
             var progress = isOnTrack ? snapshot.Laps[carIdx] + Math.Max(0f, pct) : 0f;
+            // Use rt position (already in rel.Position for race mode on-track cars)
             allEntries.Add((carIdx, isOnTrack, rel.Position, bestLap, progress, rel));
         }
 
-        // Garage drivers already in allRelCandidates (from the relative pass)
         var alreadyInEntries = new HashSet<int>(allEntries.Select(e => e.CarIdx));
 
-        // Remaining session drivers not yet covered (registered but not in any list above)
         foreach (var driver in allDrivers)
         {
-            if (driver.IsSpectator || driver.IsPaceCar)       continue;
-            if (alreadyInEntries.Contains(driver.CarIdx))      continue;
+            if (driver.IsSpectator || driver.IsPaceCar)   continue;
+            if (alreadyInEntries.Contains(driver.CarIdx))  continue;
 
             var carIdx  = driver.CarIdx;
             var bestLap = carIdx < snapshot.BestLapTimes.Length ? snapshot.BestLapTimes[carIdx] : 0f;
@@ -258,14 +299,14 @@ internal static class IRacingRelativeCalculator
         if (allEntries.Count == 0) return new StandingsData();
 
         // ── Sort ──────────────────────────────────────────────────────────────
-        // Race:     on-track by position → on-track by lap progress → garage by best lap
+        // Race:     on-track by rt position → on-track by lap progress → garage by best lap
         // Practice: on-track + garage combined by best lap time (fastest first)
         List<(int CarIdx, bool IsOnTrack, int Position, float BestLap, float Progress, RelativeEntry? RelEntry)> sorted;
 
         if (isRace)
         {
             sorted = allEntries
-                .OrderBy(e => !e.IsOnTrack)                               // on-track first
+                .OrderBy(e => !e.IsOnTrack)
                 .ThenBy(e => e.IsOnTrack && e.Position == 0 ? int.MaxValue : e.Position)
                 .ThenByDescending(e => e.Progress)
                 .ThenBy(e => e.BestLap <= 0 ? float.MaxValue : e.BestLap)
@@ -273,14 +314,12 @@ internal static class IRacingRelativeCalculator
         }
         else
         {
-            // Practice / qualify: sort everyone by best lap time; no lap = bottom
             sorted = allEntries
                 .OrderBy(e => e.BestLap <= 0 ? float.MaxValue : e.BestLap)
                 .ToList();
         }
 
         // ── Compute per-class positions for all session drivers ───────────────
-        // Re-derive so garage drivers get sensible class positions too.
         var allClassPositions = new Dictionary<int, int>(sorted.Count);
         var groupedByClass    = sorted.GroupBy(e =>
         {
@@ -290,7 +329,7 @@ internal static class IRacingRelativeCalculator
         foreach (var group in groupedByClass)
         {
             int rank = 1;
-            foreach (var e in group) // already in sorted order
+            foreach (var e in group)
                 allClassPositions[e.CarIdx] = rank++;
         }
 
@@ -299,13 +338,11 @@ internal static class IRacingRelativeCalculator
             .Distinct()
             .Count() > 1;
 
-        // ── Determine leader for gap computation ──────────────────────────────
-        float leaderProgress  = sorted.Count > 0 ? sorted[0].Progress : 0f;
-        float leaderBestLap   = sorted.Count > 0 ? sorted[0].BestLap  : 0f;
+        float leaderProgress = sorted.Count > 0 ? sorted[0].Progress : 0f;
+        float leaderBestLap  = sorted.Count > 0 ? sorted[0].BestLap  : 0f;
 
-        // ── Build StandingsEntry list ─────────────────────────────────────────
-        var entries       = new List<StandingsEntry>(sorted.Count);
-        float prevGap     = 0f;
+        var entries   = new List<StandingsEntry>(sorted.Count);
+        float prevGap = 0f;
 
         for (int rank = 0; rank < sorted.Count; rank++)
         {
@@ -314,30 +351,34 @@ internal static class IRacingRelativeCalculator
 
             driverByIdx.TryGetValue(carIdx, out var driver);
 
-            // Gap to leader
-            float gapToLeader, interval;
+            // ── Gap to leader ─────────────────────────────────────────────────
+            float rawGapToLeader;
             int   lapDiff;
 
             if (isRace && isOnTrack)
             {
                 float lapsBehind = Math.Max(0f, leaderProgress - progress);
-                gapToLeader = isLeader ? 0f : Math.Max(0.001f, lapsBehind * snapshot.EstimatedLapTime);
-                lapDiff     = isLeader ? 0  : (int)Math.Max(0, Math.Floor(lapsBehind));
+                rawGapToLeader   = isLeader ? 0f : Math.Max(0.001f, lapsBehind * snapshot.EstimatedLapTime);
+                lapDiff          = isLeader ? 0  : (int)Math.Max(0, Math.Floor(lapsBehind));
             }
             else if (!isRace && bestLap > 0f && leaderBestLap > 0f)
             {
-                // Practice: gap = delta between best lap times
-                gapToLeader = isLeader ? 0f : Math.Max(0f, bestLap - leaderBestLap);
-                lapDiff     = 0;
+                rawGapToLeader = isLeader ? 0f : Math.Max(0f, bestLap - leaderBestLap);
+                lapDiff        = 0;
             }
             else
             {
-                gapToLeader = isLeader ? 0f : 0f; // garage with no lap time — show LEADER / no gap
-                lapDiff     = 0;
+                rawGapToLeader = 0f;
+                lapDiff        = 0;
             }
 
-            interval  = isLeader ? 0f : Math.Max(0f, gapToLeader - prevGap);
-            prevGap   = gapToLeader;
+            // Smooth race gaps; practice gaps change discretely (new best lap only)
+            float gapToLeader = isRace && isOnTrack && !isLeader
+                ? _leaderGapFilters[carIdx].Update(rawGapToLeader, EmaConstants.GapAlpha)
+                : rawGapToLeader;
+
+            float interval = isLeader ? 0f : Math.Max(0f, gapToLeader - prevGap);
+            prevGap = gapToLeader;
 
             float bestLapSec = carIdx < snapshot.BestLapTimes.Length ? snapshot.BestLapTimes[carIdx] : 0f;
             float lastLapSec = carIdx < snapshot.LastLapTimes.Length ? snapshot.LastLapTimes[carIdx] : 0f;
@@ -347,7 +388,7 @@ internal static class IRacingRelativeCalculator
 
             var classPos = allClassPositions.TryGetValue(carIdx, out var cp) ? cp : 0;
 
-            // Display position: race = CarIdxPosition; practice = sort rank + 1
+            // Display position: race = rt position; practice = sort rank + 1
             int displayPos = isRace && pos > 0 ? pos : rank + 1;
 
             string carClass   = anyMultiClass ? (driver?.CarClass ?? "") : "";
