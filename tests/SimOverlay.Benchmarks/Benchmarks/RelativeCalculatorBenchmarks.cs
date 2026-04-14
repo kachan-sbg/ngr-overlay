@@ -25,7 +25,8 @@ public class RelativeCalculatorBenchmarks
     private IReadOnlyList<DriverSnapshot> _drivers15 = null!;
     private IReadOnlyList<DriverSnapshot> _drivers1 = null!;
 
-    private readonly CarStateTracker _carState = new();
+    private readonly CarStateTracker           _carState   = new();
+    private          IRacingRelativeCalculator _calculator = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -37,22 +38,24 @@ public class RelativeCalculatorBenchmarks
         _drivers40 = MakeDrivers(40);
         _drivers15 = MakeDrivers(15);
         _drivers1  = MakeDrivers(1);
+
+        _calculator = new IRacingRelativeCalculator();
     }
 
     /// <summary>Worst case: full 40-car field (e.g. iRacing oval with AI).</summary>
     [Benchmark(Baseline = true)]
     public (RelativeData, StandingsData) Compute40Cars() =>
-        IRacingRelativeCalculator.Compute(_snapshot40, _drivers40, _carState);
+        _calculator.Compute(_snapshot40, _drivers40, _carState);
 
     /// <summary>Typical road-course field size.</summary>
     [Benchmark]
     public (RelativeData, StandingsData) Compute15Cars() =>
-        IRacingRelativeCalculator.Compute(_snapshot15, _drivers15, _carState);
+        _calculator.Compute(_snapshot15, _drivers15, _carState);
 
     /// <summary>Edge case: single car (e.g. testing alone).</summary>
     [Benchmark]
     public (RelativeData, StandingsData) Compute1Car() =>
-        IRacingRelativeCalculator.Compute(_snapshot1, _drivers1, _carState);
+        _calculator.Compute(_snapshot1, _drivers1, _carState);
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

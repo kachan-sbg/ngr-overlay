@@ -156,3 +156,70 @@ Full decision entries from the Alpha milestone. For the brief summary, see [DECI
 **Consequences:**
 - Adding a new sim provider requires: (a) new csproj, (b) DI registration in Program.cs, (c) entry in the provider list lambda, (d) a config migration to append the new SimId to `SimPriorityOrder`.
 - `SimDetector` unit tests live in `SimOverlay.App.Tests` and cover: priority ordering, debounce (1 strike = no stop, 2 strikes = stop), no-overlap guarantee, and provider transitions.
+
+---
+
+## 2026-04-14 — EMA smoothing on gap/interval values; IRacingRelativeCalculator made stateful
+
+**Decision:** Convert `IRacingRelativeCalculator` from a `static` pure function to an instance class (`sealed class`) that holds per-car `EmaFilter[64]` arrays for `GapToPlayerSeconds` (relative) and `GapToLeaderSeconds` (standings). Smoothing constants live in `EmaConstants` in `SimOverlay.Core` (`GapAlpha = 0.15f`, `IntervalAlpha = 0.15f`). `IRacingPoller` holds the single calculator instance and calls `Reset()` on connect and disconnect.
+
+**Context:** Gap and interval values computed from `(pct - playerPct) × estLapTime` are inherently noisy at 10 Hz — small fluctuations in lap-distance percentage and estimated lap time cause visible jitter in the relative and standings overlays. Values need smoothing without adding perceptible lag.
+
+**Rationale:**
+- Exponential moving average is zero-allocation when held as a struct field and requires no history buffer. α=0.15 gives a time constant of ~0.67 s at 10 Hz — smooth enough to eliminate jitter, responsive enough for race events (overtakes, pit entries).
+- Converting to an instance class is the minimal change that enables stateful filtering without mutating shared module-level state. The calculator remains fully testable: tests instantiate `new IRacingRelativeCalculator()` per test case; first-call EMA pass-through ensures existing gap-equality assertions still hold.
+- Garage sentinel gaps (99 999 f) bypass the filter so filter state is never poisoned by off-track placeholder values.
+- `Interval` inherits smoothing automatically since it is derived from the already-smoothed `gapToLeader` value.
+- Constants are in one findable place with a comment noting the intended config range (0.05–0.40), ready for a future settings hook.
+
+**Alternatives considered:**
+- **Simple rolling average (N samples):** Requires a circular buffer per car — more allocation, no benefit over EMA.
+- **Keep static, pass filter arrays as parameters:** Caller (poller) must own the arrays, making the API awkward and the relationship harder to follow.
+
+**Consequences:**
+- `IRacingRelativeCalculator` is no longer callable as a static method. Tests and benchmark updated to instantiate the class.
+- Benchmark result (40 cars, ShortRun): **18.1 µs** mean — well within the 50 µs budget. EMA filter updates add negligible overhead.
+- Alpha smoothing constants will move to `AppConfig` / settings UI in a future phase. Range should be restricted (e.g. 0.05–0.40) to prevent values that feel either laggy or still jittery.
+
+---
+
+## 2026-04-14 — Real-time race positions via laps + lapDistPct ranking
+
+**Decision:** In race sessions, `IRacingRelativeCalculator` computes real-time positions by ranking all on-track cars by `laps[i] + max(0, lapDistPct[i])` descending before either display pass. Both `RelativeEntry.Position` and `StandingsEntry.Position` use this ranking. `CarIdxPosition` from the SDK is still used to detect that a race session is active (any value > 0), but no longer used as the display position.
+
+**Context:** iRacing's `CarIdxPosition` field only updates when a car crosses the start/finish line. Mid-race it reflects grid order for the first lap and only updates to reflect an overtake after the cars next cross the line. The relative and standings overlays showed stale positions that could be 60+ seconds behind reality during long stints.
+
+**Rationale:**
+- `snapshot.Laps[i]` (completed laps) + `snapshot.LapDistPcts[i]` (current progress 0–1) is the natural measure of how far a car has travelled in the race. Ranking descending gives an instantaneous position that updates within one telemetry frame (~100 ms at 10 Hz) of an overtake.
+- The computation happens once per `Compute()` call and the results are shared across both the relative pass and the standings pass — no duplication.
+- Practice and qualify are unaffected: their `CarIdxPosition` values are all 0, so the rt-position path is not entered.
+
+**Alternatives considered:**
+- **Use `CarIdxF2Time` (iRacing's internal "time behind leader"):** Available and accurate, but expressed in time not position — requires a sort anyway, and doesn't map cleanly to an integer rank.
+- **Per-overlay re-computation:** Each overlay could independently sort by progress. Rejected — duplicate computation with potential consistency divergence between relative and standings.
+
+**Consequences:**
+- Position can change by more than one place in a single update frame (e.g. after a pit stop sequence), which is correct — the SDK's finish-line position could not do this at all.
+- `PositionsGained` (standings) is now computed against the rt position rather than the SDK position, which makes it more accurate.
+- In the unlikely case of a car reversing on track (negative pct motion), the progress score decreases naturally and the car moves down the order — correct behaviour.
+
+---
+
+## 2026-04-14 — Flag emoji for driver country via Unicode regional indicators
+
+**Decision:** `RelativeOverlay.ClubToCode()` (shared with `StandingsOverlay`) maps iRacing club names to ISO 3166-1 alpha-2 codes as before, then converts each code to a Unicode flag emoji by combining two regional indicator symbols (U+1F1E6 + offset for each letter). Unknown clubs fall back to the 2-letter club name truncation. No new DTO fields were added — `ClubName` (already populated from iRacing session YAML) feeds the mapping.
+
+**Context:** iRacing's SDK exposes `ClubName` per driver (e.g. "Germany", "USA - Southeast", "Great Britain"). The field was already in `RelativeEntry` and `StandingsEntry` and already being rendered as a 2-letter ISO code. Users expect to see a flag in the country column, consistent with competing overlays.
+
+**Rationale:**
+- Unicode regional indicator symbols (🇦–🇿, U+1F1E6–U+1F1FF) form flag emoji when two are placed in sequence. Every ISO 3166-1 alpha-2 code has a corresponding flag this way. The conversion is a deterministic 2-character → 4-UTF16-unit string with no lookup table required.
+- The existing `ClubToCode` ISO mapping was already correct and comprehensive; only the output step changes.
+- Rendering depends on the IDWriteTextFormat font stack including Segoe UI Emoji. Direct2D does not composite emoji fonts automatically; if the current monospaced format does not fall back to an emoji font, the result will show surrogate-pair boxes and the user may want to revert to ISO codes.
+
+**Alternatives considered:**
+- **Store ISO code in DTO, convert to emoji in overlay:** Cleaner separation, but the ISO code was never in the DTO — it was always derived in the overlay. The mapping already lives in the overlay; adding it to the DTO would need a new field and a migration.
+- **Separate mapping file / resource:** Unnecessary for ~40 club entries.
+
+**Consequences:**
+- If Segoe UI Emoji is not in the font fallback chain for the overlay text format, emoji will not render. The fix is to use `IDWriteFontFallback` or change the column to a separate text format that includes an emoji font. This is a rendering concern separate from the data mapping.
+- iRacing's US regional clubs ("USA - Northeast", "USA - Southeast", etc.) all map to 🇺🇸. The `UK and I` club maps to 🇬🇧. These are the expected approximations given the club structure.
