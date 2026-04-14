@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.IO.MemoryMappedFiles;
 using IRSDKSharper;
 using SimOverlay.Core;
@@ -50,6 +51,9 @@ internal sealed class IRacingPoller : IDisposable
     private const string MmfName          = "Local\\IRSDKMemMapFileName";
     private const int    MmfStatusOffset  = 4;
     private const int    MmfConnectedBit  = 0x01;
+    private const string EnvDisableWatchdogRestart = "SIMOVERLAY_DEBUG_DISABLE_IRACING_WATCHDOG_RESTART";
+    private const string EnvDisableForcedGcRelease = "SIMOVERLAY_DEBUG_DISABLE_IRACING_FORCED_GC";
+    private const string EnvTraceLifecycle          = "SIMOVERLAY_DEBUG_TRACE_IRACING_LIFECYCLE";
 
     private readonly ISimDataBus      _bus;
     private readonly Action<SimState> _onStateChanged;
@@ -91,6 +95,9 @@ internal sealed class IRacingPoller : IDisposable
 
     // Keep a stable reference to the lambda so we can detach it before SDK recreation.
     private readonly Action _stoppedHandler;
+    private static readonly bool DebugDisableWatchdogRestart = GetEnvFlag(EnvDisableWatchdogRestart);
+    private static readonly bool DebugDisableForcedGcRelease = GetEnvFlag(EnvDisableForcedGcRelease);
+    private static readonly bool DebugTraceLifecycle         = GetEnvFlag(EnvTraceLifecycle);
 
     // ── Construction ─────────────────────────────────────────────────────────
 
@@ -107,6 +114,10 @@ internal sealed class IRacingPoller : IDisposable
         _watchdogTimer = new Timer(Watchdog, null,
             TimeSpan.FromSeconds(WatchdogIntervalSec),
             TimeSpan.FromSeconds(WatchdogIntervalSec));
+
+        AppLog.Info(
+            $"IRacingPoller debug toggles: restartDisabled={DebugDisableWatchdogRestart}, " +
+            $"forcedGcDisabled={DebugDisableForcedGcRelease}, lifecycleTrace={DebugTraceLifecycle}.");
     }
 
     /// <summary>Starts the IRSDKSharper background loop.</summary>
@@ -268,6 +279,15 @@ internal sealed class IRacingPoller : IDisposable
 
         if (_watchdogStallCount >= WatchdogStallTicks)
         {
+            if (DebugDisableWatchdogRestart)
+            {
+                AppLog.Warn(
+                    "IRacingPoller watchdog restart suppressed by debug toggle " +
+                    $"({EnvDisableWatchdogRestart}=1).");
+                _watchdogStallCount = 0;
+                _watchdogPrevFrame = current;
+                return;
+            }
             RestartSdk();
         }
     }
@@ -281,6 +301,7 @@ internal sealed class IRacingPoller : IDisposable
         if (_disposed) return;
 
         AppLog.Info("IRacingPoller: restarting SDK to recover stalled connection.");
+        var restartSw = Stopwatch.StartNew();
         _restarting = true;
         try
         {
@@ -294,9 +315,12 @@ internal sealed class IRacingPoller : IDisposable
             _stoppedGate.Reset();
             try
             {
+                var stopSw = Stopwatch.StartNew();
                 _sdk.Stop();
                 // Block until the async Stop() task has completed and released Win32 handles.
-                _stoppedGate.Wait(TimeSpan.FromSeconds(3));
+                var stopCompleted = _stoppedGate.Wait(TimeSpan.FromSeconds(3));
+                stopSw.Stop();
+                TraceLifecycle($"RestartSdk stop wait: completed={stopCompleted}, elapsedMs={stopSw.ElapsedMilliseconds}");
             }
             catch (Exception ex)
             {
@@ -309,7 +333,7 @@ internal sealed class IRacingPoller : IDisposable
             // Null the field first so the instance becomes GC-eligible, then force a
             // full blocking collect so handles are closed before we open new ones.
             _sdk = null!;
-            ReleaseSdkHandles();
+            ReleaseSdkHandles("RestartSdk");
 
             _sdk = new IRacingSdk();
             AttachSdkEvents();
@@ -323,6 +347,7 @@ internal sealed class IRacingPoller : IDisposable
 
             _sdk.Start();
             AppLog.Info("IRacingPoller: SDK restarted successfully.");
+            TraceLifecycle($"RestartSdk total elapsedMs={restartSw.ElapsedMilliseconds}");
         }
         catch (Exception ex)
         {
@@ -675,6 +700,7 @@ internal sealed class IRacingPoller : IDisposable
         _sdk.OnException     -= HandleException;
 
         _stoppedGate.Reset();
+        var disposeStopSw = Stopwatch.StartNew();
 
         try
         {
@@ -690,10 +716,12 @@ internal sealed class IRacingPoller : IDisposable
         // We must null the field before collecting so the instance becomes GC-eligible;
         // without this, GC.Collect() cannot see the object and handles stay open,
         // conflicting with iOverlay or iRacing re-init on the next app launch.
-        _stoppedGate.Wait(TimeSpan.FromSeconds(3));
+        var disposeStopCompleted = _stoppedGate.Wait(TimeSpan.FromSeconds(3));
+        disposeStopSw.Stop();
+        TraceLifecycle($"Dispose stop wait: completed={disposeStopCompleted}, elapsedMs={disposeStopSw.ElapsedMilliseconds}");
         _sdk.OnStopped -= _stoppedHandler;
         _sdk = null!;
-        ReleaseSdkHandles();
+        ReleaseSdkHandles("Dispose");
 
         AppLog.Info("IRacingPoller disposed — SDK handles released.");
     }
@@ -708,10 +736,35 @@ internal sealed class IRacingPoller : IDisposable
     /// (closing the Win32 handles); the second pass reclaims the memory.
     /// </para>
     /// </summary>
-    private static void ReleaseSdkHandles()
+    private static void ReleaseSdkHandles(string context)
     {
+        if (DebugDisableForcedGcRelease)
+        {
+            AppLog.Warn(
+                $"IRacingPoller {context}: forced GC handle release skipped by debug toggle " +
+                $"({EnvDisableForcedGcRelease}=1).");
+            return;
+        }
+
+        var gcSw = Stopwatch.StartNew();
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
         GC.WaitForPendingFinalizers();
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+        gcSw.Stop();
+        TraceLifecycle($"{context} forced GC handle release elapsedMs={gcSw.ElapsedMilliseconds}");
+    }
+
+    private static bool GetEnvFlag(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void TraceLifecycle(string message)
+    {
+        if (DebugTraceLifecycle)
+            AppLog.Info($"IRacingPoller lifecycle: {message}");
     }
 }

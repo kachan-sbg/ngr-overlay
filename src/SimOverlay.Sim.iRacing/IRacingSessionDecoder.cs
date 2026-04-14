@@ -112,7 +112,7 @@ internal static class IRacingSessionDecoder
             TrackName            = trackName,
             SessionType          = sessionType,
             SessionTimeRemaining = sessionTimeRemaining,
-            SessionTimeElapsed   = sessionTimeSec > 0 ? TimeSpan.FromSeconds(sessionTimeSec) : TimeSpan.Zero,
+            SessionTimeElapsed   = sessionTimeSec > 0 ? SafeTimeSpanFromSeconds(sessionTimeSec) : TimeSpan.Zero,
             TotalLaps            = totalLaps,
             AirTempC             = airTempC,
             TrackTempC           = trackTempC,
@@ -232,7 +232,7 @@ internal static class IRacingSessionDecoder
             System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture,
             out var secs)
-            ? TimeSpan.FromSeconds(secs)
+            ? SafeTimeSpanFromSeconds(secs)
             : TimeSpan.Zero;
     }
 
@@ -246,5 +246,18 @@ internal static class IRacingSessionDecoder
             return 0;
 
         return int.TryParse(value.Trim(), out var laps) ? laps : 0;
+    }
+
+    /// <summary>
+    /// Converts seconds to TimeSpan with overflow protection.
+    /// iRacing occasionally emits sentinel-like very large values while session data stabilizes.
+    /// </summary>
+    private static TimeSpan SafeTimeSpanFromSeconds(double seconds)
+    {
+        if (double.IsNaN(seconds) || double.IsInfinity(seconds))
+            return TimeSpan.Zero;
+
+        const double MaxSec = 86400d * 30d; // 30 days
+        return TimeSpan.FromSeconds(Math.Clamp(seconds, 0d, MaxSec));
     }
 }
