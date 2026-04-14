@@ -14,6 +14,7 @@ This document tracks issues that can cause crashes, hangs, silent data corruptio
 | CRIT-006 | Tray fallback icon resource leak | P2 | Fixed | Fixed GDI handle leak (`DestroyIcon`) and undisposed font allocation in fallback icon path. |
 | CRIT-007 | Hotkey registration observability | P3 | Fixed | Added hotkey registration failure warnings and guarded unregister calls. |
 | CRIT-008 | Track map label-collision logic | P3 | Fixed | Corrected dead condition in label overlap logic; now tracks collision per row. |
+| CRIT-009 | LMU shared-memory stale handle lifecycle | P1 | Fixed | LMU reader now periodically rebinds and closes-on-read-fault so stale self-held MMF handles cannot mask disconnects after LMU exit. |
 
 ## Reliability Gate
 

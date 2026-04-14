@@ -22,12 +22,16 @@ internal sealed class LmuPoller : IDisposable
 {
     private const int RelativePublishInterval = 6;  // 60 Hz ÷ 6 = 10 Hz
     private const int WeatherPublishInterval  = 60; // 60 Hz ÷ 60 = 1 Hz
+    // Periodically release/reacquire LMU_Data so this process does not keep a stale
+    // mapping alive after LMU exits.
+    private const int ReaderReopenIntervalTicks = 300; // ~4.8s at 16 ms
 
     private readonly ISimDataBus      _bus;
     private readonly Action<SimState> _onStateChanged;
     private readonly LmuMemoryReader  _reader;
     private readonly LmuFuelTracker   _fuelTracker = new();
     private int _pollInProgress;
+    private int _readerReopenTicks;
 
     // Cached driver list, rebuilt when track or vehicle count changes.
     private ImmutableArray<LmuDriverSnapshot> _cachedDrivers =
@@ -86,6 +90,16 @@ internal sealed class LmuPoller : IDisposable
             // failure on startup), try again every tick until it succeeds.
             if (!_reader.IsOpen && !_reader.TryOpen())
                 return;
+
+            // Rebind periodically so dead-producer cases are detected even if a stale
+            // mapping would otherwise stay alive only because this process still holds
+            // a handle.
+            if (_reader.IsOpen && ++_readerReopenTicks >= ReaderReopenIntervalTicks)
+            {
+                _readerReopenTicks = 0;
+                if (!_reader.Reopen())
+                    return;
+            }
 
             var snapshot = _reader.ReadScoring();
             if (snapshot == null) return;

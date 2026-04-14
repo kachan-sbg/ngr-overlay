@@ -24,9 +24,17 @@ internal sealed class LmuMemoryReader : IDisposable
 
     private MemoryMappedFile?         _file;
     private MemoryMappedViewAccessor? _view;
+    private readonly string           _fileName;
     private bool                      _disposed;
 
     public bool IsOpen => _view != null;
+
+    internal LmuMemoryReader(string? fileName = null)
+    {
+        _fileName = string.IsNullOrWhiteSpace(fileName)
+            ? LmuSharedMemoryLayout.DataFile
+            : fileName;
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -35,17 +43,34 @@ internal sealed class LmuMemoryReader : IDisposable
     /// Returns <c>true</c> on success; leaves the reader closed on failure.
     /// </summary>
     public bool TryOpen()
+        => TryOpen(logSuccess: true);
+
+    /// <summary>
+    /// Closes and re-opens the LMU mapping.
+    /// Useful for probing producer liveness: if LMU has exited, reopen fails once our
+    /// previous handle is released.
+    /// </summary>
+    public bool Reopen()
+    {
+        Close();
+        return TryOpen(logSuccess: false);
+    }
+
+    private bool TryOpen(bool logSuccess)
     {
         try
         {
-            _file = MemoryMappedFile.OpenExisting(LmuSharedMemoryLayout.DataFile);
+            _file = MemoryMappedFile.OpenExisting(_fileName);
             _view = _file.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
-            AppLog.Info(
-                $"LmuMemoryReader: opened {LmuSharedMemoryLayout.DataFile} " +
-                $"(ScoringInfoSize={ScoringInfoSize}B, VehicleScoringSize={VehicleScoringSize}B, " +
-                $"ScoringInfoAt={LmuSharedMemoryLayout.ScoringInfoOffset}, " +
-                $"VehiclesAt={LmuSharedMemoryLayout.ScoringVehiclesOffset})");
-            ValidateLayout();
+            if (logSuccess)
+            {
+                AppLog.Info(
+                    $"LmuMemoryReader: opened {_fileName} " +
+                    $"(ScoringInfoSize={ScoringInfoSize}B, VehicleScoringSize={VehicleScoringSize}B, " +
+                    $"ScoringInfoAt={LmuSharedMemoryLayout.ScoringInfoOffset}, " +
+                    $"VehiclesAt={LmuSharedMemoryLayout.ScoringVehiclesOffset})");
+                ValidateLayout();
+            }
             return true;
         }
         catch
@@ -119,6 +144,7 @@ internal sealed class LmuMemoryReader : IDisposable
         if (_view == null) return null;
 
         byte* ptr = null;
+        bool shouldClose = false;
         try
         {
             _view.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
@@ -140,12 +166,15 @@ internal sealed class LmuMemoryReader : IDisposable
         catch (Exception ex)
         {
             AppLog.Exception("LmuMemoryReader.ReadScoring", ex);
+            shouldClose = true;
             return null;
         }
         finally
         {
             if (ptr != null)
                 _view.SafeMemoryMappedViewHandle.ReleasePointer();
+            if (shouldClose)
+                Close();
         }
     }
 
@@ -160,6 +189,7 @@ internal sealed class LmuMemoryReader : IDisposable
         if (_view == null) return null;
 
         byte* ptr = null;
+        bool shouldClose = false;
         try
         {
             _view.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
@@ -203,12 +233,15 @@ internal sealed class LmuMemoryReader : IDisposable
         catch (Exception ex)
         {
             AppLog.Exception("LmuMemoryReader.ReadPlayerTelemetry", ex);
+            shouldClose = true;
             return null;
         }
         finally
         {
             if (ptr != null)
                 _view.SafeMemoryMappedViewHandle.ReleasePointer();
+            if (shouldClose)
+                Close();
         }
     }
 
