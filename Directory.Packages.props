@@ -17,6 +17,8 @@
   <ItemGroup Label="DI / Hosting">
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.3537.50" />
+    <PackageVersion Include="Svg" Version="3.4.7" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">

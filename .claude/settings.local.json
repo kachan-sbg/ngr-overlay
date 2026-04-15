@@ -1,9 +1,9 @@
-{
+﻿{
   "permissions": {
     "allow": [
       "Bash(git clone:*)",
       "Bash(xargs grep:*)",
-      "Bash(find G:/ngr-overlay/src/SimOverlay.App/obj -name *.cs)",
+      "Bash(find G:/ngr-overlay/src/NrgOverlay.App/obj -name *.cs)",
       "Bash(dotnet build:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
@@ -25,9 +25,9 @@
       "Bash(powershell -Command \"Add-Type -Path ''C:\\\\Users\\\\tom\\\\.nuget\\\\packages\\\\irsdksharper\\\\1.0.3\\\\lib\\\\net6.0-windows7.0\\\\IRSDKSharper.dll''; [HerboldRacing.IRSDKSharper].GetMembers\\(\\) | Select-Object Name, MemberType | Format-Table -AutoSize\")",
       "Bash(powershell -Command \":*)",
       "Bash(Select-String -Pattern \"IRacing|iRacing|Session|Driver|Telemetry|Weekly|Car|Lap|Track|Herb\")",
-      "Bash(dir G:ngr-overlaysrcSimOverlay.Sim.iRacing /b)",
+      "Bash(dir G:ngr-overlaysrcNrgOverlay.Sim.iRacing /b)",
       "Bash(findstr -v obj)",
-      "Bash(dir \"G:\\\\ngr-overlay\\\\src\\\\SimOverlay.Sim.iRacing\" /b /a-d)",
+      "Bash(dir \"G:\\\\ngr-overlay\\\\src\\\\NrgOverlay.Sim.iRacing\" /b /a-d)",
       "Bash(git push:*)",
       "Bash(dotnet test:*)",
       "Bash(\"G:/ngr-overlay/docs/KNOWN_ISSUES.md\")",
@@ -47,7 +47,7 @@
       "Bash(rm docs/KNOWN_ISSUES.md docs/VERIFICATION.md docs/PROJECT.md)",
       "Bash(rm docs/tasks/PHASE-0-scaffolding.md docs/tasks/PHASE-1-rendering.md docs/tasks/PHASE-2-iracing.md docs/tasks/PHASE-3-framework.md docs/tasks/PHASE-4-overlays.md docs/tasks/PHASE-5-settings.md docs/tasks/PHASE-6-polish.md)",
       "Bash(rm -r docs/testing)",
-      "Bash(grep -l \"DefaultConfig\\\\|OverlayId\" G:/ngr-overlay/src/SimOverlay.Overlays/*.cs)",
+      "Bash(grep -l \"DefaultConfig\\\\|OverlayId\" G:/ngr-overlay/src/NrgOverlay.Overlays/*.cs)",
       "Bash(find /g/ngr-overlay -type f -name *IRSDKSharper* -o -name *irsdk*)",
       "Bash(find /g/ngr-overlay -type f -name *.cs -exec grep -l \"IRSDKSharper\\\\|HerboldRacing\" {})",
       "Bash(2)",
@@ -60,7 +60,7 @@
       "Bash(dotnet nuget:*)",
       "WebFetch(domain:www.nuget.org)",
       "Bash(unzip -p irsdksharper.1.1.6.nupkg README.md)",
-      "Bash(Get-Content \"C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\SimOverlay\\\\sim-overlay.log\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\NrgOverlay\\\\sim-overlay.log\")",
       "Bash(Select-Object -Last 100)",
       "Bash(curl -s https://api.github.com/repos/TinyPedal/pyLMUSharedMemory/contents/lmu_type.py)",
       "Bash(python3)",
@@ -82,13 +82,14 @@
       "Bash(dotnet run:*)",
       "Bash(dotnet list:*)",
       "Bash(findstr -i irsdk)",
-      "Bash(cmd /c \"type C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\SimOverlay\\\\sim-overlay.log\")",
-      "Bash(cmd /c \"powershell Get-Content C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\SimOverlay\\\\sim-overlay.log | Select-Object -Last 100\")",
-      "Bash(powershell.exe -NoProfile -Command \"& { Get-Content 'C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\SimOverlay\\\\sim-overlay.log' | Select-Object -Last 100 }\")",
-      "Bash(powershell.exe -NoProfile -Command \"& { Get-Content 'C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\SimOverlay\\\\sim-overlay.log' | Select-Object -Last 150 }\")",
-      "Bash(powershell.exe -NoProfile -Command \"& { Get-Content 'C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\SimOverlay\\\\sim-overlay.log' | Select-Object -Last 60 }\")",
+      "Bash(cmd /c \"type C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\NrgOverlay\\\\sim-overlay.log\")",
+      "Bash(cmd /c \"powershell Get-Content C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\NrgOverlay\\\\sim-overlay.log | Select-Object -Last 100\")",
+      "Bash(powershell.exe -NoProfile -Command \"& { Get-Content 'C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\NrgOverlay\\\\sim-overlay.log' | Select-Object -Last 100 }\")",
+      "Bash(powershell.exe -NoProfile -Command \"& { Get-Content 'C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\NrgOverlay\\\\sim-overlay.log' | Select-Object -Last 150 }\")",
+      "Bash(powershell.exe -NoProfile -Command \"& { Get-Content 'C:\\\\Users\\\\tom\\\\AppData\\\\Roaming\\\\NrgOverlay\\\\sim-overlay.log' | Select-Object -Last 60 }\")",
       "Bash(dotnet-ildasm \"C:/Users/tom/.nuget/packages/irsdksharper/1.1.6/lib/net7.0-windows7.0/IRSDKSharper.dll\")",
       "Bash(powershell -c ':*)"
     ]
   }
 }
+

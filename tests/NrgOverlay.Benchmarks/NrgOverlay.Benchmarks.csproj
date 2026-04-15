@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NrgOverlay.Core\NrgOverlay.Core.csproj" />
+    <ProjectReference Include="..\..\src\NrgOverlay.Sim.Contracts\NrgOverlay.Sim.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\NrgOverlay.Sim.iRacing\NrgOverlay.Sim.iRacing.csproj" />
+  </ItemGroup>
+
+</Project>
+

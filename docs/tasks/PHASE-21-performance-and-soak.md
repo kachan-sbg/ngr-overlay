@@ -1,4 +1,4 @@
-# PHASE 21 - Performance and Soak Validation (Mid Priority)
+﻿# PHASE 21 - Performance and Soak Validation (Mid Priority)
 
 ## Goal
 
@@ -29,7 +29,7 @@ GC pressure, render load).
 
 ## Deliverables
 
-- New benchmark scenarios in `tests/SimOverlay.Benchmarks`:
+- New benchmark scenarios in `tests/NrgOverlay.Benchmarks`:
   - `SharedMemoryReadBenchmarks` (iRacing/LMU replay-style synthetic snapshots)
   - `OverlayRenderBenchmarks` (representative text-heavy frames)
   - Existing benchmarks retained as baseline set
@@ -50,7 +50,8 @@ GC pressure, render load).
 ## Suggested command profile
 
 ```powershell
-dotnet test SimOverlay.sln -c Release /m:1 /p:BuildInParallel=false /p:UseSharedCompilation=false
-dotnet run -c Release --no-build --project tests/SimOverlay.Benchmarks/SimOverlay.Benchmarks.csproj -- --filter "*" --job short
+dotnet test NrgOverlay.sln -c Release /m:1 /p:BuildInParallel=false /p:UseSharedCompilation=false
+dotnet run -c Release --no-build --project tests/NrgOverlay.Benchmarks/NrgOverlay.Benchmarks.csproj -- --filter "*" --job short
 ```
+
 

@@ -1,6 +1,6 @@
-# PROJECT.md
+﻿# PROJECT.md
 
-## Racing Simulator Overlay — Project Overview
+## Racing Simulator Overlay вЂ” Project Overview
 
 ### Summary
 
@@ -29,12 +29,12 @@ A Windows desktop overlay application for racing simulators, designed to display
 
 The solution is organized as a multi-project C# / .NET 8 solution. A clean abstraction boundary separates sim-agnostic core infrastructure from sim-specific data providers:
 
-- `SimOverlay.Core` — domain model, shared data contracts, configuration schema, event/notification types.
-- `SimOverlay.Rendering` — Direct2D + DirectComposition overlay window host, base overlay class, rendering loop.
-- `SimOverlay.Sim.Contracts` — interfaces and data transfer objects (DTOs) that all sim providers must implement.
-- `SimOverlay.Sim.iRacing` — iRacing-specific provider: MMF reader, telemetry parser, session decoder.
-- `SimOverlay.Overlays` — implementations of the three MVP overlays (Relative, Session Info, Delta Bar).
-- `SimOverlay.App` — entry point, tray icon, sim auto-detection, orchestration, configuration UI host.
+- `NrgOverlay.Core` вЂ” domain model, shared data contracts, configuration schema, event/notification types.
+- `NrgOverlay.Rendering` вЂ” Direct2D + DirectComposition overlay window host, base overlay class, rendering loop.
+- `NrgOverlay.Sim.Contracts` вЂ” interfaces and data transfer objects (DTOs) that all sim providers must implement.
+- `NrgOverlay.Sim.iRacing` вЂ” iRacing-specific provider: MMF reader, telemetry parser, session decoder.
+- `NrgOverlay.Overlays` вЂ” implementations of the three MVP overlays (Relative, Session Info, Delta Bar).
+- `NrgOverlay.App` вЂ” entry point, tray icon, sim auto-detection, orchestration, configuration UI host.
 
 Data flows from a sim provider into an `ISimDataBus` (an in-process event bus), which all active overlay instances subscribe to. Overlays consume normalized data types defined in `Sim.Contracts`; they have no knowledge of which sim is running.
 

@@ -1,12 +1,12 @@
-# SimOverlay — MVP Code & Architecture Review
+﻿# NrgOverlay вЂ” MVP Code & Architecture Review
 
-> Review conducted 2026-04-06 after MVP completion (Phases 0–6).
+> Review conducted 2026-04-06 after MVP completion (Phases 0вЂ“6).
 
 ---
 
 ## Executive Summary
 
-SimOverlay MVP is a well-architected, production-quality overlay system. The layered project structure, thread-safe data bus, and rendering pipeline are solid foundations for Alpha development. The codebase is clean, test coverage on core algorithms is strong, and performance benchmarks are in place.
+NrgOverlay MVP is a well-architected, production-quality overlay system. The layered project structure, thread-safe data bus, and rendering pipeline are solid foundations for Alpha development. The codebase is clean, test coverage on core algorithms is strong, and performance benchmarks are in place.
 
 This review identifies **3 blocking issues** for Alpha, **6 improvements** to address early, and **4 architectural gaps** that need design decisions before new features land.
 
@@ -20,9 +20,9 @@ This review identifies **3 blocking issues** for Alpha, **6 improvements** to ad
 |---|---|
 | **Layered dependency graph** | Strictly enforced; no circular deps. Adding overlays or sims requires zero changes to Core/Rendering. |
 | **SimDataBus** | Lock-free reads via ImmutableDictionary. Exception isolation per subscriber. Sub-10 ns publish (benchmarked). Zero allocations on hot path. |
-| **Rendering pipeline** | Software D2D → ULW avoids GPU interference with game flip chains. Solved the DComp z-order reliability problem that other overlay tools fight. |
+| **Rendering pipeline** | Software D2D в†’ ULW avoids GPU interference with game flip chains. Solved the DComp z-order reliability problem that other overlay tools fight. |
 | **Config system** | Atomic writes, debounced persistence, stream override with null-coalescing resolution. `Resolve()` returns `this` (zero alloc) when no override active. |
-| **ZOrderHook** | Reactive EVENT_OBJECT_REORDER approach is correct — avoids the DWM re-composition blink that periodic BringToFront caused. |
+| **ZOrderHook** | Reactive EVENT_OBJECT_REORDER approach is correct вЂ” avoids the DWM re-composition blink that periodic BringToFront caused. |
 | **RelativeCalculator** | Complex lap-distance wraparound logic is well-tested with edge cases (start/finish crossing, spectator filtering, window centering). |
 | **Edit mode** | Static mock data during repositioning is the right UX call. Preview/apply split in Settings is standard and works. |
 
@@ -37,7 +37,7 @@ This review identifies **3 blocking issues** for Alpha, **6 improvements** to ad
 
 #### B-2: Manual Config Cloning in OverlayManager
 
-`OverlayManager.CopyConfig()` manually copies 18+ fields between `OverlayConfig` instances. Every new config field added in Alpha (and there will be many — new overlays, new columns, new features) must be manually added to this method or the field silently won't persist.
+`OverlayManager.CopyConfig()` manually copies 18+ fields between `OverlayConfig` instances. Every new config field added in Alpha (and there will be many вЂ” new overlays, new columns, new features) must be manually added to this method or the field silently won't persist.
 
 **Impact:** Every task that adds overlay config properties.
 **Fix:** Replace with reflection-based deep clone, `MemberwiseClone` + manual reference fixup, or convert `OverlayConfig` to use `System.Text.Json` round-trip serialization for cloning.
@@ -79,17 +79,17 @@ Acceptable at current rates but will bottleneck with more overlays and diagnosti
 
 #### G-1: Stream Override Can't Achieve Dual-Display Goal
 
-The stream override system was designed for "driver sees one appearance, OBS captures another." But with a single window, both the driver and OBS see the same thing — whichever profile is active. The original vision (driver's monitor shows minimal overlay, OBS captures rich colorful version simultaneously) requires either:
+The stream override system was designed for "driver sees one appearance, OBS captures another." But with a single window, both the driver and OBS see the same thing вЂ” whichever profile is active. The original vision (driver's monitor shows minimal overlay, OBS captures rich colorful version simultaneously) requires either:
 
-- **Option A:** Two windows per overlay type — a "driver window" and a "stream window" on different monitors or with different visibility
-- **Option B:** OBS virtual camera / NDI approach — render the stream version to an off-screen buffer that OBS reads
-- **Option C:** Accept current behavior — stream mode is a manual toggle before going live
+- **Option A:** Two windows per overlay type вЂ” a "driver window" and a "stream window" on different monitors or with different visibility
+- **Option B:** OBS virtual camera / NDI approach вЂ” render the stream version to an off-screen buffer that OBS reads
+- **Option C:** Accept current behavior вЂ” stream mode is a manual toggle before going live
 
 **Needs user input:** Which option to pursue.
 
 #### G-2: Overlay Registration System
 
-MVP hardcodes 3 overlays in `OverlayManager`. Alpha adds 6+ more. Need a registration/discovery pattern — either a simple factory dictionary or a full plugin system.
+MVP hardcodes 3 overlays in `OverlayManager`. Alpha adds 6+ more. Need a registration/discovery pattern вЂ” either a simple factory dictionary or a full plugin system.
 
 #### G-3: Multi-Class Data Model
 
@@ -103,36 +103,36 @@ The current Settings window has a sidebar with 3 overlay entries + global. With 
 
 ## Per-Project Code Quality
 
-### SimOverlay.Core — Excellent
+### NrgOverlay.Core вЂ” Excellent
 
 - `SimDataBus`: Textbook pub/sub with concurrency guarantees. Well-tested.
 - `ConfigStore`: Atomic writes, graceful degradation. Solid.
 - `OverlayConfig.Resolve()`: Clean null-coalescing pattern. Zero-alloc common path.
 - **Only concern:** Config cloning (B-2 above).
 
-### SimOverlay.Rendering — Excellent
+### NrgOverlay.Rendering вЂ” Excellent
 
 - `OverlayWindow`: Sophisticated Win32 + D2D integration. Correct flag combinations.
 - `BaseOverlay`: Thread-safe render loop, deferred invalidation, background pre-fill safety net.
 - `RenderResources`: Lazy cache with proper invalidation.
 - `ZOrderHook`: Elegant reactive z-order recovery.
-- **Only concern:** Device recovery path is simple (exponential backoff) — may need enhancement if multiple overlays hit device loss simultaneously.
+- **Only concern:** Device recovery path is simple (exponential backoff) вЂ” may need enhancement if multiple overlays hit device loss simultaneously.
 
-### SimOverlay.Sim.iRacing — Good
+### NrgOverlay.Sim.iRacing вЂ” Good
 
 - `IRacingRelativeCalculator`: Well-tested, handles edge cases.
 - `IRacingSessionDecoder`: Robust parsing with fallbacks.
 - `IRacingPoller`: Clean SDK integration.
 - **Concerns:** Magic constant `RelativePublishInterval = 6` undocumented. `_cachedDrivers` mutability (I-3).
 
-### SimOverlay.Overlays — Good
+### NrgOverlay.Overlays вЂ” Good
 
 - All three overlays follow consistent patterns.
 - Mock data is realistic and well-structured.
 - `DeltaBarOverlay` trend buffer: ring buffer push may have edge case when not full (first 500ms of a lap). Not a crash risk, just potentially noisy trend arrows at lap start.
 - **Concern:** As overlay count grows, shared patterns (column rendering, data subscription) should be extracted to avoid duplication.
 
-### SimOverlay.App — Adequate (needs work for Alpha)
+### NrgOverlay.App вЂ” Adequate (needs work for Alpha)
 
 - `Program.cs`: Manual composition root will need DI (B-3).
 - `OverlayManager`: Manual config cloning (B-2). Hardcoded overlay list (G-2).
@@ -140,7 +140,7 @@ The current Settings window has a sidebar with 3 overlay entries + global. With 
 - `SingleInstanceGuard`: Solid Win32 IPC.
 - `Settings/ViewModels`: Property-per-field approach won't scale to 9+ overlays. Consider generating VMs or using a more generic approach.
 
-### Tests — Good Coverage for Core, Gaps Elsewhere
+### Tests вЂ” Good Coverage for Core, Gaps Elsewhere
 
 | Area | Coverage | Notes |
 |---|---|---|
@@ -149,7 +149,7 @@ The current Settings window has a sidebar with 3 overlay entries + global. With 
 | OverlayConfig.Resolve | Good | All override scenarios, position exclusion |
 | RelativeCalculator | Excellent | Edge cases, wraparound, filtering |
 | ViewModels | Good | Round-trip conversions |
-| Rendering (OverlayWindow, BaseOverlay) | None | Requires D2D context — manual testing only |
+| Rendering (OverlayWindow, BaseOverlay) | None | Requires D2D context вЂ” manual testing only |
 | Settings UI | None | Manual test docs exist |
 | Full app lifecycle | None | Manual verification docs |
 | IRacingPoller integration | None | Requires live iRacing session |
@@ -165,9 +165,9 @@ Based on BenchmarkDotNet results:
 | SimDataBus.Publish (1 subscriber) | 9.3 ns, 0 B alloc | Excellent |
 | ConfigResolve (no override) | 0 B alloc (returns `this`) | Excellent |
 | ConfigResolve (with override) | < 500 B alloc | Acceptable at 60 Hz |
-| RelativeCalculator (40 cars) | < 50 µs | Good for 10 Hz |
+| RelativeCalculator (40 cars) | < 50 Вµs | Good for 10 Hz |
 
-Render-path performance is not benchmarkable without D2D. Software D2D for text + rectangles at ~1–3% of one core (3 overlays @ 60 fps) is acceptable. Will need re-evaluation at 9+ overlays.
+Render-path performance is not benchmarkable without D2D. Software D2D for text + rectangles at ~1вЂ“3% of one core (3 overlays @ 60 fps) is acceptable. Will need re-evaluation at 9+ overlays.
 
 ---
 
@@ -180,11 +180,11 @@ Render-path performance is not benchmarkable without D2D. Software D2D for text 
 - Known issues tracker with status
 
 ### Issues
-- `README.md` line 12 still references "Direct2D + DirectComposition" — the pipeline was changed to ULW + software DCRenderTarget
-- `ARCHITECTURE.md` §4 "Rendering Pipeline" is accurate for current stack, but §11 "OBS Capture Compatibility" still mentions `WS_EX_NOREDIRECTIONBITMAP` as if it's used
-- `README.md` Phase 2 still shows "In progress" — should be "Done"
-- `ARCHITECTURE.md` §10 says "DI packages are referenced but the container is not used" — accurate but should be addressed in Alpha
-- `OVERLAYS.md` describes only 3 MVP overlays — needs expansion for Alpha
+- `README.md` line 12 still references "Direct2D + DirectComposition" вЂ” the pipeline was changed to ULW + software DCRenderTarget
+- `ARCHITECTURE.md` В§4 "Rendering Pipeline" is accurate for current stack, but В§11 "OBS Capture Compatibility" still mentions `WS_EX_NOREDIRECTIONBITMAP` as if it's used
+- `README.md` Phase 2 still shows "In progress" вЂ” should be "Done"
+- `ARCHITECTURE.md` В§10 says "DI packages are referenced but the container is not used" вЂ” accurate but should be addressed in Alpha
+- `OVERLAYS.md` describes only 3 MVP overlays вЂ” needs expansion for Alpha
 
 ---
 
@@ -202,3 +202,4 @@ Render-path performance is not benchmarkable without D2D. Software D2D for text 
 | **Medium** | G-1: Dual-window stream architecture | Phase 11 (needs design) |
 | **Medium** | G-4: Settings UI scalability | Phase 12 |
 | **Low** | DeltaBarOverlay trend buffer edge case | Opportunistic |
+

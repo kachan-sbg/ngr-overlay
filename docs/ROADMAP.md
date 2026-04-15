@@ -1,12 +1,12 @@
-# SimOverlay — Roadmap
+﻿# NrgOverlay вЂ” Roadmap
 
 > Last updated: 2026-04-12
 
 ---
 
-## Current state — v0.0.1 Alpha
+## Current state вЂ” v0.0.1 Alpha
 
-SimOverlay is a working alpha.  All core machinery is in place and usable in real sessions.
+NrgOverlay is a working alpha.  All core machinery is in place and usable in real sessions.
 
 ### What works
 
@@ -16,10 +16,10 @@ SimOverlay is a working alpha.  All core machinery is in place and usable in rea
 | OBS Window Capture with "Allow Transparency" | Working |
 | iRacing integration (full telemetry via IRSDKSharper) | Working |
 | LMU (Le Mans Ultimate) integration (native LMU_Data shared memory) | Working |
-| Automatic sim detection — starts/stops providers as sims appear | Working |
-| Settings UI — per-overlay position, size, colors, fonts | Working |
-| Stream Override — separate OBS profile per overlay | Working |
-| Config persistence (`%APPDATA%\SimOverlay\config.json`, atomic, versioned) | Working |
+| Automatic sim detection вЂ” starts/stops providers as sims appear | Working |
+| Settings UI вЂ” per-overlay position, size, colors, fonts | Working |
+| Stream Override вЂ” separate OBS profile per overlay | Working |
+| Config persistence (`%APPDATA%\NrgOverlay\config.json`, atomic, versioned) | Working |
 
 ### Overlays shipping in v0.0.1
 
@@ -37,9 +37,9 @@ SimOverlay is a working alpha.  All core machinery is in place and usable in rea
 
 ### Known gaps in v0.0.1
 
-- Data not validated end-to-end against reference sources — some fields may display
+- Data not validated end-to-end against reference sources вЂ” some fields may display
   wrong values or show data when the sim has no valid value for them.
-- No cross-sim normalization for rating/safety fields (LMU shows "—" where iRacing
+- No cross-sim normalization for rating/safety fields (LMU shows "вЂ”" where iRacing
   shows an iRating and licence class).
 - Stream Override not fully wired for all six Alpha overlays.
 - No field visibility control or column reordering in overlay UI.
@@ -54,7 +54,7 @@ label from the alpha plan; the actual next-priority phases are 13 onward.
 
 ---
 
-### Phase 13 — Data Validation & Correctness Audit ⬅ NEXT
+### Phase 13 вЂ” Data Validation & Correctness Audit в¬… NEXT
 
 **Goal:** Ship data users can trust.  Every field in every overlay should either display
 a correct value or be hidden/greyed when the sim has no valid data for it.
@@ -62,7 +62,7 @@ a correct value or be hidden/greyed when the sim has no valid data for it.
 **Scope:**
 - Cross-reference every field against the iRacing SDK telemetry variable list and the
   LMU SDK header, confirming units, range, and availability per session type.
-- Fields that are unavailable in a given sim show "—" or are hidden, never show `0` or
+- Fields that are unavailable in a given sim show "вЂ”" or are hidden, never show `0` or
   garbage.
 - LMU-specific: validate struct offsets with LmuDiag against a live session, confirm
   speed, gear, fuel, pit state, delta, and relative gaps are all correct.
@@ -76,7 +76,7 @@ This phase is the gate to sharing the app publicly.
 
 ---
 
-### Phase 14 — WebSocket Server
+### Phase 14 вЂ” WebSocket Server
 
 **Goal:** Let anyone build a custom widget using HTML/CSS/JS without touching C#.
 
@@ -93,7 +93,7 @@ Direct2D or C#.  Unlocks a whole ecosystem of community widgets.
 
 ---
 
-### Phase 15 — Field Visibility & Layout Config
+### Phase 15 вЂ” Field Visibility & Layout Config
 
 **Goal:** Users can show, hide, and reorder fields within each overlay.
 
@@ -108,10 +108,10 @@ Direct2D or C#.  Unlocks a whole ecosystem of community widgets.
 
 ---
 
-### Phase 16 — Cross-sim Data Normalization
+### Phase 16 вЂ” Cross-sim Data Normalization
 
 **Goal:** Fields that represent the same real-world concept across sims show a consistent
-value — never just "—" when equivalent data exists under a different name.
+value вЂ” never just "вЂ”" when equivalent data exists under a different name.
 
 **Examples:**
 - **iRating equivalent:** iRacing has `IRating`; LMU has a driver rating; ACC has a
@@ -123,7 +123,7 @@ value — never just "—" when equivalent data exists under a different name.
 
 ---
 
-### Phase 17 — Radar Overlay
+### Phase 17 вЂ” Radar Overlay
 
 **Goal:** Classic racing radar showing nearby cars as a top-down proximity indicator.
 
@@ -133,12 +133,12 @@ value — never just "—" when equivalent data exists under a different name.
 - Configurable range and scale.
 - Class colour coded blips.
 
-**Note:** Requires accurate heading and relative bearing data — verify availability in
+**Note:** Requires accurate heading and relative bearing data вЂ” verify availability in
 both sims before planning implementation details.
 
 ---
 
-### Phase 18 — Map Overlay
+### Phase 18 вЂ” Map Overlay
 
 **Goal:** Show car positions on a track map.
 
@@ -151,22 +151,22 @@ both sims before planning implementation details.
 
 ---
 
-### Phase 19 — ACC Integration
+### Phase 19 вЂ” ACC Integration
 
 **Goal:** Add Assetto Corsa Competizione as a third supported sim.
 
 **Approach:** ACC exposes a shared memory API similar to LMU/rF2.  A new
-`SimOverlay.Sim.ACC` project follows the same pattern as `SimOverlay.Sim.LMU`.
+`NrgOverlay.Sim.ACC` project follows the same pattern as `NrgOverlay.Sim.LMU`.
 
 **Notes:**
-- ACC has its own rating system (SA — Safety Rating, PC — Personal Rating).
+- ACC has its own rating system (SA вЂ” Safety Rating, PC вЂ” Personal Rating).
   Map to the normalized rating fields from Phase 16.
 - ACC supports multiclass (GT3 + GT4 in Balance of Performance), so Relative and
   Standings overlays should already work via the existing class colour system.
 
 ---
 
-### Phase 20 — Session-State-Aware Visibility
+### Phase 20 вЂ” Session-State-Aware Visibility
 
 **Goal:** Overlays appear/disappear automatically based on what's happening in the sim.
 
@@ -179,12 +179,12 @@ both sims before planning implementation details.
 
 ---
 
-### Phase 12 — OBS Mode & Enhanced UX (deferred)
+### Phase 12 вЂ” OBS Mode & Enhanced UX (deferred)
 
 The alpha stream-override system already covers the primary use case (toggle between
-driver view and OBS view).  This phase — renaming "Stream Mode" to "OBS Mode", adding
+driver view and OBS view).  This phase вЂ” renaming "Stream Mode" to "OBS Mode", adding
 a hotkey, session-type profiles, buddy highlighting, positions-gained indicator, and
-multi-class colour configuration — is fully specced in
+multi-class colour configuration вЂ” is fully specced in
 [`docs/tasks/PHASE-12-obs-and-ux.md`](tasks/PHASE-12-obs-and-ux.md) and will be
 scheduled when priorities allow.
 
@@ -201,3 +201,4 @@ Long-session crash/hang/data-integrity risks are tracked in
   iRacing `[A2.2] 2345`, LMU `[R2] S2`, default template `[{Safety}] {Primary}`.
 - New mid-priority performance phase added:
   [`docs/tasks/PHASE-21-performance-and-soak.md`](tasks/PHASE-21-performance-and-soak.md).
+
