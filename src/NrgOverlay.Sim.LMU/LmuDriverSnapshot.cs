@@ -17,6 +17,7 @@ internal sealed record LmuDriverSnapshot(
     int          SlotId,
     string       DriverName,
     string       CarNumber,    // slot ID as string (rF2 has no dedicated car-number field)
+    string       CountryCode,  // ISO2/ISO3 when available from LMU/plugin; empty when unavailable
     string       VehicleClass, // from V02 expansion; falls back to VehicleName
     int          CarClassId,   // stable hash of VehicleClass string (for grouping)
     ColorConfig? ClassColor,   // assigned per class by LmuSessionDecoder

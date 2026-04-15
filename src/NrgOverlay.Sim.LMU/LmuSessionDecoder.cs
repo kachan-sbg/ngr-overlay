@@ -45,6 +45,7 @@ internal static class LmuSessionDecoder
                 SlotId:        v.Id,
                 DriverName:    v.DriverName ?? string.Empty,
                 CarNumber:     DeriveCarNumber(v),
+                CountryCode:   string.Empty, // LMU shared memory currently exposes no driver country code.
                 VehicleClass:  vehicleClass,
                 CarClassId:    classId,
                 ClassColor:    classColor,
