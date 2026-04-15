@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.MemoryMappedFiles;
-using System.Text.Json;
 using IRSDKSharper;
 using NrgOverlay.Core;
 using NrgOverlay.Core.Config;
@@ -57,7 +56,6 @@ internal sealed class IRacingPoller : IDisposable
     private const string EnvDisableWatchdogRestart = "NRGOVERLAY_DEBUG_DISABLE_IRACING_WATCHDOG_RESTART";
     private const string EnvDisableForcedGcRelease = "NRGOVERLAY_DEBUG_DISABLE_IRACING_FORCED_GC";
     private const string EnvTraceLifecycle          = "NRGOVERLAY_DEBUG_TRACE_IRACING_LIFECYCLE";
-    private const string FlairCountryFileName       = "country_codes_by_flair.json";
     private const string EnvTraceCountryResolution  = "NRGOVERLAY_DEBUG_TRACE_COUNTRY_RESOLUTION";
 
     private readonly ISimDataBus      _bus;
@@ -125,7 +123,7 @@ internal sealed class IRacingPoller : IDisposable
         _appConfig.GlobalSettings.DriverCountryByFlairId ??= [];
         _appConfig.GlobalSettings.DriverCountryIso2ByFlairId ??= [];
 
-        LoadFlairCountryMappingsFromLocalFile();
+        SeedFlairCountryMappingsFromDefaults();
 
         _stoppedHandler = () => _stoppedGate.Set();
 
@@ -211,53 +209,34 @@ internal sealed class IRacingPoller : IDisposable
         }
     }
 
-    private void LoadFlairCountryMappingsFromLocalFile()
+    private void SeedFlairCountryMappingsFromDefaults()
     {
         try
         {
-            var filePath = FindFlairCountryFilePath();
-            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
-            {
-                AppLog.Warn($"Flair country mapping file not found: '{FlairCountryFileName}'.");
-                return;
-            }
-
-            var json = File.ReadAllText(filePath);
-            if (string.IsNullOrWhiteSpace(json)) return;
-
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Object) return;
-            if (!doc.RootElement.TryGetProperty("flairs", out var flairs)) return;
-            if (flairs.ValueKind != JsonValueKind.Array) return;
-
             var iso3ByFlair = _appConfig.GlobalSettings.DriverCountryByFlairId;
             var iso2ByFlair = _appConfig.GlobalSettings.DriverCountryIso2ByFlairId;
             bool changed = false;
 
-            foreach (var flair in flairs.EnumerateArray())
+            foreach (var kv in DriverCountryDefaults.Iso3ByFlairId)
             {
-                if (flair.ValueKind != JsonValueKind.Object) continue;
-
-                var flairId = ReadIntField(flair, "flair_id", "flairId");
-                if (flairId <= 0) continue;
-
-                var iso3 = CountryCodeResolver.NormalizeIso3Code(
-                    ReadStringField(flair, "flair_shortname", "flairShortname"));
+                var iso3 = CountryCodeResolver.NormalizeIso3Code(kv.Value);
                 if (iso3.Length == 3
-                    && (!iso3ByFlair.TryGetValue(flairId, out var currentIso3)
+                    && (!iso3ByFlair.TryGetValue(kv.Key, out var currentIso3)
                         || !string.Equals(currentIso3, iso3, StringComparison.Ordinal)))
                 {
-                    iso3ByFlair[flairId] = iso3;
+                    iso3ByFlair[kv.Key] = iso3;
                     changed = true;
                 }
+            }
 
-                var iso2 = CountryCodeResolver.NormalizeIso2Code(
-                    ReadStringField(flair, "country_code", "countryCode"));
+            foreach (var kv in DriverCountryDefaults.Iso2ByFlairId)
+            {
+                var iso2 = CountryCodeResolver.NormalizeIso2Code(kv.Value);
                 if (iso2.Length == 2
-                    && (!iso2ByFlair.TryGetValue(flairId, out var currentIso2)
+                    && (!iso2ByFlair.TryGetValue(kv.Key, out var currentIso2)
                         || !string.Equals(currentIso2, iso2, StringComparison.Ordinal)))
                 {
-                    iso2ByFlair[flairId] = iso2;
+                    iso2ByFlair[kv.Key] = iso2;
                     changed = true;
                 }
             }
@@ -267,56 +246,12 @@ internal sealed class IRacingPoller : IDisposable
 
             AppLog.Info(
                 $"Loaded flair-country mapping: iso2={iso2ByFlair.Count}, " +
-                $"iso3={iso3ByFlair.Count}, file='{filePath}'.");
+                $"iso3={iso3ByFlair.Count}, source='built-in defaults'.");
         }
         catch (Exception ex)
         {
-            AppLog.Exception("Failed to load local flair-country mapping", ex);
+            AppLog.Exception("Failed to seed built-in flair-country mapping", ex);
         }
-    }
-
-    private static string? FindFlairCountryFilePath()
-    {
-        var fromCurrentDir = Path.Combine(Environment.CurrentDirectory, FlairCountryFileName);
-        if (File.Exists(fromCurrentDir))
-            return fromCurrentDir;
-
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        for (int i = 0; i < 10 && dir is not null; i++, dir = dir.Parent)
-        {
-            var candidate = Path.Combine(dir.FullName, FlairCountryFileName);
-            if (File.Exists(candidate))
-                return candidate;
-        }
-
-        return null;
-    }
-
-    private static int ReadIntField(JsonElement obj, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (!obj.TryGetProperty(name, out var node)) continue;
-            if (node.ValueKind == JsonValueKind.Number && node.TryGetInt32(out var num))
-                return num;
-            if (node.ValueKind == JsonValueKind.String
-                && int.TryParse(node.GetString(), out num))
-            {
-                return num;
-            }
-        }
-        return 0;
-    }
-
-    private static string ReadStringField(JsonElement obj, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (!obj.TryGetProperty(name, out var node)) continue;
-            if (node.ValueKind == JsonValueKind.String)
-                return node.GetString() ?? string.Empty;
-        }
-        return string.Empty;
     }
 
     private ImmutableArray<DriverSnapshot> ResolveDriverCountries(
@@ -950,4 +885,5 @@ internal sealed class IRacingPoller : IDisposable
             AppLog.Info($"IRacingPoller lifecycle: {message}");
     }
 }
+
 

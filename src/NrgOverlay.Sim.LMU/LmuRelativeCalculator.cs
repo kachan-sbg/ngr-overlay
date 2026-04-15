@@ -160,6 +160,7 @@ internal static class LmuRelativeCalculator
                 ClassColor         = isMultiClass
                     ? (driver?.ClassColor ?? ColorConfig.White)
                     : ColorConfig.White,
+                CountryCode        = driver?.CountryCode ?? string.Empty,
             }));
         }
 
@@ -197,6 +198,7 @@ internal static class LmuRelativeCalculator
                     LapDifference      = rel.LapDifference - leaderLapDiff,
                     BestLapTime        = bestSec > 0 ? TimeSpan.FromSeconds(bestSec) : TimeSpan.Zero,
                     IsPlayer           = rel.IsPlayer,
+                    CountryCode        = rel.CountryCode,
                 });
             }
             standings = new StandingsData { Entries = standingsEntries };
