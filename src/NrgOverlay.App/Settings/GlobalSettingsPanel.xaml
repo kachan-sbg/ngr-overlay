@@ -1,0 +1,42 @@
+﻿<UserControl x:Class="NrgOverlay.App.Settings.GlobalSettingsPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <UserControl.Resources>
+        <Style x:Key="SectionHdr" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+            <Setter Property="Foreground" Value="#555"/>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,8">
+        <StackPanel>
+
+            <!-- Overlay modes -->
+            <TextBlock Text="Overlay Modes" Style="{StaticResource SectionHdr}"/>
+
+            <CheckBox x:Name="EditModeCheck"
+                      Content="Edit mode (unlock overlays for repositioning)"
+                      Margin="0,2"
+                      Checked="EditMode_Changed" Unchecked="EditMode_Changed"/>
+
+            <CheckBox x:Name="StreamModeCheck"
+                      Content="Stream mode (apply stream overrides)"
+                      Margin="0,4,0,2"
+                      Checked="StreamMode_Changed" Unchecked="StreamMode_Changed"/>
+
+            <!-- Startup -->
+            <TextBlock Text="Startup" Style="{StaticResource SectionHdr}"/>
+
+            <CheckBox x:Name="StartWithWindowsCheck"
+                      Content="Start with Windows"
+                      Margin="0,2"/>
+
+            <TextBlock Foreground="#888" FontSize="11" Margin="20,2,0,0"
+                       Text="Adds NrgOverlay to HKCU\...\Run so it launches at login."/>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
+

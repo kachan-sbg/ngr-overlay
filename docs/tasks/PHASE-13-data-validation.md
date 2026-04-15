@@ -1,4 +1,4 @@
-# Phase 13 — Data Validation & Correctness Audit
+﻿# Phase 13 вЂ” Data Validation & Correctness Audit
 
 > **Goal:** Every field in every overlay displays a correct value or is explicitly hidden
 > when the sim has no valid data.  This is the gate to sharing the app publicly.
@@ -21,7 +21,7 @@ for them.  Other simracers can't rely on the app until this is resolved.
 
 ---
 
-### TASK-1301 · iRacing field audit
+### TASK-1301 В· iRacing field audit
 
 **Status:** `[ ]`
 
@@ -30,26 +30,26 @@ Verify every field published by `IRacingPoller` and `IRacingRelativeCalculator`.
 **Fields to verify (per DTO):**
 
 `TelemetryData`:
-- Speed — correct unit (m/s from SDK, convert to km/h); verify at known speed
-- Gear — -1=reverse, 0=neutral, 1-6; confirm sign
-- RPM — range check at idle vs redline
-- Throttle / Brake / Clutch — 0.0–1.0 (unfiltered preferred for overlay)
-- Fuel — unit (litres vs gallons config), non-negative, drops during race
-- FuelCapacity — static per car, reasonable range (20–120 L)
-- SteeringAngle — sign convention (left=negative or positive?), units (radians → degrees)
-- Incidents — increases on contact, never decreases during session
-- MaxIncidents — from session info, > 0
+- Speed вЂ” correct unit (m/s from SDK, convert to km/h); verify at known speed
+- Gear вЂ” -1=reverse, 0=neutral, 1-6; confirm sign
+- RPM вЂ” range check at idle vs redline
+- Throttle / Brake / Clutch вЂ” 0.0вЂ“1.0 (unfiltered preferred for overlay)
+- Fuel вЂ” unit (litres vs gallons config), non-negative, drops during race
+- FuelCapacity вЂ” static per car, reasonable range (20вЂ“120 L)
+- SteeringAngle вЂ” sign convention (left=negative or positive?), units (radians в†’ degrees)
+- Incidents вЂ” increases on contact, never decreases during session
+- MaxIncidents вЂ” from session info, > 0
 
 `SessionData`:
-- TrackLength — metres, plausible range (500 m – 10 000 m)
-- AirTemp / TrackTemp — Celsius, plausible range (-10–60)
-- SessionType — correct enum mapping for Practice / Qualify / Race / Test
-- SessionTimeRemain — countdown, -1 when laps-based
+- TrackLength вЂ” metres, plausible range (500 m вЂ“ 10 000 m)
+- AirTemp / TrackTemp вЂ” Celsius, plausible range (-10вЂ“60)
+- SessionType вЂ” correct enum mapping for Practice / Qualify / Race / Test
+- SessionTimeRemain вЂ” countdown, -1 when laps-based
 
 `RelativeData` / `StandingsData`:
-- Gap values — sign convention (positive = ahead, negative = behind?)
-- ClassPosition — 1-based within class
-- ClassColor — parsed as hex string, non-null
+- Gap values вЂ” sign convention (positive = ahead, negative = behind?)
+- ClassPosition вЂ” 1-based within class
+- ClassColor вЂ” parsed as hex string, non-null
 
 **Acceptance criteria:**
 - [ ] All fields confirmed or corrected against SDK reference
@@ -60,7 +60,7 @@ Verify every field published by `IRacingPoller` and `IRacingRelativeCalculator`.
 
 ---
 
-### TASK-1302 · LMU field audit
+### TASK-1302 В· LMU field audit
 
 **Status:** `[ ]`
 
@@ -70,22 +70,22 @@ Verify every field published by `LmuPoller`, `LmuSessionDecoder`, and
 **Fields to verify:**
 
 `TelemetryData`:
-- Speed — from `mLocalVel` vector magnitude; confirm m/s → km/h conversion
-- Gear — mGear: -1=reverse, 0=neutral; confirm against in-game display
-- RPM — mEngineRPM, range at idle vs redline
-- Throttle/Brake/Clutch — unfiltered (`mUnfilteredThrottle` etc.), 0.0–1.0
-- Fuel — mFuel litres; decreases; non-negative; compare to FuelCapacity
-- FuelCapacity — mFuelCapacity, static per car
-- SteeringAngle — mUnfilteredSteering, sign convention
-- SpeedLimiter — mSpeedLimiterActive at offset 748 (confirmed); verify lamp matches
+- Speed вЂ” from `mLocalVel` vector magnitude; confirm m/s в†’ km/h conversion
+- Gear вЂ” mGear: -1=reverse, 0=neutral; confirm against in-game display
+- RPM вЂ” mEngineRPM, range at idle vs redline
+- Throttle/Brake/Clutch вЂ” unfiltered (`mUnfilteredThrottle` etc.), 0.0вЂ“1.0
+- Fuel вЂ” mFuel litres; decreases; non-negative; compare to FuelCapacity
+- FuelCapacity вЂ” mFuelCapacity, static per car
+- SteeringAngle вЂ” mUnfilteredSteering, sign convention
+- SpeedLimiter вЂ” mSpeedLimiterActive at offset 748 (confirmed); verify lamp matches
   pit-road entry/exit
-- Incidents — not available in LMU; must publish `-1`, overlay must hide it
+- Incidents вЂ” not available in LMU; must publish `-1`, overlay must hide it
 
 `SessionData`:
-- TrackName — from mTrackName, non-empty in session
-- TrackLength — mLapDist at finish line (max mLapDist), plausible value
-- AirTemp / TrackTemp — mAmbientTemp / mTrackTemp, plausible Celsius
-- CurrentET — mCurrentET, increases during session
+- TrackName вЂ” from mTrackName, non-empty in session
+- TrackLength вЂ” mLapDist at finish line (max mLapDist), plausible value
+- AirTemp / TrackTemp вЂ” mAmbientTemp / mTrackTemp, plausible Celsius
+- CurrentET вЂ” mCurrentET, increases during session
 
 `RelativeData`:
 - Gaps computed from `mLapDist` / TrackLength; confirm positive = ahead
@@ -95,11 +95,11 @@ Verify every field published by `LmuPoller`, `LmuSessionDecoder`, and
 - [ ] All fields confirmed with LmuDiag output or corrected
 - [ ] `LmuSessionDecoder` and `LmuRelativeCalculator` unit tests extended
 - [ ] SpeedLimiter lamp verified in pit lane
-- [ ] Fuel matches in-game HUD within ±0.5 L
+- [ ] Fuel matches in-game HUD within В±0.5 L
 
 ---
 
-### TASK-1303 · Overlay display rules — hide unavailable data
+### TASK-1303 В· Overlay display rules вЂ” hide unavailable data
 
 **Status:** `[ ]`
 
@@ -122,20 +122,20 @@ Define and enforce per-overlay rules for when fields should be hidden.
 **Implementation notes:**
 - Sentinel values: `IRating == 0`, `LicenseClass == Unknown`, `IncidentCount == -1`
   all indicate "not available".
-- Overlays should check sentinels and render "—" or skip the row/field rather than
+- Overlays should check sentinels and render "вЂ”" or skip the row/field rather than
   showing `0` or `R 0.00`.
 - Add an `ISimDataBus` helper or DTO property (e.g. `bool HasIRating`) if repeated
   null-checks in overlays become unwieldy.
 
 **Acceptance criteria:**
-- [ ] iRacing fields unavailable in LMU show "—" or are hidden across all overlays
+- [ ] iRacing fields unavailable in LMU show "вЂ”" or are hidden across all overlays
 - [ ] Fields not valid before InSession don't show garbage (e.g. fuel = 0 in garage)
 - [ ] Input Telemetry clutch bar hidden when `TelemetryData.Clutch < 0` (sentinel TBD)
-- [ ] All changes covered by `SimOverlay.Overlays.Tests` render tests
+- [ ] All changes covered by `NrgOverlay.Overlays.Tests` render tests
 
 ---
 
-### TASK-1304 · Regression snapshot tests
+### TASK-1304 В· Regression snapshot tests
 
 **Status:** `[ ]`
 
@@ -143,8 +143,8 @@ Add recorded-session snapshot tests so future changes can't silently break field
 
 **What to build:**
 - Record a short JSON snapshot of each DTO type from a real iRacing + LMU session
-  (sanitised — no personal data).
-- Unit tests in `SimOverlay.Sim.iRacing.Tests` and `SimOverlay.Sim.LMU.Tests` feed
+  (sanitised вЂ” no personal data).
+- Unit tests in `NrgOverlay.Sim.iRacing.Tests` and `NrgOverlay.Sim.LMU.Tests` feed
   these snapshots through the decoders and assert on key field values.
 - Acts as a regression gate: if a struct offset or conversion changes, at least one
   snapshot test fails.
@@ -162,3 +162,4 @@ Add recorded-session snapshot tests so future changes can't silently break field
 Session-stability blockers (crash/hang/data corruption risks) are tracked in
 [`docs/CRITICAL-ISSUES.md`](../CRITICAL-ISSUES.md) and must remain resolved while
 Phase 13 field validation work proceeds.
+

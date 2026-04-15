@@ -1,0 +1,46 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Resources\nrgoverlay.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\nrgoverlay.ico" Condition="Exists('Resources\nrgoverlay.ico')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Resources\nrgoverlay.ico</Link>
+    </Content>
+    <Content Include="Resources\nrgoverlay-logo.svg" Condition="Exists('Resources\nrgoverlay-logo.svg')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Resources\nrgoverlay-logo.svg</Link>
+    </Content>
+    <Content Include="Resources\nrgoverlay-logo.png" Condition="Exists('Resources\nrgoverlay-logo.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Resources\nrgoverlay-logo.png</Link>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>NrgOverlay.App.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NrgOverlay.Core\NrgOverlay.Core.csproj" />
+    <ProjectReference Include="..\NrgOverlay.Rendering\NrgOverlay.Rendering.csproj" />
+    <ProjectReference Include="..\NrgOverlay.Sim.Contracts\NrgOverlay.Sim.Contracts.csproj" />
+    <ProjectReference Include="..\NrgOverlay.Sim.iRacing\NrgOverlay.Sim.iRacing.csproj" />
+    <ProjectReference Include="..\NrgOverlay.Sim.LMU\NrgOverlay.Sim.LMU.csproj" />
+    <ProjectReference Include="..\NrgOverlay.Overlays\NrgOverlay.Overlays.csproj" />
+  </ItemGroup>
+
+</Project>
+

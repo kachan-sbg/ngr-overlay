@@ -1,13 +1,13 @@
-# Phase 12 — OBS Mode & Enhanced UX
+﻿# Phase 12 вЂ” OBS Mode & Enhanced UX
 
-> **Goal:** Polish the OBS/streaming workflow and add UX features that bring SimOverlay
+> **Goal:** Polish the OBS/streaming workflow and add UX features that bring NrgOverlay
 > to competitive parity with established apps.
 >
 > **OBS Mode approach for Alpha:** The existing stream override system (single window, toggle
 > between driver/OBS appearance) is the correct approach. This phase enhances the toggle UX,
 > ensures all new overlays have full stream override support, and makes the workflow seamless.
 > True simultaneous dual-view (different driver + OBS layouts at the same time) is a post-Alpha
-> goal — see architecture notes below.
+> goal вЂ” see architecture notes below.
 
 ## Status: `[ ]` Not started
 
@@ -17,8 +17,8 @@
 
 For Alpha, we keep the single-window toggle approach:
 1. Driver configures two profiles per overlay: **Screen** (their view) and **OBS** (viewer view)
-2. Before going live, driver toggles "OBS Mode" — all overlays switch to their OBS profile
-3. OBS captures what's on screen — the OBS profile
+2. Before going live, driver toggles "OBS Mode" вЂ” all overlays switch to their OBS profile
+3. OBS captures what's on screen вЂ” the OBS profile
 4. After streaming, driver toggles back
 
 This is how SimHub, iOverlay, and most competitors work. It covers the primary use case
@@ -33,14 +33,14 @@ This is how SimHub, iOverlay, and most competitors work. It covers the primary u
 
 ---
 
-### TASK-1201 · OBS Mode UX refinement
+### TASK-1201 В· OBS Mode UX refinement
 
 **Status:** `[ ]`
 
 Rename "Stream Mode" to "OBS Mode" throughout the UI and make the toggle more prominent.
 
 **What to build:**
-- Rename all UI references: "Stream Mode" → "OBS Mode", "Stream Override" → "OBS Profile"
+- Rename all UI references: "Stream Mode" в†’ "OBS Mode", "Stream Override" в†’ "OBS Profile"
 - Tray icon: "OBS Mode" checkbox (already exists as "Stream mode")
 - Add OBS Mode status indicator: when active, overlay title bars in edit mode show "(OBS)" suffix
 - Hotkey for OBS Mode toggle (TASK-1203)
@@ -60,7 +60,7 @@ Rename "Stream Mode" to "OBS Mode" throughout the UI and make the toggle more pr
 
 ---
 
-### TASK-1202 · Session-type profiles
+### TASK-1202 В· Session-type profiles
 
 **Status:** `[ ]`
 
@@ -77,12 +77,12 @@ Auto-switch overlay configurations based on session type (Practice, Qualifying, 
 - Session profile is a partial override (same null-coalescing pattern as stream override)
 - When `SessionData.SessionType` changes, overlays resolve: `sessionProfile ?? base config`
 - OBS profile stacks on top: `obsProfile ?? sessionProfile ?? base`
-- Config resolution order: base → session profile → OBS profile
+- Config resolution order: base в†’ session profile в†’ OBS profile
 - Settings UI: tab or dropdown per session type to configure overrides
 
 **Acceptance criteria:**
 - [ ] Overlay appearance changes automatically on session type transition
-- [ ] Practice → Qualifying → Race transitions handled
+- [ ] Practice в†’ Qualifying в†’ Race transitions handled
 - [ ] Null fields inherit from base (same pattern as OBS profile)
 - [ ] OBS profile stacks on top of session profile
 - [ ] Settings UI allows configuring per-session overrides
@@ -93,7 +93,7 @@ Auto-switch overlay configurations based on session type (Practice, Qualifying, 
 
 ---
 
-### TASK-1203 · Global hotkey system
+### TASK-1203 В· Global hotkey system
 
 **Status:** `[ ]`
 
@@ -106,8 +106,8 @@ Configurable keyboard shortcuts for overlay control.
   - Toggle OBS mode (default: Ctrl+Shift+O)
   - Show/hide all overlays (default: Ctrl+Shift+H)
   - Open settings (default: F9)
-  - Per-overlay toggle visibility (no defaults — user assigns)
-  - Exit (no default — tray only, or user assigns)
+  - Per-overlay toggle visibility (no defaults вЂ” user assigns)
+  - Exit (no default вЂ” tray only, or user assigns)
 - Config section in `GlobalSettings`:
   ```json
   "hotkeys": {
@@ -117,7 +117,7 @@ Configurable keyboard shortcuts for overlay control.
     "openSettings": "F9"
   }
   ```
-- `MessagePump`: parse hotkey strings → `RegisterHotKey` with correct modifier + virtual key
+- `MessagePump`: parse hotkey strings в†’ `RegisterHotKey` with correct modifier + virtual key
 - Handle conflicts: if `RegisterHotKey` fails, log a warning and show in Settings
 
 **Acceptance criteria:**
@@ -132,7 +132,7 @@ Configurable keyboard shortcuts for overlay control.
 
 ---
 
-### TASK-1204 · Buddy / friend list
+### TASK-1204 В· Buddy / friend list
 
 **Status:** `[ ]`
 
@@ -157,7 +157,7 @@ Highlight specific drivers in Relative and Standings overlays.
 
 ---
 
-### TASK-1205 · Column customization for Relative and Standings
+### TASK-1205 В· Column customization for Relative and Standings
 
 **Status:** `[ ]`
 
@@ -184,7 +184,7 @@ Allow users to show/hide and reorder columns in tabular overlays.
 
 ---
 
-### TASK-1206 · Positions gained/lost indicator
+### TASK-1206 В· Positions gained/lost indicator
 
 **Status:** `[ ]`
 
@@ -193,22 +193,22 @@ Show how many positions each driver has gained or lost since race start.
 **What to build:**
 - Track starting position per driver (captured from session data at race start)
 - Compute delta: `startPosition - currentPosition` (positive = gained, negative = lost)
-- Display as small `+N` (green) or `-N` (red) or `—` (unchanged)
+- Display as small `+N` (green) or `-N` (red) or `вЂ”` (unchanged)
 - Only active during Race sessions; hidden in Practice/Qualifying
 
 **Acceptance criteria:**
 - [ ] Starting positions captured at race start
 - [ ] Gains shown in green, losses in red
-- [ ] Zero change shown as "—" or hidden
+- [ ] Zero change shown as "вЂ”" or hidden
 - [ ] Only visible during Race sessions
 - [ ] Works in both Relative and Standings overlays
-- [ ] Handles mid-race join (no starting position → show "—")
+- [ ] Handles mid-race join (no starting position в†’ show "вЂ”")
 
 **Dependencies:** TASK-1003 (Standings).
 
 ---
 
-### TASK-1207 · Multi-class color scheme configuration
+### TASK-1207 В· Multi-class color scheme configuration
 
 **Status:** `[ ]`
 
@@ -231,3 +231,4 @@ Allow users to customize the colors assigned to each car class.
 **Dependencies:** TASK-705 (multi-class data model), TASK-1003 (Standings), TASK-1103 (Flat Map).
 
 ---
+

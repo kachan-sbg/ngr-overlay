@@ -1,8 +1,8 @@
-# test-run.ps1 — Build SimOverlay and launch with a clean test config.
+﻿# test-run.ps1 - Build NrgOverlay and launch with a clean test config.
 # Run from repo root: .\test-run.ps1
 # Optional flags:
 #   -Configuration Release   (default: Debug)
-#   -KeepConfig              (skip config wipe — use existing %APPDATA%\SimOverlay\config.json)
+#   -KeepConfig              (skip config wipe - use existing %APPDATA%\NrgOverlay\config.json)
 
 param(
     [string] $Configuration = "Debug",
@@ -10,12 +10,12 @@ param(
 )
 
 $repo    = $PSScriptRoot
-$sln     = Join-Path $repo "SimOverlay.sln"
-$exe     = Join-Path $repo "src\SimOverlay.App\bin\x64\$Configuration\net8.0-windows\SimOverlay.App.exe"
-$cfgDir  = Join-Path $env:APPDATA "SimOverlay"
+$sln     = Join-Path $repo "NrgOverlay.sln"
+$exe     = Join-Path $repo "src\NrgOverlay.App\bin\x64\$Configuration\net8.0-windows\NrgOverlay.App.exe"
+$cfgDir  = Join-Path $env:APPDATA "NrgOverlay"
 $cfgFile = Join-Path $cfgDir "config.json"
 
-# ── 1. Build ──────────────────────────────────────────────────────────────────
+# в”Ђв”Ђ 1. Build в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 Write-Host ""
 Write-Host "==> Building $Configuration x64..." -ForegroundColor Cyan
 
@@ -34,7 +34,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "==> Build succeeded." -ForegroundColor Green
 
-# ── 2. Config ────────────────────────────────────────────────────────────────
+# в”Ђв”Ђ 2. Config в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 if ($KeepConfig) {
     Write-Host "==> Keeping existing config at $cfgFile" -ForegroundColor Yellow
 } else {
@@ -42,7 +42,9 @@ if ($KeepConfig) {
     if (Test-Path $cfgDir) { Remove-Item $cfgDir -Recurse -Force }
 }
 
-# ── 3. Launch ────────────────────────────────────────────────────────────────
+# в”Ђв”Ђ 3. Launch в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 Write-Host "==> Launching $exe"
 Write-Host ""
 & $exe
+
+

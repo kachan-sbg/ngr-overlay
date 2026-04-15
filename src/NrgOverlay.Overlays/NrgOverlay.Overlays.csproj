@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>NrgOverlay.Overlays.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" />
+    <PackageReference Include="Svg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\flags\4x3\*.svg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NrgOverlay.Core\NrgOverlay.Core.csproj" />
+    <ProjectReference Include="..\NrgOverlay.Rendering\NrgOverlay.Rendering.csproj" />
+    <ProjectReference Include="..\NrgOverlay.Sim.Contracts\NrgOverlay.Sim.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
+

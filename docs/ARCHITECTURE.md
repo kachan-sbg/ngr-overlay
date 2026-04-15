@@ -1,6 +1,6 @@
-# ARCHITECTURE.md
+﻿# ARCHITECTURE.md
 
-## Racing Simulator Overlay — Technical Architecture
+## Racing Simulator Overlay вЂ” Technical Architecture
 
 > **Don't read this whole file.** Use the index below to read only sections relevant to your task.
 > For file-level navigation start with [`docs/CODE-NAV.md`](CODE-NAV.md). CLAUDE.md has dependency rules and critical constraints.
@@ -8,19 +8,19 @@
 ### Section index
 | # | Section | Lines | Read when... |
 |---|---|---|---|
-| 1 | Solution Structure | 5–61 | Rarely — already in CLAUDE.md |
-| 2 | Project Responsibilities | 63–251 | Adding/modifying types in a project |
-| 3 | Process Model | 253–261 | Thread safety questions |
-| 4 | Rendering Pipeline | 263–286 | Touching OverlayWindow / BaseOverlay / render loop |
-| 5 | Data Flow | 288–320 | Touching SimDataBus / poller / overlay data path |
-| 6 | Configuration System | 322–431 | Touching config, settings, stream override |
-| 7 | Overlay Lifecycle | 433–442 | Adding overlays, enable/disable logic |
-| 8 | Lock / Unlock (Edit Mode) | 444–453 | Edit mode, drag/resize, WS_EX_TRANSPARENT |
-| 9 | Extensibility: Adding a New Sim | 455–465 | LMU integration (Phase 9) |
-| 10 | Dependency Injection | 467–478 | DI wiring (TASK-703) |
-| 11 | OBS Capture Compatibility | 480–518 | OBS/stream mode, window styles |
-| 12 | Error Handling Strategy | 521–528 | Error recovery, device lost |
-| 13 | Performance Benchmarks | 530–556 | Benchmark workflow, hot-path targets |
+| 1 | Solution Structure | 5вЂ“61 | Rarely вЂ” already in CLAUDE.md |
+| 2 | Project Responsibilities | 63вЂ“251 | Adding/modifying types in a project |
+| 3 | Process Model | 253вЂ“261 | Thread safety questions |
+| 4 | Rendering Pipeline | 263вЂ“286 | Touching OverlayWindow / BaseOverlay / render loop |
+| 5 | Data Flow | 288вЂ“320 | Touching SimDataBus / poller / overlay data path |
+| 6 | Configuration System | 322вЂ“431 | Touching config, settings, stream override |
+| 7 | Overlay Lifecycle | 433вЂ“442 | Adding overlays, enable/disable logic |
+| 8 | Lock / Unlock (Edit Mode) | 444вЂ“453 | Edit mode, drag/resize, WS_EX_TRANSPARENT |
+| 9 | Extensibility: Adding a New Sim | 455вЂ“465 | LMU integration (Phase 9) |
+| 10 | Dependency Injection | 467вЂ“478 | DI wiring (TASK-703) |
+| 11 | OBS Capture Compatibility | 480вЂ“518 | OBS/stream mode, window styles |
+| 12 | Error Handling Strategy | 521вЂ“528 | Error recovery, device lost |
+| 13 | Performance Benchmarks | 530вЂ“556 | Benchmark workflow, hot-path targets |
 | 14 | Resource Lifecycle & Memory | ~560+ | Touching IDisposable, event handlers, native handles |
 
 ---
@@ -28,83 +28,83 @@
 ### 1. Solution Structure
 
 ```
-SimOverlay.sln
-├── src/
-│   ├── SimOverlay.Core/
-│   ├── SimOverlay.Rendering/
-│   ├── SimOverlay.Sim.Contracts/
-│   ├── SimOverlay.Sim.iRacing/
-│   ├── SimOverlay.Sim.LMU/
-│   ├── SimOverlay.Overlays/
-│   └── SimOverlay.App/
-├── tests/
-│   ├── SimOverlay.Core.Tests/
-│   ├── SimOverlay.Sim.iRacing.Tests/
-│   ├── SimOverlay.Sim.LMU.Tests/
-│   ├── SimOverlay.Overlays.Tests/
-│   └── SimOverlay.Benchmarks/      — BenchmarkDotNet suite (not a test runner)
-└── docs/
-    ├── README.md
-    ├── ARCHITECTURE.md
-    ├── OVERLAYS.md
-    ├── DECISIONS.md
-    ├── KNOWN_ISSUES.md
-    └── tasks/
-        ├── INDEX.md
-        ├── PHASE-0-scaffolding.md
-        ├── PHASE-1-rendering.md
-        ├── PHASE-2-iracing.md
-        └── ...
+NrgOverlay.sln
+в”њв”Ђв”Ђ src/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Core/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Rendering/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Sim.Contracts/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Sim.iRacing/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Sim.LMU/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Overlays/
+в”‚   в””в”Ђв”Ђ NrgOverlay.App/
+в”њв”Ђв”Ђ tests/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Core.Tests/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Sim.iRacing.Tests/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Sim.LMU.Tests/
+в”‚   в”њв”Ђв”Ђ NrgOverlay.Overlays.Tests/
+в”‚   в””в”Ђв”Ђ NrgOverlay.Benchmarks/      вЂ” BenchmarkDotNet suite (not a test runner)
+в””в”Ђв”Ђ docs/
+    в”њв”Ђв”Ђ README.md
+    в”њв”Ђв”Ђ ARCHITECTURE.md
+    в”њв”Ђв”Ђ OVERLAYS.md
+    в”њв”Ђв”Ђ DECISIONS.md
+    в”њв”Ђв”Ђ KNOWN_ISSUES.md
+    в””в”Ђв”Ђ tasks/
+        в”њв”Ђв”Ђ INDEX.md
+        в”њв”Ђв”Ђ PHASE-0-scaffolding.md
+        в”њв”Ђв”Ђ PHASE-1-rendering.md
+        в”њв”Ђв”Ђ PHASE-2-iracing.md
+        в””в”Ђв”Ђ ...
 ```
 
 #### Project Dependency Graph
 
 ```
 App
- ├── Rendering
- ├── Overlays
- ├── Sim.iRacing
- ├── Sim.LMU
- ├── Sim.Contracts
- └── Core
+ в”њв”Ђв”Ђ Rendering
+ в”њв”Ђв”Ђ Overlays
+ в”њв”Ђв”Ђ Sim.iRacing
+ в”њв”Ђв”Ђ Sim.LMU
+ в”њв”Ђв”Ђ Sim.Contracts
+ в””в”Ђв”Ђ Core
 
 Overlays
- ├── Rendering
- ├── Sim.Contracts
- └── Core
+ в”њв”Ђв”Ђ Rendering
+ в”њв”Ђв”Ђ Sim.Contracts
+ в””в”Ђв”Ђ Core
 
 Rendering
- └── Core
+ в””в”Ђв”Ђ Core
 
 Sim.iRacing
- ├── Sim.Contracts
- └── Core
+ в”њв”Ђв”Ђ Sim.Contracts
+ в””в”Ђв”Ђ Core
 
 Sim.LMU
- ├── Sim.Contracts
- └── Core
+ в”њв”Ђв”Ђ Sim.Contracts
+ в””в”Ђв”Ђ Core
 
 Sim.Contracts
- └── Core
+ в””в”Ђв”Ђ Core
 ```
 
 `Core` has zero external project dependencies. `Sim.Contracts` depends only on `Core`. No project may depend on `App`. No project in `Sim.*` may depend on `Rendering` or `Overlays`.
 
 ### 2. Project Responsibilities
 
-#### SimOverlay.Core
+#### NrgOverlay.Core
 
 Responsibility: domain types, configuration schema, and the in-process data bus. No UI, no rendering, no P/Invoke.
 
 Key types:
-- `OverlayConfig` — POCO: position, size, opacity, colors, font size, enabled flag.
-- `AppConfig` — root configuration object: `Version` (int, schema version), list of `OverlayConfig`, global flags.
-- `ConfigMigrator` — sequential migration pipeline. On load, migrates config from its persisted `Version` up to `ConfigMigrator.CurrentVersion`. Each version bump has a corresponding `MigrateVxToVy` method.
-- `ConfigStore` — reads and writes `AppConfig` to `%APPDATA%\SimOverlay\config.json` using `System.Text.Json`. Calls `ConfigMigrator.MigrateToLatest()` after every load.
-- `ISimDataBus` / `SimDataBus` — thin publish/subscribe bus. Producers call `Publish<T>(T data)`. Consumers call `Subscribe<T>(Action<T> handler)`. Backed by `Channel<object>` or direct delegate dispatch on the data thread. Thread-safe.
-- `SimState` — enum: `Disconnected`, `Connected`, `InSession`.
+- `OverlayConfig` вЂ” POCO: position, size, opacity, colors, font size, enabled flag.
+- `AppConfig` вЂ” root configuration object: `Version` (int, schema version), list of `OverlayConfig`, global flags.
+- `ConfigMigrator` вЂ” sequential migration pipeline. On load, migrates config from its persisted `Version` up to `ConfigMigrator.CurrentVersion`. Each version bump has a corresponding `MigrateVxToVy` method.
+- `ConfigStore` вЂ” reads and writes `AppConfig` to `%APPDATA%\NrgOverlay\config.json` using `System.Text.Json`. Calls `ConfigMigrator.MigrateToLatest()` after every load.
+- `ISimDataBus` / `SimDataBus` вЂ” thin publish/subscribe bus. Producers call `Publish<T>(T data)`. Consumers call `Subscribe<T>(Action<T> handler)`. Backed by `Channel<object>` or direct delegate dispatch on the data thread. Thread-safe.
+- `SimState` вЂ” enum: `Disconnected`, `Connected`, `InSession`.
 
-#### SimOverlay.Sim.Contracts
+#### NrgOverlay.Sim.Contracts
 
 Responsibility: define the normalized, sim-agnostic data model that all providers produce and all overlays consume. No implementation logic.
 
@@ -166,21 +166,21 @@ LicenseClass                           // enum with color mapping helper
 
 `ISimProvider` implementations push data by calling `ISimDataBus.Publish<T>()` directly. They do not return data from methods.
 
-#### SimOverlay.Sim.iRacing
+#### NrgOverlay.Sim.iRacing
 
 Responsibility: implement `ISimProvider` for iRacing using the `Local\IRSDKMemMapFileName` shared memory file.
 
 Key types:
-- `IRacingProvider : ISimProvider` — wraps IRSDKSharper (preferred) or a raw MMF reader. Manages connection lifecycle.
-- `IRacingPoller` — wraps `IRacingSdk` (IRSDKSharper NuGet v1.1.6, namespace `IRSDKSharper`). IRacingSdk owns its own background thread and fires `OnTelemetryData` at ~60 Hz and `OnSessionInfo` when the YAML session string changes. `IRacingPoller` handles these events, builds domain snapshots, and publishes to `ISimDataBus`. `RelativeData` is published every 6th telemetry tick (~10 Hz).
-- `IRacingSessionDecoder` — static decoder called from `IRacingPoller.OnSessionInfo`. Converts the typed `IRacingSdkSessionInfo` YAML model into `SessionData` + `List<DriverSnapshot>`.
-- `IRacingRelativeCalculator` — computes gap-to-player from track position (`LapDistPct` for each car) and constructs `RelativeData`. Run at 10 Hz (every 6th 60 Hz tick).
+- `IRacingProvider : ISimProvider` вЂ” wraps IRSDKSharper (preferred) or a raw MMF reader. Manages connection lifecycle.
+- `IRacingPoller` вЂ” wraps `IRacingSdk` (IRSDKSharper NuGet v1.1.6, namespace `IRSDKSharper`). IRacingSdk owns its own background thread and fires `OnTelemetryData` at ~60 Hz and `OnSessionInfo` when the YAML session string changes. `IRacingPoller` handles these events, builds domain snapshots, and publishes to `ISimDataBus`. `RelativeData` is published every 6th telemetry tick (~10 Hz).
+- `IRacingSessionDecoder` вЂ” static decoder called from `IRacingPoller.OnSessionInfo`. Converts the typed `IRacingSdkSessionInfo` YAML model into `SessionData` + `List<DriverSnapshot>`.
+- `IRacingRelativeCalculator` вЂ” computes gap-to-player from track position (`LapDistPct` for each car) and constructs `RelativeData`. Run at 10 Hz (every 6th 60 Hz tick).
 
 Detection: `IRacingProvider.IsRunning()` checks for the existence of the `Local\IRSDKMemMapFileName` named memory-mapped file, or checks whether a process named `iRacingUI` or `iRacing simulator` is running (process name check is less fragile).
 
 Dependency on IRSDKSharper (NuGet `IRSDKSharper`): use `IRacingSdkDatum` for field lookup by name. If IRSDKSharper is unavailable or unsuitable, fall back to raw P/Invoke `OpenFileMapping` / `MapViewOfFile` with manually defined struct offsets from the iRacing SDK documentation.
 
-#### SimOverlay.Rendering
+#### NrgOverlay.Rendering
 
 Responsibility: all Direct2D rendering plumbing. No sim data logic. Provides base types that overlay implementations inherit.
 
@@ -190,8 +190,8 @@ Key types:
 - Creates a Win32 window with styles:
   - `WS_POPUP` (no border/title)
   - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST`
-  - `WS_EX_NOREDIRECTIONBITMAP` is intentionally **omitted** — it tells DWM to skip normal window compositing and hand composition off entirely to DComp. With `UpdateLayeredWindow` we need DWM to composite our bitmap; the flag causes DWM to ignore the ULW bitmap and the window is invisible.
-  - `WS_EX_TOOLWINDOW` is intentionally **omitted** — its presence hides windows from OBS's window picker. See "OBS Capture Compatibility" section below.
+  - `WS_EX_NOREDIRECTIONBITMAP` is intentionally **omitted** вЂ” it tells DWM to skip normal window compositing and hand composition off entirely to DComp. With `UpdateLayeredWindow` we need DWM to composite our bitmap; the flag causes DWM to ignore the ULW bitmap and the window is invisible.
+  - `WS_EX_TOOLWINDOW` is intentionally **omitted** вЂ” its presence hides windows from OBS's window picker. See "OBS Capture Compatibility" section below.
 - **Rendering pipeline**: `ID2D1DCRenderTarget` (software/CPU) renders directly into a GDI memory DC that has a 32-bit premultiplied-alpha DIB section selected. Each frame calls `UpdateLayeredWindow(ULW_ALPHA)` to present the DIB to DWM. No GPU resources are used in the presentation path.
 - Exposes `ID2D1RenderTarget` for subclasses to draw into.
 - Handles `WM_NCHITTEST` returning `HTTRANSPARENT` in locked mode; returns `HTCAPTION` / `HTBOTTOMRIGHT` in unlocked mode (to allow drag/resize).
@@ -200,11 +200,11 @@ Key types:
 
 `BaseOverlay : OverlayWindow`
 - Adds `OverlayConfig` property.
-- Abstract method `OnRender(ID2D1RenderTarget context, OverlayConfig config)` — called each frame.
+- Abstract method `OnRender(ID2D1RenderTarget context, OverlayConfig config)` вЂ” called each frame.
 - Always draws the overlay background fill before calling `OnRender()`, guaranteeing the window is visible even when `OnRender` draws nothing.
 - Manages a 60 fps render loop on a dedicated background thread.
-- `Render()`: `BindDC` → `BeginDraw` → clear transparent → draw background → `OnRender` (or placeholder) → `EndDraw` → `UpdateLayeredWindow`.
-- Sim-state rendering: when `SimState != InSession`, renders a placeholder ("Sim not detected" or "Waiting for session…") instead of calling `OnRender`. The background fill is drawn in all states.
+- `Render()`: `BindDC` в†’ `BeginDraw` в†’ clear transparent в†’ draw background в†’ `OnRender` (or placeholder) в†’ `EndDraw` в†’ `UpdateLayeredWindow`.
+- Sim-state rendering: when `SimState != InSession`, renders a placeholder ("Sim not detected" or "Waiting for sessionвЂ¦") instead of calling `OnRender`. The background fill is drawn in all states.
 - Each overlay subscribes to relevant message types on `ISimDataBus` in its constructor. Subscriptions are unregistered on `Dispose()`.
 
 Render-data synchronization: each `BaseOverlay` subclass maintains a `volatile` reference to a snapshot object (or a simple lock-free struct copy). Data-bus callbacks write a new snapshot. `OnRender()` reads the latest snapshot. No blocking between the data thread and the render thread.
@@ -225,25 +225,25 @@ Render-data synchronization: each `BaseOverlay` subclass maintains a `volatile` 
 - Installs a `WinEvent EVENT_OBJECT_REORDER` hook that fires on the UI message pump whenever any window's z-order changes.
 - When a TOPMOST window not owned by us reorders, calls `BringAllToFront()` to re-assert our overlay positions immediately.
 - Filters out our own `BringToFront` calls (via the owned-handles list) to prevent feedback loops.
-- This is the sole z-order mechanism. (The render loop's periodic BringToFront fallback was removed — it caused DWM re-composition blinks. See DECISIONS.md.)
+- This is the sole z-order mechanism. (The render loop's periodic BringToFront fallback was removed вЂ” it caused DWM re-composition blinks. See DECISIONS.md.)
 
-#### SimOverlay.Overlays
+#### NrgOverlay.Overlays
 
 Responsibility: concrete overlay implementations. Each class inherits `BaseOverlay`, subscribes to the data types it needs, and implements `OnRender()`.
 
 - `RelativeOverlay`
 - `SessionInfoOverlay`
 - `DeltaBarOverlay`
-- `InputTelemetryOverlay` — vertical pedal bars (T/B/C), gear+speed header, scrolling 5-second trace
-- `FuelCalculatorOverlay` — read-only fuel level, avg/lap, laps remaining, fuel-to-finish, pit-add with safety margin
-- `StandingsOverlay` — full-field leaderboard; Combined + ClassGrouped modes; subscribes to `StandingsData`
-- `PitHelperOverlay` — pit limiter speed/compliance (on pit road), compact mode + next-stop estimate (off road)
-- `WeatherOverlay` — air/track temp, wind with compass, humidity, sky, track wetness; rows hidden when unavailable
-- `FlatTrackMapOverlay` — horizontal bar with per-car ticks at LapDistPct; multi-class colors; label overlap mitigation
+- `InputTelemetryOverlay` вЂ” vertical pedal bars (T/B/C), gear+speed header, scrolling 5-second trace
+- `FuelCalculatorOverlay` вЂ” read-only fuel level, avg/lap, laps remaining, fuel-to-finish, pit-add with safety margin
+- `StandingsOverlay` вЂ” full-field leaderboard; Combined + ClassGrouped modes; subscribes to `StandingsData`
+- `PitHelperOverlay` вЂ” pit limiter speed/compliance (on pit road), compact mode + next-stop estimate (off road)
+- `WeatherOverlay` вЂ” air/track temp, wind with compass, humidity, sky, track wetness; rows hidden when unavailable
+- `FlatTrackMapOverlay` вЂ” horizontal bar with per-car ticks at LapDistPct; multi-class colors; label overlap mitigation
 
 Detailed specifications in OVERLAYS.md.
 
-#### SimOverlay.App
+#### NrgOverlay.App
 
 Responsibility: entry point, orchestration, sim detection loop, tray icon, settings window.
 
@@ -261,14 +261,14 @@ Key types:
 - Runs a background timer every 10 seconds.
 - On every tick, polls **all** registered `ISimProvider` instances in priority order, picking the first one that reports `IsRunning()` as the "preferred" provider.
 - When a new preferred provider appears with nothing active: calls `provider.Start()`, sets it as active; fires `ActiveProviderChanged`.
-- Sim switching: if a higher-priority sim starts while a lower-priority one is active, `StopActive()` then `StartProvider()` in the same tick — no manual intervention required.
-- Disconnect debounce: the active provider must report `IsRunning()==false` for **2 consecutive ticks** (≈20 s) before it is stopped — avoids false disconnects from transient SDK hiccups.
+- Sim switching: if a higher-priority sim starts while a lower-priority one is active, `StopActive()` then `StartProvider()` in the same tick вЂ” no manual intervention required.
+- Disconnect debounce: the active provider must report `IsRunning()==false` for **2 consecutive ticks** (в‰€20 s) before it is stopped вЂ” avoids false disconnects from transient SDK hiccups.
 - Only one provider is active at a time; priority is determined by the order of the provider list.
 - Fires `ActiveProviderChanged` event (null = no sim active); forwards provider `StateChanged` to the data bus as `SimStateChangedEvent`.
 
 `TrayIconController`
 - `System.Windows.Forms.NotifyIcon` (requires `<UseWindowsForms>true</UseWindowsForms>`).
-- Context menu: "Settings…", "Edit mode" (CheckOnClick), "Stream mode" (CheckOnClick), "Exit".
+- Context menu: "SettingsвЂ¦", "Edit mode" (CheckOnClick), "Stream mode" (CheckOnClick), "Exit".
 - Double-click opens Settings window.
 - Checkbox states synced from `OverlayManager` each time the menu opens (`_syncingMenu` flag prevents feedback loop on programmatic set).
 - Edit/stream mode changes delegated to `OverlayManager.SetEditMode` / `SetStreamMode`.
@@ -280,20 +280,20 @@ Key types:
 - Per-overlay panel has two tabs: **Screen** (base config) and **Stream Override**.
   - Screen tab: Position & Size, Appearance, overlay-specific sections (hidden via `Visibility.Collapsed` for non-applicable overlays).
   - Stream Override tab: "Enable stream override" checkbox + per-field `OverrideRow` controls. Each row has a "Custom" checkbox; unchecked = inherit from base (null in JSON), field is dimmed at 0.4 opacity.
-- LostFocus on any field → `OverlayManager.PreviewConfig` (immediate visual feedback, no disk save).
-- Apply button → `OverlayManager.ApplyConfig` (updates position/size, persists to disk).
+- LostFocus on any field в†’ `OverlayManager.PreviewConfig` (immediate visual feedback, no disk save).
+- Apply button в†’ `OverlayManager.ApplyConfig` (updates position/size, persists to disk).
 - `GlobalSettingsPanel`: Edit mode + Stream mode toggles (apply immediately, no Apply button needed); Start With Windows (deferred to Apply, writes registry `HKCU\...\Run`).
 
 `OverlayManager` (coordinator)
 - Owns all three overlay instances and their configs.
-- `SetEditMode(bool)` / `SetStreamMode(bool)` — single source of truth; publishes bus events and keeps `EditModeActive` / `StreamModeActive` readable for UI sync.
-- `PreviewConfig` / `ApplyConfig` — settings preview/apply split.
+- `SetEditMode(bool)` / `SetStreamMode(bool)` вЂ” single source of truth; publishes bus events and keeps `EditModeActive` / `StreamModeActive` readable for UI sync.
+- `PreviewConfig` / `ApplyConfig` вЂ” settings preview/apply split.
 
-Helper controls (all in `SimOverlay.App.Settings`)
-- `FieldRow` — `[ContentProperty(Children)]` labelled row.
-- `ColorEditor` — compact R/G/B/A TextBoxes + preview swatch; DataContext = `ColorViewModel`.
-- `OverrideRow` — "Custom" CheckBox + label + content slot; `HasOverride` DP binds TwoWay to `StreamOverrideViewModel.HasXxx`.
-- `EnumBoolConverter` — `IValueConverter` singleton for RadioButton ↔ enum binding.
+Helper controls (all in `NrgOverlay.App.Settings`)
+- `FieldRow` вЂ” `[ContentProperty(Children)]` labelled row.
+- `ColorEditor` вЂ” compact R/G/B/A TextBoxes + preview swatch; DataContext = `ColorViewModel`.
+- `OverrideRow` вЂ” "Custom" CheckBox + label + content slot; `HasOverride` DP binds TwoWay to `StreamOverrideViewModel.HasXxx`.
+- `EnumBoolConverter` вЂ” `IValueConverter` singleton for RadioButton в†” enum binding.
 
 WPF + Win32 pump coexistence
 - `new Application { ShutdownMode = OnExplicitShutdown }` created before any WPF windows; `Application.Run()` is NOT called.
@@ -305,7 +305,7 @@ There is a single OS process. All windows (overlay windows + settings window) ru
 
 Thread model:
 - **UI Thread**: Win32 message pump for all overlay `HWND`s and the settings `Window`. All `OverlayWindow` HWNDs are created on this thread (Win32 requirement). The message pump is the standard `GetMessage` / `TranslateMessage` / `DispatchMessage` loop.
-- **Render Thread(s)**: Each `BaseOverlay` has its own render loop. These call `ID2D1DCRenderTarget` methods (software rendering, CPU only). Each overlay owns its own `ID2D1Factory` + `ID2D1DCRenderTarget` — there is no shared GPU device. The factory is created with `D2D1_FACTORY_TYPE_MULTI_THREADED` for safety.
+- **Render Thread(s)**: Each `BaseOverlay` has its own render loop. These call `ID2D1DCRenderTarget` methods (software rendering, CPU only). Each overlay owns its own `ID2D1Factory` + `ID2D1DCRenderTarget` вЂ” there is no shared GPU device. The factory is created with `D2D1_FACTORY_TYPE_MULTI_THREADED` for safety.
 - **Data Thread**: One thread per active `ISimProvider`. For iRacing, this is `IRacingPoller`'s dedicated thread. Runs at 60 Hz. Publishes to `ISimDataBus`.
 - **Detection Thread**: `SimDetector` timer runs on `ThreadPool`.
 
@@ -315,24 +315,24 @@ Per frame, per overlay:
 
 1. Render loop fires (target: 60 fps, `Stopwatch`-based sleep).
 2. `OverlayWindow.Render()` acquires `RenderLock`.
-3. Calls `dcRenderTarget.BindDC(hdcMemory, bounds)` — binds the software render target to the GDI memory DC (which has the premultiplied-alpha DIB section selected). Must be called each frame; picks up any resize automatically.
+3. Calls `dcRenderTarget.BindDC(hdcMemory, bounds)` вЂ” binds the software render target to the GDI memory DC (which has the premultiplied-alpha DIB section selected). Must be called each frame; picks up any resize automatically.
 4. Calls `dcRenderTarget.BeginDraw()`.
 5. Clears to fully transparent: `dcRenderTarget.Clear(new Color4(0, 0, 0, 0))`.
 6. `BaseOverlay.OnRender(context)` executes:
    a. Applies any pending config invalidation (`_pendingInvalidate` flag).
    b. Resolves stream-mode-effective config via `_config.Resolve(streamModeActive)`.
    c. **Always** fills the overlay rectangle with `OverlayConfig.BackgroundColor` (ensures the window is never fully transparent regardless of subclass behaviour).
-   d. If `SimState != InSession`: renders the sim-state placeholder ("Sim not detected" or "Waiting for session…").
-   e. If `SimState == InSession`: calls `OnRender(context, config)` — the concrete overlay's drawing code.
+   d. If `SimState != InSession`: renders the sim-state placeholder ("Sim not detected" or "Waiting for sessionвЂ¦").
+   e. If `SimState == InSession`: calls `OnRender(context, config)` вЂ” the concrete overlay's drawing code.
    f. If edit mode active (`!IsLocked`): draws the accent-blue border and resize-grip dots on top.
-7. Calls `dcRenderTarget.EndDraw()`. `D2DERR_RECREATE_TARGET` → `DeviceLostException` → caught by render loop → `RecoverDevice()`.
-8. Calls `UpdateLayeredWindow(hwnd, hdcMemory, ULW_ALPHA)` — hands the DIB bitmap to DWM for compositing. No GPU resources used; this is a pure CPU→DWM operation.
+7. Calls `dcRenderTarget.EndDraw()`. `D2DERR_RECREATE_TARGET` в†’ `DeviceLostException` в†’ caught by render loop в†’ `RecoverDevice()`.
+8. Calls `UpdateLayeredWindow(hwnd, hdcMemory, ULW_ALPHA)` вЂ” hands the DIB bitmap to DWM for compositing. No GPU resources used; this is a pure CPUв†’DWM operation.
 
 Alpha compositing: all geometry is drawn with premultiplied alpha into a 32-bit BGRA DIB section (`BI_RGB`, top-down, negative height). `UpdateLayeredWindow` with `AC_SRC_OVER | AC_SRC_ALPHA | SourceConstantAlpha=255` tells DWM to composite the window using per-pixel alpha from the DIB. `WS_EX_LAYERED` on the window is required for ULW.
 
 Font rendering: `IDWriteFactory` (shared singleton, `DWriteCreateFactory(SHARED)`). Per overlay, `IDWriteTextFormat` objects are created from `OverlayConfig.FontSize` and cached in `RenderResources`. Monospaced font (Consolas or Cascadia Mono) preferred for tabular data in the Relative and Session Info overlays.
 
-Resize: `BaseOverlay.OnSize` calls `ResizeRenderTarget(w, h)` which recreates the GDI DIB at the new size and updates `_currentWidth/_currentHeight`. `BindDC` at the start of the next frame picks up the new dimensions automatically — the DCRenderTarget itself does not need to be recreated.
+Resize: `BaseOverlay.OnSize` calls `ResizeRenderTarget(w, h)` which recreates the GDI DIB at the new size and updates `_currentWidth/_currentHeight`. `BindDC` at the start of the next frame picks up the new dimensions automatically вЂ” the DCRenderTarget itself does not need to be recreated.
 
 ### 5. Data Flow
 
@@ -369,22 +369,22 @@ SimDataBus (in-process, thread-safe)
 `ISimDataBus` subscriber callbacks run on the data thread. They must be fast (just a field store). No rendering, no locking on heavy resources.
 
 **`IRacingRelativeCalculator`** is a stateful instance class (not static) held by `IRacingPoller`. It runs once per ~10 Hz publish cycle and produces both `RelativeData` and `StandingsData` in a single two-pass computation. State held:
-- `EmaFilter[64]` per-car — smooths `GapToPlayerSeconds` (relative) and `GapToLeaderSeconds` (standings). α=0.15 (see `EmaConstants` in `SimOverlay.Core`). Reset on connect/disconnect.
+- `EmaFilter[64]` per-car вЂ” smooths `GapToPlayerSeconds` (relative) and `GapToLeaderSeconds` (standings). О±=0.15 (see `EmaConstants` in `NrgOverlay.Core`). Reset on connect/disconnect.
 - Real-time positions (race mode only): computed once per call as `rank(laps[i] + lapDistPct[i])` descending. Used in both passes so relative and standings are always consistent. Replaces `CarIdxPosition` which only updates at the finish line.
 
 ### 6. Configuration System
 
-Configuration file location: `%APPDATA%\SimOverlay\config.json`
+Configuration file location: `%APPDATA%\NrgOverlay\config.json`
 
 #### Stream Override (Dual-Profile) System
 
 Each overlay has a **base config** (the driver's default view) and an optional **stream override config**. When stream mode is globally active, each overlay resolves its effective config by merging: stream override values take precedence over base config values for any field that is explicitly set in the override. Fields left null in the override fall back to the base config value.
 
-This is a single window with a switchable appearance profile — not two separate windows. The same overlay window changes its visual layout, colors, column set, and size when stream mode is toggled. Both the driver's screen and OBS capture reflect the currently active profile.
+This is a single window with a switchable appearance profile вЂ” not two separate windows. The same overlay window changes its visual layout, colors, column set, and size when stream mode is toggled. Both the driver's screen and OBS capture reflect the currently active profile.
 
-**Typical use case**: Driver's base config is minimal — 5 columns, small font, subtle dark background. Stream override has more columns, larger font, colored accents. Before going live, driver activates stream mode via the tray icon or a hotkey. The overlay expands to the stream layout. After the session, they toggle back.
+**Typical use case**: Driver's base config is minimal вЂ” 5 columns, small font, subtle dark background. Stream override has more columns, larger font, colored accents. Before going live, driver activates stream mode via the tray icon or a hotkey. The overlay expands to the stream layout. After the session, they toggle back.
 
-**Position is not part of the stream override.** The window stays at the same screen position in both profiles. Only visual/layout properties are overridable. Size (width/height) IS overridable, meaning the window can be larger in stream mode — it simply resizes.
+**Position is not part of the stream override.** The window stays at the same screen position in both profiles. Only visual/layout properties are overridable. Size (width/height) IS overridable, meaning the window can be larger in stream mode вЂ” it simply resizes.
 
 #### Config Schema
 
@@ -437,29 +437,29 @@ This is a single window with a switchable appearance profile — not two separat
 #### Config Types
 
 ```csharp
-// Base overlay config — all fields required, no nulls
+// Base overlay config вЂ” all fields required, no nulls
 public class OverlayConfig
 {
     public string Id { get; set; }      // overlay name key, e.g. "Relative"
     public bool Enabled { get; set; }
-    public int X { get; set; }          // position — NOT overridable by stream mode
-    public int Y { get; set; }          // position — NOT overridable by stream mode
+    public int X { get; set; }          // position вЂ” NOT overridable by stream mode
+    public int Y { get; set; }          // position вЂ” NOT overridable by stream mode
     public int Width { get; set; }
     public int Height { get; set; }
     public float Opacity { get; set; }
     public ColorConfig BackgroundColor { get; set; }
     public ColorConfig TextColor { get; set; }
-    public float FontSize { get; set; } // float — Direct2D takes float font sizes
+    public float FontSize { get; set; } // float вЂ” Direct2D takes float font sizes
     // overlay-specific fields (ShowIRating, ShowLicense, MaxDriversShown, etc.) on same class
     public StreamOverrideConfig? StreamOverride { get; set; }
 
-    // Returns effective config for rendering — merges stream override if active.
-    // Config changes are pushed to overlays via BaseOverlay.UpdateConfig() — there
+    // Returns effective config for rendering вЂ” merges stream override if active.
+    // Config changes are pushed to overlays via BaseOverlay.UpdateConfig() вЂ” there
     // is no ConfigChanged event on OverlayConfig itself.
     public OverlayConfig Resolve(bool streamModeActive);
 }
 
-// Stream override — all visual fields nullable; null = inherit from base
+// Stream override вЂ” all visual fields nullable; null = inherit from base
 public class StreamOverrideConfig
 {
     public bool Enabled { get; set; }   // false = override defined but not active
@@ -473,17 +473,17 @@ public class StreamOverrideConfig
 }
 ```
 
-`Resolve(bool streamModeActive)` returns a new `OverlayConfig` where each field is taken from the stream override (if `streamModeActive && StreamOverride?.Enabled == true` and the field is non-null) or from `this`. X and Y are always from `this`. The resolved copy has `StreamOverride = null` — it is a snapshot with no shared mutable references back to the original.
+`Resolve(bool streamModeActive)` returns a new `OverlayConfig` where each field is taken from the stream override (if `streamModeActive && StreamOverride?.Enabled == true` and the field is non-null) or from `this`. X and Y are always from `this`. The resolved copy has `StreamOverride = null` вЂ” it is a snapshot with no shared mutable references back to the original.
 
 `DeepClone()` returns an independent deep copy via JSON round-trip. Used by `OverlayManager.ApplyConfig()` to break shared references between the Settings ViewModel and the live config.
 
 #### ConfigStore
 
 - Reads on startup. If file does not exist, returns defaults (all stream overrides disabled, no override values set). Load failures are logged and fall back to defaults.
-- `Save()` is atomic: serialize to string → write to `config.json.tmp` → `File.Move(..., overwrite: true)`.
+- `Save()` is atomic: serialize to string в†’ write to `config.json.tmp` в†’ `File.Move(..., overwrite: true)`.
 - Config changes are pushed to overlays via `BaseOverlay.UpdateConfig(OverlayConfig)`.
 - Overlay position/size persistence with debounce: `BaseOverlay` accepts optional `ConfigStore` and `AppConfig` constructor parameters. When provided, `OnMove`/`OnSize` cancel any pending write and schedule a new one 500 ms out via `System.Threading.Timer`; on expiry, calls `configStore.Save(appConfig)`. The full stream-mode-aware wiring (write size to `StreamOverride.Width/Height` when stream mode active) is completed in Phase 3 (TASK-302) when `OverlayManager` injects these dependencies.
-- `globalSettings.streamModeActive` is persisted — stream mode survives restarts (so OBS scene setup doesn't require re-toggling on every launch).
+- `globalSettings.streamModeActive` is persisted вЂ” stream mode survives restarts (so OBS scene setup doesn't require re-toggling on every launch).
 
 ### 7. Overlay Lifecycle
 
@@ -509,23 +509,23 @@ Transition: `SimDataBus` publishes an `EditModeChangedEvent`. Each overlay respo
 
 ### 9. Extensibility: Adding a New Sim
 
-**LMU (Le Mans Ultimate)** is the second sim provider, implemented in `SimOverlay.Sim.LMU` (Phase 9).
-It uses LMU's **native** `LMU_Data` shared memory buffer — distinct from the rF2 plugin MMF names.
+**LMU (Le Mans Ultimate)** is the second sim provider, implemented in `NrgOverlay.Sim.LMU` (Phase 9).
+It uses LMU's **native** `LMU_Data` shared memory buffer вЂ” distinct from the rF2 plugin MMF names.
 All struct layouts and field offsets are derived from the official Studio 397 plugin SDK headers
 (`InternalsPlugin.hpp` / `SharedMemoryInterface.hpp`).
 
 #### LMU-specific notes
-- Detection: `MemoryMappedFile.OpenExisting("LMU_Data")` — tried every 16 ms inside `LmuPoller.Poll()` until it succeeds, making startup order irrelevant (overlay can start before or after the game).
-- **Pack rule**: `InternalsPlugin.hpp` wraps all game structs in `#pragma pack(push,4)` … `#pragma pack(pop)` (lines 24–1106). `SharedMemoryInterface.hpp` defines the container structs (`SharedMemoryScoringData`, `SharedMemoryTelemetryData`) **after** the pop, so those use **default 8-byte packing** on x64. This causes 4 bytes of implicit padding between `ScoringInfoV01` (alignof=4) and the following `size_t scoringStreamSize` (alignof=8), shifting `vehScoringInfo[]` to absolute offset **2192**.
-- Telemetry player index: `SharedMemoryTelemetryData` header byte `[+1]` (`playerVehicleIdx`) is the authoritative index into `telemInfo[]` — not the scoring array index.
-- No iRating / license / incidents — publish `LicenseClass.Unknown`, `IRating=0`, `IncidentCount=-1`.
+- Detection: `MemoryMappedFile.OpenExisting("LMU_Data")` вЂ” tried every 16 ms inside `LmuPoller.Poll()` until it succeeds, making startup order irrelevant (overlay can start before or after the game).
+- **Pack rule**: `InternalsPlugin.hpp` wraps all game structs in `#pragma pack(push,4)` вЂ¦ `#pragma pack(pop)` (lines 24вЂ“1106). `SharedMemoryInterface.hpp` defines the container structs (`SharedMemoryScoringData`, `SharedMemoryTelemetryData`) **after** the pop, so those use **default 8-byte packing** on x64. This causes 4 bytes of implicit padding between `ScoringInfoV01` (alignof=4) and the following `size_t scoringStreamSize` (alignof=8), shifting `vehScoringInfo[]` to absolute offset **2192**.
+- Telemetry player index: `SharedMemoryTelemetryData` header byte `[+1]` (`playerVehicleIdx`) is the authoritative index into `telemInfo[]` вЂ” not the scoring array index.
+- No iRating / license / incidents вЂ” publish `LicenseClass.Unknown`, `IRating=0`, `IncidentCount=-1`.
 - Lap distance is metres, not percentage: normalise `lapDistPct = mLapDist / TrackLength`.
 - In-session state: tracked via `InRealtime` flag (can flip without any session-key change, e.g. race start after formation lap), evaluated every tick outside `HandleSessionChange`.
 
 #### Adding a further sim (e.g. Assetto Corsa Competizione):
 
-1. Create project `SimOverlay.Sim.ACC`.
-2. Implement `ISimProvider` — the detection check, start/stop lifecycle, and polling loop.
+1. Create project `NrgOverlay.Sim.ACC`.
+2. Implement `ISimProvider` вЂ” the detection check, start/stop lifecycle, and polling loop.
 3. Map ACC-specific data to the normalized DTOs in `Sim.Contracts`. If a field does not exist in ACC, publish a sentinel value (e.g., `TimeSpan.Zero`, empty string, or a well-documented "unavailable" constant).
 4. Register the new provider in `App`'s DI container / provider list.
 5. Add `"ACC"` to the `simPriorityOrder` in config defaults.
@@ -534,43 +534,43 @@ No changes to `Rendering`, `Overlays`, or `Core` are required. The overlay imple
 
 ### 10. Dependency Injection
 
-The `App` project uses manual construction in `Program.cs` (DI packages are referenced but the container is not used — straightforward wiring was sufficient for the current object graph):
+The `App` project uses manual construction in `Program.cs` (DI packages are referenced but the container is not used вЂ” straightforward wiring was sufficient for the current object graph):
 
-- `ConfigStore` + `AppConfig` — loaded first; passed by reference everywhere
-- `SimDataBus` — shared bus; injected into overlays and `SimDetector`
-- `IRacingProvider` — constructed and passed to `SimDetector`
-- `SimDetector` — owns provider lifetime
-- `OverlayManager` — owns all three overlay windows; coordinator for edit/stream mode
-- `ZOrderHook` — reacts to `EVENT_OBJECT_REORDER` to restore z-order
-- `TrayIconController` — `NotifyIcon`; opens `SettingsWindow` on demand
-- `SettingsWindow` — lazy singleton; created on first F9 / tray open
+- `ConfigStore` + `AppConfig` вЂ” loaded first; passed by reference everywhere
+- `SimDataBus` вЂ” shared bus; injected into overlays and `SimDetector`
+- `IRacingProvider` вЂ” constructed and passed to `SimDetector`
+- `SimDetector` вЂ” owns provider lifetime
+- `OverlayManager` вЂ” owns all three overlay windows; coordinator for edit/stream mode
+- `ZOrderHook` вЂ” reacts to `EVENT_OBJECT_REORDER` to restore z-order
+- `TrayIconController` вЂ” `NotifyIcon`; opens `SettingsWindow` on demand
+- `SettingsWindow` вЂ” lazy singleton; created on first F9 / tray open
 
 ### 11. OBS Capture Compatibility
 
-SimOverlay overlays are designed as first-class OBS sources. Each overlay window can be independently added to an OBS scene as a Window Capture source.
+NrgOverlay overlays are designed as first-class OBS sources. Each overlay window can be independently added to an OBS scene as a Window Capture source.
 
 #### Why it works
 - OBS 28+ uses the **Windows Graphics Capture (WGC)** API by default for Window Capture on Windows 10 1903+.
-- WGC captures at the DWM compositor level. It captures `WS_EX_LAYERED` windows correctly — DWM composites the `UpdateLayeredWindow` bitmap and WGC sees the result.
-- The DIB uses premultiplied alpha (`AC_SRC_ALPHA`). OBS Window Capture with "Allow Transparency" checked reads the alpha channel correctly — overlay backgrounds appear semi-transparent in the OBS scene without any chroma key.
+- WGC captures at the DWM compositor level. It captures `WS_EX_LAYERED` windows correctly вЂ” DWM composites the `UpdateLayeredWindow` bitmap and WGC sees the result.
+- The DIB uses premultiplied alpha (`AC_SRC_ALPHA`). OBS Window Capture with "Allow Transparency" checked reads the alpha channel correctly вЂ” overlay backgrounds appear semi-transparent in the OBS scene without any chroma key.
 
 #### Why `WS_EX_TOOLWINDOW` is not used
 `WS_EX_TOOLWINDOW` hides the window from the taskbar and from many window enumeration APIs, including the window picker OBS uses to populate its "Window" dropdown. Without it, all overlay windows appear as selectable sources in OBS. They will briefly appear in the Windows taskbar, but this is acceptable since overlay windows are typically set up once.
 
 #### Window titles
 Each overlay has a fixed, stable title:
-- `SimOverlay — Relative`
-- `SimOverlay — Session Info`
-- `SimOverlay — Delta`
+- `NrgOverlay вЂ” Relative`
+- `NrgOverlay вЂ” Session Info`
+- `NrgOverlay вЂ” Delta`
 
 Titles do not change between sessions. OBS remembers window capture sources by title, so sources remain valid across app restarts.
 
 #### OBS setup per overlay
 ```
-Add Source → Window Capture
-  Window:  [SimOverlay — Relative]
-  Method:  Windows Graphics Capture   ← default on modern OBS
-  ✓ Allow Transparency
+Add Source в†’ Window Capture
+  Window:  [NrgOverlay вЂ” Relative]
+  Method:  Windows Graphics Capture   в†ђ default on modern OBS
+  вњ“ Allow Transparency
 ```
 
 Each overlay becomes an independent OBS source that can be independently positioned, scaled, and shown/hidden per scene.
@@ -582,7 +582,7 @@ OBS's legacy BitBlt window capture does not reliably capture `WS_EX_LAYERED` win
 When stream mode is active, the overlay switches to its stream override profile (larger, more columns, different colors etc.). Since OBS captures the same window, it automatically captures the stream layout without any OBS reconfiguration. The driver toggles stream mode once before going live; OBS sees whatever is on screen.
 
 #### Future: OBS-only overlays
-A post-MVP feature could allow marking an overlay as "stream only" — visible to OBS capture but hidden from the physical monitor the sim is displayed on. This is achievable by checking monitor assignment against the sim window's monitor and conditionally calling `ShowWindow(SW_HIDE)` for displays that match the sim's monitor.
+A post-MVP feature could allow marking an overlay as "stream only" вЂ” visible to OBS capture but hidden from the physical monitor the sim is displayed on. This is achievable by checking monitor assignment against the sim window's monitor and conditionally calling `ShowWindow(SW_HIDE)` for displays that match the sim's monitor.
 
 ---
 
@@ -591,34 +591,34 @@ A post-MVP feature could allow marking an overlay as "stream only" — visible t
 - Render target lost (`D2DERR_RECREATE_TARGET`): `RecoverDevice()` recreates the D2D factory, `ID2D1DCRenderTarget`, and GDI DIB. Overlays pause rendering during recovery (~1 render loop tick) and resume automatically.
 - Sim MMF not available: `ISimProvider.IsRunning()` returns false; `SimDetector` keeps polling.
 - Config file corrupt: `ConfigStore` catches `JsonException`, logs it, and falls back to defaults.
-- Unhandled exceptions: top-level `Application.DispatcherUnhandledException` (WPF) or equivalent logs to `%APPDATA%\SimOverlay\error.log` and displays a message box before exiting.
+- Unhandled exceptions: top-level `Application.DispatcherUnhandledException` (WPF) or equivalent logs to `%APPDATA%\NrgOverlay\error.log` and displays a message box before exiting.
 
 ---
 
 ### 13. Performance Benchmarks
 
-`tests/SimOverlay.Benchmarks/` is a BenchmarkDotNet executable project. It uses synthetic mock data — no running sim or GPU required.
+`tests/NrgOverlay.Benchmarks/` is a BenchmarkDotNet executable project. It uses synthetic mock data вЂ” no running sim or GPU required.
 
 **Run:**
 ```
-dotnet run -c Release --project tests/SimOverlay.Benchmarks
+dotnet run -c Release --project tests/NrgOverlay.Benchmarks
 ```
 
 Results are written to `BenchmarkDotNet.Artifacts/results/` (JSON + markdown). To filter a single class:
 ```
-dotnet run -c Release --project tests/SimOverlay.Benchmarks -- --filter *Relative*
+dotnet run -c Release --project tests/NrgOverlay.Benchmarks -- --filter *Relative*
 ```
 
 **Covered hot paths and targets:**
 
 | Benchmark | Frequency | Target mean | Target alloc |
 |---|---|---|---|
-| `RelativeCalculatorBenchmarks.Compute40Cars` | ~10 Hz | < 50 µs | measured |
-| `SimDataBusBenchmarks.Publish1Subscriber` | ~60 Hz | < 1 µs (measured: 9.3 ns) | 0 B |
-| `ConfigResolveBenchmarks.ResolveNoOverride` | 60 Hz × overlays | — | 0 B |
-| `ConfigResolveBenchmarks.ResolveWithOverride` | 60 Hz × overlays | — | < 500 B |
+| `RelativeCalculatorBenchmarks.Compute40Cars` | ~10 Hz | < 50 Вµs | measured |
+| `SimDataBusBenchmarks.Publish1Subscriber` | ~60 Hz | < 1 Вµs (measured: 9.3 ns) | 0 B |
+| `ConfigResolveBenchmarks.ResolveNoOverride` | 60 Hz Г— overlays | вЂ” | 0 B |
+| `ConfigResolveBenchmarks.ResolveWithOverride` | 60 Hz Г— overlays | вЂ” | < 500 B |
 
-`RelativeCalculator.Compute` allocates (builds a `Dictionary` + `List` per call) — acceptable at 10 Hz. The render loop itself (`OnRender`) cannot be benchmarked without a real D2D context; measure it manually under a live session if stuttering is suspected.
+`RelativeCalculator.Compute` allocates (builds a `Dictionary` + `List` per call) вЂ” acceptable at 10 Hz. The render loop itself (`OnRender`) cannot be benchmarked without a real D2D context; measure it manually under a live session if stuttering is suspected.
 
 **Baseline workflow:** after a significant feature lands, run the benchmarks, commit the JSON from `BenchmarkDotNet.Artifacts/results/` to `benchmarks/baseline/` on the reference machine. Future runs on the same machine can be compared against it to detect regressions.
 
@@ -628,14 +628,14 @@ dotnet run -c Release --project tests/SimOverlay.Benchmarks -- --filter *Relativ
 
 ### 14. Resource Lifecycle & Memory
 
-**Priority:** Resource lifecycle correctness is a first-class constraint alongside rendering performance. Memory leaks and un-closed native handles cause in-race crashes and resource exhaustion — they are bugs, not tech debt.
+**Priority:** Resource lifecycle correctness is a first-class constraint alongside rendering performance. Memory leaks and un-closed native handles cause in-race crashes and resource exhaustion вЂ” they are bugs, not tech debt.
 
 #### Rules
 
-1. **Every `IDisposable` must have an owner.** The owner disposes it when done. Unclear ownership is a design smell — decide ownership at allocation time.
+1. **Every `IDisposable` must have an owner.** The owner disposes it when done. Unclear ownership is a design smell вЂ” decide ownership at allocation time.
 2. **Unsubscribe every event handler you subscribe.** Subscribe in `Start()` / constructor, unsubscribe in `Stop()` / `Dispose()`. Failing to unsubscribe keeps the subscriber alive (GC root via delegate), leaks memory, and fires events on a "dead" object.
-3. **Native handles (Win32, D2D COM, MMF) must be released deterministically.** Do not rely on finalizers. Wrap in `SafeHandle` subclasses or explicit `Dispose()` blocks. Verify release order — releasing a child before its parent can AV.
-4. **Sim SDK wrappers need special care.** External SDKs (e.g. IRSDKSharper) manage their own Win32 handles internally. Use the version that correctly releases the handle on `Stop()`/`Dispose()` — keep SDK packages up to date and test disconnect/reconnect cycles explicitly.
+3. **Native handles (Win32, D2D COM, MMF) must be released deterministically.** Do not rely on finalizers. Wrap in `SafeHandle` subclasses or explicit `Dispose()` blocks. Verify release order вЂ” releasing a child before its parent can AV.
+4. **Sim SDK wrappers need special care.** External SDKs (e.g. IRSDKSharper) manage their own Win32 handles internally. Use the version that correctly releases the handle on `Stop()`/`Dispose()` вЂ” keep SDK packages up to date and test disconnect/reconnect cycles explicitly.
 
 #### Symptoms of lifecycle bugs
 - App hangs on iRacing exit or app close (handle not released)
@@ -647,16 +647,16 @@ dotnet run -c Release --project tests/SimOverlay.Benchmarks -- --filter *Relativ
 
 | Component | Lifecycle |
 |---|---|
-| `OverlayWindow` | Owns D2D factory, DCRenderTarget, GDI DIB — disposed in `Dispose()` |
+| `OverlayWindow` | Owns D2D factory, DCRenderTarget, GDI DIB вЂ” disposed in `Dispose()` |
 | `BaseOverlay` | Subscribes to `ISimDataBus` events; unsubscribes in `Dispose()` |
 | `IRacingProvider` / `IRacingPoller` | Owns `IRSDKSharper` instance; calls `Stop()` + `Dispose()` on `ISimProvider.Stop()` |
 | `AppLog` | Owns persistent `StreamWriter`; flushed and disposed at shutdown |
 | `ZOrderHook` | Registers WinEvent hook via `SetWinEventHook`; calls `UnhookWinEvent` in `Dispose()` |
 
 #### Disconnect / reconnect testing
-Any change to a sim provider, poller, or data bus subscriber **must** be manually tested through a full disconnect–reconnect cycle before committing:
-1. Start app → confirm data flowing.
-2. Close/kill the sim → confirm `Disconnected` state.
-3. Relaunch the sim → confirm `Connected` + data resumes with no stale state.
+Any change to a sim provider, poller, or data bus subscriber **must** be manually tested through a full disconnectвЂ“reconnect cycle before committing:
+1. Start app в†’ confirm data flowing.
+2. Close/kill the sim в†’ confirm `Disconnected` state.
+3. Relaunch the sim в†’ confirm `Connected` + data resumes with no stale state.
 
 ---
