@@ -108,7 +108,7 @@ public sealed class TrayIconController : IDisposable
 
         if (File.Exists(icoPath))
         {
-            try { return new Icon(icoPath, 16, 16); }
+            try { return new Icon(icoPath); }
             catch { /* fall through to system icon */ }
         }
 
