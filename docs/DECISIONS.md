@@ -48,4 +48,4 @@ Brief summary of every significant design decision. Full entries with rationale,
 | 04-14 | `IRacingRelativeCalculator` converted to stateful instance; EMA smoothing on gap/interval values | Static pure function can't hold per-car filter state; EMA (О±=0.15) eliminates 10 Hz jitter in gap/interval displays |
 | 04-14 | Real-time race positions via `laps + lapDistPct` ranking | `CarIdxPosition` only updates at the finish line; progress-based ranking is immediate when cars pass each other; computed once in calculator, used by both relative and standings |
 | 04-14 | Flag emoji for country/club display via Unicode regional indicators | Converts ISO 3166-1 alpha-2 code to U+1F1E6-based surrogate pairs; ISO 2-letter fallback for unmapped clubs |
-
+| 04-16 | Remove stream mode/stream override and remove Chat overlay | Simplifies runtime profile logic and reduces crash-risk surface area in race-critical sessions; keeps focus on iRacing stability and core overlays |
