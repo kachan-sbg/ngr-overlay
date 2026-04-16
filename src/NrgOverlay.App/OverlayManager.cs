@@ -22,9 +22,6 @@ public sealed class OverlayManager : IDisposable
     /// <summary>True when overlays are unlocked for dragging/resizing.</summary>
     public bool EditModeActive => _editModeActive;
 
-    /// <summary>True when stream-mode overrides are active.</summary>
-    public bool StreamModeActive => _appConfig.GlobalSettings.StreamModeActive;
-
     private readonly Dictionary<string, BaseOverlay> _overlays;
 
     /// <param name="bus">Shared data bus вЂ” forwarded to every overlay via the factory.</param>
@@ -91,7 +88,7 @@ public sealed class OverlayManager : IDisposable
     }
 
     // -------------------------------------------------------------------------
-    // Edit mode / stream mode
+    // Edit mode
     // -------------------------------------------------------------------------
 
     /// <summary>
@@ -103,18 +100,6 @@ public sealed class OverlayManager : IDisposable
         _editModeActive = active;
         // IsLocked=true means normal (click-through); IsLocked=false means edit mode.
         _bus.Publish(new EditModeChangedEvent(IsLocked: !active));
-    }
-
-    /// <summary>
-    /// Activates or deactivates stream mode and persists it to config.
-    /// Publishes <see cref="StreamModeChangedEvent"/> so overlays invalidate
-    /// their resource caches and re-resolve the effective config.
-    /// </summary>
-    public void SetStreamMode(bool active)
-    {
-        _appConfig.GlobalSettings.StreamModeActive = active;
-        _bus.Publish(new StreamModeChangedEvent(IsActive: active));
-        _configStore.Save(_appConfig);
     }
 
     // -------------------------------------------------------------------------

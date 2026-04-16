@@ -8,7 +8,7 @@ namespace NrgOverlay.App.Settings;
 
 /// <summary>
 /// Panel shown when "Global Settings" is selected in the sidebar.
-/// Manages Edit Mode, Stream Mode, and Start With Windows.
+/// Manages Edit Mode and Start With Windows.
 /// </summary>
 public partial class GlobalSettingsPanel : UserControl
 {
@@ -44,14 +44,13 @@ public partial class GlobalSettingsPanel : UserControl
         _loading = true;
 
         EditModeCheck.IsChecked         = _overlayManager.EditModeActive;
-        StreamModeCheck.IsChecked       = _appConfig.GlobalSettings.StreamModeActive;
         StartWithWindowsCheck.IsChecked = IsStartWithWindowsEnabled();
 
         _loading = false;
     }
 
     /// <summary>
-    /// Persists the Start With Windows preference. Edit/stream mode changes are
+    /// Persists the Start With Windows preference. Edit mode changes are
     /// applied immediately via their event handlers, so Apply just handles the
     /// registry entry and saves config.
     /// </summary>
@@ -70,12 +69,6 @@ public partial class GlobalSettingsPanel : UserControl
     {
         if (_loading) return;
         _overlayManager.SetEditMode(EditModeCheck.IsChecked == true);
-    }
-
-    private void StreamMode_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_loading) return;
-        _overlayManager.SetStreamMode(StreamModeCheck.IsChecked == true);
     }
 
     // в”Ђв”Ђ Registry helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ

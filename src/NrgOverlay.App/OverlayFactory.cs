@@ -62,10 +62,6 @@ public sealed class OverlayFactory : IOverlayFactory
         (FlatTrackMapOverlay.OverlayId, "Track Map",
             (bus, cfg, store, app) => new FlatTrackMapOverlay(bus, cfg, store, app),
             FlatTrackMapOverlay.DefaultConfig),
-
-        (ChatOverlay.OverlayId, "Chat",
-            (bus, cfg, store, app) => new ChatOverlay(bus, cfg, store, app),
-            ChatOverlay.DefaultConfig),
     ];
 
     public OverlayFactory(ISimDataBus bus, ConfigStore configStore, AppConfig appConfig)

@@ -42,17 +42,13 @@ public partial class OverlaySettingsPanel : UserControl
         SessionSection.Visibility  = isSession  ? Visibility.Visible : Visibility.Collapsed;
         DeltaSection.Visibility    = isDelta    ? Visibility.Visible : Visibility.Collapsed;
 
-        SoRelative.Visibility = isRelative ? Visibility.Visible : Visibility.Collapsed;
-        SoSession.Visibility  = isSession  ? Visibility.Visible : Visibility.Collapsed;
-        SoDelta.Visibility    = isDelta    ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // в”Ђв”Ђ Event handlers вЂ” all trigger preview в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
     private void ScreenPanel_LostFocus(object sender, RoutedEventArgs e)
     {
-        // Fired when any TextBox (or other input) inside either the Screen or
-        // Stream Override panel commits a value. Preview is cheap вЂ” just invoke it.
+        // Fired when any input commits a value.
         _preview?.Invoke();
     }
 

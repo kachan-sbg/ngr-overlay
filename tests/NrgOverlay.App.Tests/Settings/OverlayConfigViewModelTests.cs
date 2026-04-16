@@ -1,4 +1,4 @@
-﻿using NrgOverlay.App.Settings;
+using NrgOverlay.App.Settings;
 using NrgOverlay.Core.Config;
 
 namespace NrgOverlay.App.Tests.Settings;
@@ -14,7 +14,7 @@ public class OverlayConfigViewModelTests
         FontSize        = 14f,
         Opacity         = 0.85f,
         BackgroundColor = new ColorConfig { R = 0.1f, G = 0.1f, B = 0.1f, A = 0.9f },
-        TextColor       = new ColorConfig { R = 1f,   G = 1f,   B = 1f,   A = 1f   },
+        TextColor       = new ColorConfig { R = 1f,   G = 1f,   B = 1f,   A = 1f },
         ShowIRating     = false,
         ShowLicense     = true,
         MaxDriversShown = 11,
@@ -30,10 +30,7 @@ public class OverlayConfigViewModelTests
         ShowReferenceLapTime = true,
         FasterColor     = new ColorConfig { R = 0f, G = 1f, B = 0f, A = 1f },
         SlowerColor     = new ColorConfig { R = 1f, G = 0f, B = 0f, A = 1f },
-        StreamOverride  = new StreamOverrideConfig { Enabled = true, Width = 800 },
     };
-
-    // в”Ђв”Ђ Round-trip в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
     [Fact]
     public void LoadFrom_ToConfig_PreservesScalarFields()
@@ -65,35 +62,6 @@ public class OverlayConfigViewModelTests
     }
 
     [Fact]
-    public void LoadFrom_ToConfig_PopulatesStreamOverride()
-    {
-        var config = MakeConfig();
-        var vm     = new OverlayConfigViewModel();
-        vm.LoadFrom(config);
-        var result = vm.ToConfig();
-
-        Assert.NotNull(result.StreamOverride);
-        Assert.True(result.StreamOverride.Enabled);
-        Assert.Equal(800, result.StreamOverride.Width);
-    }
-
-    [Fact]
-    public void LoadFrom_NullStreamOverride_ToConfigReturnsNull()
-    {
-        var config = MakeConfig();
-        config.StreamOverride = null;
-
-        var vm = new OverlayConfigViewModel();
-        vm.LoadFrom(config);
-        var result = vm.ToConfig();
-
-        // StreamOverrideViewModel.ToConfig() returns null when Enabled=false (inherited default)
-        Assert.Null(result.StreamOverride);
-    }
-
-    // в”Ђв”Ђ PropertyChanged в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-
-    [Fact]
     public void LoadFrom_RaisesPropertyChangedForAll()
     {
         var vm      = new OverlayConfigViewModel();
@@ -109,17 +77,16 @@ public class OverlayConfigViewModelTests
     public void SetWidth_RaisesPropertyChanged_OnlyWhenValueChanges()
     {
         var vm = new OverlayConfigViewModel();
-        vm.LoadFrom(MakeConfig()); // Width = 500
+        vm.LoadFrom(MakeConfig());
 
         var fired = new List<string?>();
         vm.PropertyChanged += (_, e) => fired.Add(e.PropertyName);
 
-        vm.Width = 500; // same value вЂ” should NOT fire
+        vm.Width = 500;
         Assert.Empty(fired);
 
-        vm.Width = 600; // different вЂ” should fire
+        vm.Width = 600;
         Assert.Single(fired);
         Assert.Equal(nameof(vm.Width), fired[0]);
     }
 }
-

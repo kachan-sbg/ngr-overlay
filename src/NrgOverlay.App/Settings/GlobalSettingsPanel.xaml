@@ -21,11 +21,6 @@
                       Margin="0,2"
                       Checked="EditMode_Changed" Unchecked="EditMode_Changed"/>
 
-            <CheckBox x:Name="StreamModeCheck"
-                      Content="Stream mode (apply stream overrides)"
-                      Margin="0,4,0,2"
-                      Checked="StreamMode_Changed" Unchecked="StreamMode_Changed"/>
-
             <!-- Startup -->
             <TextBlock Text="Startup" Style="{StaticResource SectionHdr}"/>
 

@@ -201,12 +201,6 @@ public partial class SettingsWindow : Window
                     configToApply.Y = live.Y;
                     configToApply.Width = live.Width;
                     configToApply.Height = live.Height;
-
-                    if (configToApply.StreamOverride is not null && live.StreamOverride is not null)
-                    {
-                        configToApply.StreamOverride.Width = live.StreamOverride.Width;
-                        configToApply.StreamOverride.Height = live.StreamOverride.Height;
-                    }
                 }
             }
 

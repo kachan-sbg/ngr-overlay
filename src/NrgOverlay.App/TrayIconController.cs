@@ -15,8 +15,7 @@ public sealed class TrayIconController : IDisposable
     private readonly Action         _openSettings;
     private readonly Action         _quit;
 
-    private ToolStripMenuItem _editModeItem   = null!;
-    private ToolStripMenuItem _streamModeItem = null!;
+    private ToolStripMenuItem _editModeItem = null!;
 
     // Prevents feedback loops when we programmatically sync checkbox states.
     private bool _syncingMenu;
@@ -56,17 +55,6 @@ public sealed class TrayIconController : IDisposable
                 _overlayManager.SetEditMode(_editModeItem.Checked);
         };
 
-        _streamModeItem = new ToolStripMenuItem("Stream mode")
-        {
-            CheckOnClick = true,
-            Checked      = _overlayManager.StreamModeActive,
-        };
-        _streamModeItem.CheckedChanged += (_, _) =>
-        {
-            if (!_syncingMenu)
-                _overlayManager.SetStreamMode(_streamModeItem.Checked);
-        };
-
         var settingsItem = new ToolStripMenuItem("Settings\u2026");
         settingsItem.Click += (_, _) => _openSettings();
 
@@ -77,7 +65,6 @@ public sealed class TrayIconController : IDisposable
         menu.Items.Add(settingsItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_editModeItem);
-        menu.Items.Add(_streamModeItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
 
@@ -90,8 +77,7 @@ public sealed class TrayIconController : IDisposable
     private void SyncCheckedStates()
     {
         _syncingMenu = true;
-        _editModeItem.Checked   = _overlayManager.EditModeActive;
-        _streamModeItem.Checked = _overlayManager.StreamModeActive;
+        _editModeItem.Checked = _overlayManager.EditModeActive;
         _syncingMenu = false;
     }
 
