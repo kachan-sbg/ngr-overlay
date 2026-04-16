@@ -50,3 +50,85 @@ After every task, before committing:
 6. **Update "Current task"** above to next task
 7. **Commit** code + docs together
 
+
+## Stable dotnet commands (avoid restore/test stalls in this env)
+Use serialized restore/build/test and disable NuGet audit in command line:
+
+```powershell
+dotnet restore NrgOverlay.sln /m:1 -p:NuGetAudit=false
+```
+
+```powershell
+dotnet build src\NrgOverlay.App\NrgOverlay.App.csproj -c Debug /m:1 -p:NuGetAudit=false
+```
+
+```powershell
+dotnet test tests\NrgOverlay.Core.Tests\NrgOverlay.Core.Tests.csproj /m:1 -p:NuGetAudit=false
+```
+
+```powershell
+dotnet test tests\NrgOverlay.App.Tests\NrgOverlay.App.Tests.csproj /m:1 -p:NuGetAudit=false
+```
+
+```powershell
+dotnet test tests\NrgOverlay.Overlays.Tests\NrgOverlay.Overlays.Tests.csproj /m:1 -p:NuGetAudit=false
+```
+
+Fast rerun (after successful restore/build):
+
+```powershell
+dotnet test tests\NrgOverlay.Core.Tests\NrgOverlay.Core.Tests.csproj --no-restore /m:1 -p:NuGetAudit=false
+```
+
+If a previous run is stuck, stop stale processes first:
+
+```powershell
+Get-Process dotnet,MSBuild -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+## 2026-04-16 iRacing Stability Updates (shipped)
+
+### Critical reliability hardening
+- Added `IRacingConnectionProbe` (`src/NrgOverlay.Sim.iRacing/IRacingConnectionProbe.cs`) so all iRacing MMF status reads are centralized and explicitly resilient to `FileNotFoundException`, `UnauthorizedAccessException`, and `IOException`.
+- `IRacingProvider.IsRunning()` now reads via probe abstraction and remains fail-safe on probe exceptions.
+- `IRacingPoller` watchdog now uses a dedicated thread-safe controller (`IRacingWatchdogController`) to prevent concurrent timer callbacks from triggering overlapping SDK restart attempts.
+- Watchdog connectivity checks now use the same probe abstraction (single source of truth).
+
+### Added iRacing resilience tests
+- `tests/NrgOverlay.Sim.iRacing.Tests/IRacingSharedMemoryStabilityTests.cs`
+  - missing map
+  - connected-bit decode
+  - randomized create/update/close under concurrent probe reads
+  - dual-map isolation
+  - provider behavior when probe throws
+- `tests/NrgOverlay.Sim.iRacing.Tests/IRacingWatchdogControllerTests.cs`
+  - threshold restart behavior
+  - restart suppression behavior
+  - concurrent tick single-restart reservation
+  - restart-cycle reset behavior
+
+## Known Stalled Runs / Manual Handoff
+
+When running commands in this environment, these patterns are known to stall/fail intermittently:
+- Running multiple `dotnet` build/test commands in parallel can lock intermediate files (for example `*.deps.json`) and produce transient failures.
+- Some direct project builds may fail with generic output (`Build FAILED` with no compiler diagnostics) even when targeted tests pass.
+- Broad repo scans with heavy recursion can also time out or be interrupted.
+
+### Required behavior for future runs
+- Never run parallel `dotnet` build/test commands.
+- Prefer single-project `dotnet test` for verification.
+- If a command is important and appears stalled (>90s with no meaningful progress) or fails without actionable diagnostics:
+  1. stop it,
+  2. report exact command,
+  3. ask user to run locally and share output.
+
+### Suggested user-run commands when agent environment is unreliable
+```powershell
+dotnet test tests\NrgOverlay.Sim.iRacing.Tests\NrgOverlay.Sim.iRacing.Tests.csproj /m:1 -p:NuGetAudit=false
+```
+```powershell
+dotnet test tests\NrgOverlay.Overlays.Tests\NrgOverlay.Overlays.Tests.csproj /m:1 -p:NuGetAudit=false
+```
+```powershell
+dotnet test tests\NrgOverlay.App.Tests\NrgOverlay.App.Tests.csproj /m:1 -p:NuGetAudit=false
+```

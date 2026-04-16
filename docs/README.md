@@ -140,3 +140,27 @@ See [OVERLAYS.md](OVERLAYS.md) for detailed specifications.
 - Render thread never blocks on data thread and vice versa вЂ” snapshot pattern only
 - Position (X/Y) is never part of stream override config in single-window mode
 
+
+---
+
+## Recent Reliability Updates (2026-04-16)
+
+### iRacing shared-memory and watchdog hardening
+- Added a dedicated iRacing MMF status probe (`IRacingConnectionProbe`) and switched provider/poller checks to use it.
+- Hardened `IsRunning()` behavior to stay fail-safe for MMF open/read exceptions.
+- Added a thread-safe watchdog controller (`IRacingWatchdogController`) to prevent overlapping restart attempts when timer callbacks race.
+
+### New stability test coverage
+- `IRacingSharedMemoryStabilityTests`
+  - random MMF create/update/close concurrency
+  - dual-map isolation behavior
+  - exception/failure-path behavior
+- `IRacingWatchdogControllerTests`
+  - stall threshold and suppression behavior
+  - concurrent callback single-restart reservation
+  - restart-cycle reset behavior
+
+These changes target race-critical reliability issues where iRacing/OBS/other overlay apps can be destabilized by restart churn and MMF lifecycle races.
+
+### Environment note for contributors
+In this agent environment, broad or parallel `dotnet` runs can hang or lock outputs. Use serialized single-project test runs first. If an important run stalls or returns non-diagnostic failure output, run it locally and attach logs.
