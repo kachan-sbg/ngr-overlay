@@ -36,6 +36,16 @@ public sealed class FlatTrackMapOverlay : BaseOverlay
     };
 
     private volatile TrackMapData? _trackMap;
+    private readonly Dictionary<int, SmoothedCarState> _smoothedCars = new();
+    private long _renderFrame;
+    private const float PositionSmoothingAlpha = 0.25f;
+    private const long SmoothStateTtlFrames = 240;
+
+    private sealed class SmoothedCarState
+    {
+        public float SmoothedPct;
+        public long LastSeenFrame;
+    }
 
     // в”Ђв”Ђ Mock data в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
     private static readonly TrackMapData MockData = BuildMock();
@@ -84,6 +94,7 @@ public sealed class FlatTrackMapOverlay : BaseOverlay
     protected override void OnRender(ID2D1RenderTarget ctx, OverlayConfig cfg)
     {
         var data = !IsLocked ? MockData : _trackMap;
+        _renderFrame++;
 
         float pad  = 8f;
         float w    = (float)cfg.Width;
@@ -145,7 +156,8 @@ public sealed class FlatTrackMapOverlay : BaseOverlay
 
         foreach (var car in sorted)
         {
-            float cx = barX0 + car.LapDistPct * barW;
+            var smoothedPct = GetSmoothedLapPct(car.CarIndex, car.LapDistPct);
+            float cx = barX0 + smoothedPct * barW;
             bool  inPit = car.IsInPit;
 
             ColorConfig classColor = isMultiClass
@@ -206,6 +218,60 @@ public sealed class FlatTrackMapOverlay : BaseOverlay
                 labelRow++;
             }
         }
+
+        TrimSmoothingState();
+    }
+
+    private float GetSmoothedLapPct(int carIndex, float rawPct)
+    {
+        var pct = NormalizePct(rawPct);
+        if (!_smoothedCars.TryGetValue(carIndex, out var state))
+        {
+            state = new SmoothedCarState
+            {
+                SmoothedPct = pct,
+                LastSeenFrame = _renderFrame,
+            };
+            _smoothedCars[carIndex] = state;
+            return pct;
+        }
+
+        // Circular smoothing around the lap seam so 0.99 -> 0.01 is treated as +0.02 movement.
+        var delta = pct - state.SmoothedPct;
+        if (delta > 0.5f) delta -= 1f;
+        if (delta < -0.5f) delta += 1f;
+
+        state.SmoothedPct = NormalizePct(state.SmoothedPct + (PositionSmoothingAlpha * delta));
+        state.LastSeenFrame = _renderFrame;
+        return state.SmoothedPct;
+    }
+
+    private void TrimSmoothingState()
+    {
+        if (_smoothedCars.Count == 0)
+            return;
+
+        var staleThreshold = _renderFrame - SmoothStateTtlFrames;
+        if (staleThreshold <= 0)
+            return;
+
+        var stale = _smoothedCars
+            .Where(kv => kv.Value.LastSeenFrame < staleThreshold)
+            .Select(kv => kv.Key)
+            .ToArray();
+
+        foreach (var key in stale)
+            _smoothedCars.Remove(key);
+    }
+
+    private static float NormalizePct(float pct)
+    {
+        if (float.IsNaN(pct) || float.IsInfinity(pct))
+            return 0f;
+
+        pct %= 1f;
+        if (pct < 0f) pct += 1f;
+        return pct;
     }
 }
 

@@ -2,6 +2,7 @@
 using NrgOverlay.Core.Config;
 using NrgOverlay.Rendering;
 using NrgOverlay.Sim.Contracts;
+using System.Diagnostics;
 using System.Numerics;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
@@ -9,50 +10,56 @@ using Vortice.DirectWrite;
 namespace NrgOverlay.Overlays;
 
 /// <summary>
-/// Delta bar вЂ” animated green/red bar showing the gap vs. the player's best lap,
-/// with optional numeric delta text and trend arrow.
+/// Animated green/red delta bar around a center-zero line.
 /// </summary>
 public sealed class DeltaBarOverlay : BaseOverlay
 {
-    public const string OverlayId   = "DeltaBar";
-    public const string WindowTitle = "NrgOverlay \u2014 Delta";
+    public const string OverlayId = "DeltaBar";
+    public const string WindowTitle = "NrgOverlay - Delta";
 
     public static OverlayConfig DefaultConfig => new()
     {
-        Id                 = OverlayId,
-        Enabled            = true,
-        X                  = 100,
-        Y                  = 780,
-        Width              = 300,
-        Height             = 80,
-        Opacity            = 0.85f,
-        BackgroundColor    = new ColorConfig { R = 0f, G = 0f, B = 0f, A = 0.75f },
-        FontSize           = 13f,
-        DeltaBarMaxSeconds = 2f,
-        FasterColor        = ColorConfig.Green,
-        SlowerColor        = ColorConfig.Red,
-        ShowTrendArrow     = true,
-        ShowDeltaText      = true,
+        Id = OverlayId,
+        Enabled = true,
+        X = 100,
+        Y = 780,
+        Width = 300,
+        Height = 90,
+        Opacity = 0.85f,
+        BackgroundColor = new ColorConfig { R = 0f, G = 0f, B = 0f, A = 0f },
+        FontSize = 13f,
+        DeltaBarMaxSeconds = 3f,
+        // Pastel defaults, still fully configurable.
+        FasterColor = new ColorConfig { R = 0.56f, G = 0.85f, B = 0.66f, A = 0.95f },
+        SlowerColor = new ColorConfig { R = 0.95f, G = 0.65f, B = 0.65f, A = 0.95f },
+        ShowTrendArrow = true,
+        ShowDeltaText = true,
+        ShowReferenceLapTime = true,
     };
 
     private volatile DriverData? _driver;
 
-    // в”Ђв”Ђ Edit-mode mock data в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
     private static readonly DriverData MockDriver = new()
     {
-        Position              = 5,
-        Lap                   = 12,
-        LastLapTime           = TimeSpan.FromSeconds(94.521),
-        BestLapTime           = TimeSpan.FromSeconds(93.887),
-        LapDeltaVsBestLap     = -0.234f,
-        LapDeltaVsSessionBest = -0.234f,
+        Position = 5,
+        Lap = 12,
+        LastLapTime = TimeSpan.FromSeconds(94.521),
+        BestLapTime = TimeSpan.FromSeconds(93.887),
+        SessionBestLapTime = TimeSpan.FromSeconds(93.451),
+        LapDeltaVsBestLap = -0.234f,
+        LapDeltaVsSessionBest = +0.202f,
     };
 
-    // 30-sample ring buffer for 500 ms trend computation at ~60 Hz.
     private const int TrendSamples = 30;
     private readonly float[] _trendBuf = new float[TrendSamples];
     private int _trendHead;
     private int _trendCount;
+
+    private bool _deltaInitialized;
+    private float _smoothedDelta;
+    private const float DeltaEmaAlpha = 0.12f;
+
+    protected override bool DrawBaseBackground => false;
 
     public DeltaBarOverlay(
         ISimDataBus bus,
@@ -68,143 +75,192 @@ public sealed class DeltaBarOverlay : BaseOverlay
     {
         var driver = IsLocked ? _driver : MockDriver;
 
-        // Prefer session best (any driver's fastest lap this session).
-        // Fall back to personal best when session best isn't available yet (value is 0).
-        var sessionDelta   = driver?.LapDeltaVsSessionBest ?? 0f;
-        var personalDelta  = driver?.LapDeltaVsBestLap     ?? 0f;
-        // Guard NaN sentinels (e.g. LMU where delta is not available).
-        if (float.IsNaN(sessionDelta))  sessionDelta  = 0f;
+        var sessionDelta = driver?.LapDeltaVsSessionBest ?? 0f;
+        var personalDelta = driver?.LapDeltaVsBestLap ?? 0f;
+        if (float.IsNaN(sessionDelta)) sessionDelta = 0f;
         if (float.IsNaN(personalDelta)) personalDelta = 0f;
-        var usingSessionBest = sessionDelta != 0f;
-        var delta = usingSessionBest ? sessionDelta : personalDelta;
+
+        var usingSessionBest = driver?.HasSessionBestReference == true
+            || (driver?.SessionBestLapTime ?? TimeSpan.Zero) > TimeSpan.Zero;
+        var rawDelta = usingSessionBest ? sessionDelta : personalDelta;
+        var delta = SmoothDelta(rawDelta, DeltaEmaAlpha);
 
         PushTrend(delta);
 
-        var pad    = 8f;
-        var w      = (float)config.Width;
-        var h      = (float)config.Height;
+        var pad = 8f;
+        var w = (float)config.Width;
+        var h = (float)config.Height;
         var innerW = w - 2f * pad;
 
-        bool isFaster  = delta <= 0f;
-        var fillColor  = isFaster ? config.FasterColor : config.SlowerColor;
-        var fillBrush  = Resources.GetBrush(fillColor.R, fillColor.G, fillColor.B, fillColor.A);
-        var dimmed     = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
-                                             config.TextColor.B, config.TextColor.A * 0.45f);
-        var centerLine = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
-                                             config.TextColor.B, 0.70f);
-        // Bar background: slightly lighter than overlay background.
-        var barBg = Resources.GetBrush(
-            Math.Min(1f, config.BackgroundColor.R + 0.12f),
-            Math.Min(1f, config.BackgroundColor.G + 0.12f),
-            Math.Min(1f, config.BackgroundColor.B + 0.12f),
-            0.95f);
+        bool isFaster = delta <= 0f;
+        var baseFill = isFaster ? config.FasterColor : config.SlowerColor;
+        float maxSeconds = Math.Clamp(config.DeltaBarMaxSeconds, 0.25f, 30f);
+        float fillFrac = Math.Clamp(MathF.Abs(delta) / maxSeconds, 0f, 1f);
+        float opacityFactor = 0.2f + (0.8f * fillFrac); // 0s => 20%, max => 100%
+        float barAlpha = Math.Clamp(baseFill.A * opacityFactor, 0f, 1f);
+        var fillBrush = Resources.GetBrush(baseFill.R, baseFill.G, baseFill.B, barAlpha);
+        var textBrushFixed = Resources.GetBrush(baseFill.R, baseFill.G, baseFill.B, 1f);
+        var dimmed = Resources.GetBrush(
+            config.TextColor.R,
+            config.TextColor.G,
+            config.TextColor.B,
+            config.TextColor.A * 0.45f);
+        var referenceTextBrush = Resources.GetBrush(
+            config.TextColor.R,
+            config.TextColor.G,
+            config.TextColor.B,
+            Math.Clamp(config.TextColor.A * 0.95f, 0f, 1f));
+        var centerLine = Resources.GetBrush(
+            config.TextColor.R,
+            config.TextColor.G,
+            config.TextColor.B,
+            0.70f);
 
         float y = pad;
+        var dw = Resources.WriteFactory;
+        var smallFmt = Resources.GetTextFormat("Oswald", config.FontSize);
 
-        // в”Ђв”Ђ Delta text (optional) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
         if (config.ShowDeltaText)
         {
-            var dw            = Resources.WriteFactory;
             var deltaFontSize = MathF.Max(config.FontSize * 1.5f, 18f);
-            var textRowH      = deltaFontSize + 6f;
-            var bigFmt        = Resources.GetTextFormat("Oswald", deltaFontSize);
-            var smallFmt      = Resources.GetTextFormat("Oswald", config.FontSize);
+            var textRowH = deltaFontSize + 6f;
+            var bigFmt = Resources.GetTextFormat(
+                "Oswald",
+                deltaFontSize,
+                FontWeight.Bold,
+                Vortice.DirectWrite.FontStyle.Normal);
 
-            var deltaStr  = driver == null ? "---.---" : FormatDelta(delta);
-            var textBrush = driver == null ? dimmed : fillBrush;
+            var deltaStr = driver == null ? "---.---" : FormatDelta(delta);
+            var textBrush = driver == null ? dimmed : textBrushFixed;
 
-            // Trend arrow to the left of the centered delta text.
             if (config.ShowTrendArrow && driver != null)
             {
                 var trend = ComputeTrend();
                 if (trend != 0)
                 {
-                    var arrow = trend > 0 ? "\u25b2" : "\u25bc"; // в–І / в–ј
-                    using var arrowLayout = dw.CreateTextLayout(
-                        arrow, smallFmt, 20f, textRowH);
+                    var arrow = trend > 0 ? "^" : "v";
+                    using var arrowLayout = dw.CreateTextLayout(arrow, smallFmt, 20f, textRowH);
                     arrowLayout.TextAlignment = TextAlignment.Leading;
-                    // Vertically center the small arrow within the larger text row.
                     float arrowY = y + (textRowH - (config.FontSize + 6f)) / 2f;
                     context.DrawTextLayout(new Vector2(pad, arrowY), arrowLayout, textBrush, DrawTextOptions.Clip);
                 }
             }
 
-            // Delta value: centered across the full inner width.
             using var textLayout = dw.CreateTextLayout(deltaStr, bigFmt, innerW, textRowH);
             textLayout.TextAlignment = TextAlignment.Center;
             context.DrawTextLayout(new Vector2(pad, y), textLayout, textBrush, DrawTextOptions.Clip);
 
-            // SB / PB label (top-right corner) so driver knows which reference is active.
-            var refLabel = driver == null ? "" : (usingSessionBest ? "SB" : "PB");
-            if (refLabel.Length > 0)
+            if (driver != null)
             {
-                using var refLayout = dw.CreateTextLayout(refLabel, smallFmt, innerW, textRowH);
-                refLayout.TextAlignment = TextAlignment.Trailing;
-                context.DrawTextLayout(new Vector2(pad, y), refLayout, dimmed, DrawTextOptions.Clip);
+                var referenceLabel = usingSessionBest ? "Session Best" : "All Time Best";
+                var referenceTime = usingSessionBest ? driver.SessionBestLapTime : driver.BestLapTime;
+
+                using var labelLayout = dw.CreateTextLayout(referenceLabel, smallFmt, innerW - 12f, textRowH);
+                labelLayout.TextAlignment = TextAlignment.Leading;
+                context.DrawTextLayout(new Vector2(pad + 6f, y), labelLayout, referenceTextBrush, DrawTextOptions.Clip);
+
+                if (config.ShowReferenceLapTime)
+                {
+                    var timeText = FormatLapTime(referenceTime);
+                    using var timeLayout = dw.CreateTextLayout(timeText, smallFmt, innerW - 12f, textRowH);
+                    timeLayout.TextAlignment = TextAlignment.Trailing;
+                    context.DrawTextLayout(new Vector2(pad + 6f, y), timeLayout, referenceTextBrush, DrawTextOptions.Clip);
+                }
             }
 
-            y += textRowH + 4f;
+            y += textRowH + 2f;
+        }
+        else if (driver != null && config.ShowReferenceLapTime)
+        {
+            var referenceLabel = usingSessionBest ? "Session Best" : "All Time Best";
+            var referenceTime = usingSessionBest ? driver.SessionBestLapTime : driver.BestLapTime;
+
+            using var labelLayout = dw.CreateTextLayout(referenceLabel, smallFmt, innerW - 12f, config.FontSize + 8f);
+            labelLayout.TextAlignment = TextAlignment.Leading;
+            context.DrawTextLayout(new Vector2(pad + 6f, y), labelLayout, referenceTextBrush, DrawTextOptions.Clip);
+
+            var timeText = FormatLapTime(referenceTime);
+            using var timeLayout = dw.CreateTextLayout(timeText, smallFmt, innerW - 12f, config.FontSize + 8f);
+            timeLayout.TextAlignment = TextAlignment.Trailing;
+            context.DrawTextLayout(new Vector2(pad + 6f, y), timeLayout, referenceTextBrush, DrawTextOptions.Clip);
+            y += config.FontSize + 8f;
         }
 
-        // в”Ђв”Ђ Delta bar в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
         float barH = h - y - pad;
-        if (barH < 4f) return;
+        if (barH < 4f)
+            return;
 
-        float centerX  = pad + innerW / 2f;
-        float fillFrac = Math.Clamp(MathF.Abs(delta) / config.DeltaBarMaxSeconds, 0f, 1f);
-        float fillW    = fillFrac * (innerW / 2f);
+        float centerX = pad + innerW / 2f;
+        float fillW = fillFrac * (innerW / 2f);
 
-        // Bar background (slightly lighter dark panel).
-        context.FillRectangle(new Vortice.RawRectF(pad, y, pad + innerW, y + barH), barBg);
-
-        // Colored fill: extends left from center when faster, right when slower.
         if (fillW > 0f)
         {
             var fillRect = isFaster
-                ? new Vortice.RawRectF(centerX - fillW, y, centerX,        y + barH)
-                : new Vortice.RawRectF(centerX,         y, centerX + fillW, y + barH);
+                ? new Vortice.RawRectF(centerX - fillW, y, centerX, y + barH)
+                : new Vortice.RawRectF(centerX, y, centerX + fillW, y + barH);
             context.FillRectangle(fillRect, fillBrush);
         }
 
-        // Center zero line.
         context.DrawLine(new Vector2(centerX, y), new Vector2(centerX, y + barH), centerLine, 2f);
     }
 
-    // в”Ђв”Ђ Trend buffer в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    private float SmoothDelta(float rawDelta, float emaAlpha)
+    {
+        emaAlpha = Math.Clamp(emaAlpha, 0.01f, 0.8f);
+
+        if (!_deltaInitialized)
+        {
+            _smoothedDelta = rawDelta;
+            _deltaInitialized = true;
+            return _smoothedDelta;
+        }
+
+        _smoothedDelta = emaAlpha * rawDelta + ((1f - emaAlpha) * _smoothedDelta);
+        return _smoothedDelta;
+    }
 
     private void PushTrend(float delta)
     {
         _trendBuf[_trendHead] = delta;
         _trendHead = (_trendHead + 1) % TrendSamples;
-        if (_trendCount < TrendSamples) _trendCount++;
+        if (_trendCount < TrendSamples)
+            _trendCount++;
     }
 
     /// <summary>
-    /// Returns +1 if gap is increasing (в–І getting slower), -1 if decreasing (в–ј getting faster), 0 if flat.
+    /// Returns +1 if gap is increasing, -1 if decreasing, 0 if flat.
     /// </summary>
     private int ComputeTrend()
     {
-        if (_trendCount < TrendSamples) return 0;
+        if (_trendCount < TrendSamples)
+            return 0;
 
-        // _trendHead is the next slot to write вЂ” currently holds the oldest value.
         float oldest = _trendBuf[_trendHead];
         float newest = _trendBuf[(_trendHead - 1 + TrendSamples) % TrendSamples];
-        float diff   = MathF.Abs(newest) - MathF.Abs(oldest);
+        float diff = MathF.Abs(newest) - MathF.Abs(oldest);
 
-        if (diff >  0.01f) return  1;
+        if (diff > 0.01f) return 1;
         if (diff < -0.01f) return -1;
         return 0;
     }
 
-    // в”Ђв”Ђ Formatting helper в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-
     private static string FormatDelta(float delta)
     {
-        if (float.IsNaN(delta) || delta == 0f) return " 0.000";
-        var s = delta.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+        if (float.IsNaN(delta) || delta == 0f)
+            return " 0.000";
+
+        var s = delta.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
         return delta < 0f ? s : $"+{s}";
     }
+
+    private static string FormatLapTime(TimeSpan lap)
+    {
+        if (lap <= TimeSpan.Zero)
+            return "--:--.---";
+
+        int totalMinutes = (int)lap.TotalMinutes;
+        int seconds = lap.Seconds;
+        int millis = lap.Milliseconds;
+        return $"{totalMinutes}:{seconds:00}.{millis:000}";
+    }
 }
-
-
-

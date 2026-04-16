@@ -4,8 +4,12 @@ public sealed class SessionData
 {
     public string TrackName { get; init; } = "";
     public SessionType SessionType { get; init; }
+    // Configured session duration from session definition (0 = unlimited / unavailable).
+    public TimeSpan SessionTimeLimit { get; init; }
+    // Snapshot remaining at decode time (for live countdown prefer DriverData.SessionTimeRemaining).
     public TimeSpan SessionTimeRemaining { get; init; }
     public TimeSpan SessionTimeElapsed { get; init; }
+    public TimeSpan SessionBestLapTime { get; init; }
     public int TotalLaps { get; init; }          // 0 = time-based session
     public float AirTempC { get; init; }
     public float TrackTempC { get; init; }
@@ -26,5 +30,15 @@ public sealed class SessionData
     /// (overlays should treat an empty list the same as one class).
     /// </summary>
     public IReadOnlyList<CarClassInfo> CarClasses { get; init; } = [];
+
+    // Field composition metrics.
+    public int PlayerCountOverall { get; init; }         // active non-spectator/non-pace drivers
+    public int PlayerCountInClass { get; init; }         // player's class in multi-class; same as overall in single-class
+    public int StrengthOfFieldOverall { get; init; }     // iRating-based SOF approximation
+    public int StrengthOfFieldInClass { get; init; }     // player's class SOF in multi-class; same as overall in single-class
+
+    // Incident rule thresholds (0 = unavailable from the sim/session rules).
+    public int IncidentDriveThroughLimit { get; init; }
+    public int IncidentDisqualificationLimit { get; init; }
 }
 

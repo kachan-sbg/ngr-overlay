@@ -51,6 +51,12 @@ public abstract class BaseOverlay : OverlayWindow
     protected RenderResources Resources =>
         _resources ?? throw new InvalidOperationException("Resources not yet initialized.");
 
+    /// <summary>
+    /// When false, the base frame background fill is skipped and only overlay-specific
+    /// drawing from <see cref="OnRender(ID2D1RenderTarget, OverlayConfig)"/> is visible.
+    /// </summary>
+    protected virtual bool DrawBaseBackground => true;
+
     // -------------------------------------------------------------------------
     // Sim state (TASK-304)
     // -------------------------------------------------------------------------
@@ -198,8 +204,11 @@ public abstract class BaseOverlay : OverlayWindow
 
         // Always draw the background so the overlay is visible even when
         // the concrete OnRender() is a stub or draws nothing (Phase 3).
-        var bgBrush = Resources.GetBrush(effectiveConfig.BackgroundColor);
-        context.FillRectangle(new Vortice.RawRectF(0, 0, w, h), bgBrush);
+        if (DrawBaseBackground)
+        {
+            var bgBrush = Resources.GetBrush(effectiveConfig.BackgroundColor);
+            context.FillRectangle(new Vortice.RawRectF(0, 0, w, h), bgBrush);
+        }
 
         // Edit mode: always call OnRender so the user sees realistic mock data
         // while positioning and resizing overlays. Sim state is irrelevant here.

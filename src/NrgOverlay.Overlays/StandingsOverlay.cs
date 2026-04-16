@@ -80,6 +80,11 @@ public sealed class StandingsOverlay : BaseOverlay
         AppConfig appConfig)
         : base(WindowTitle, config, bus, configStore, appConfig)
     {
+        Subscribe<RaceStateSnapshot>(state =>
+        {
+            if (state.Standings is not null)
+                _standings = state.Standings;
+        });
         Subscribe<StandingsData>(data => _standings = data);
     }
 

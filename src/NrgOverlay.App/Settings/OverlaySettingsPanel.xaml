@@ -136,10 +136,18 @@
                                      Width="70"/>
                         </local:FieldRow>
                         <local:FieldRow Label="Faster Color">
-                            <local:ColorEditor DataContext="{Binding FasterColor}"/>
+                            <StackPanel Orientation="Horizontal">
+                                <local:ColorEditor DataContext="{Binding FasterColor}"/>
+                                <TextBox Text="{Binding FasterColor.HexRgb, UpdateSourceTrigger=LostFocus}"
+                                         Width="90" Margin="8,0,0,0"/>
+                            </StackPanel>
                         </local:FieldRow>
                         <local:FieldRow Label="Slower Color">
-                            <local:ColorEditor DataContext="{Binding SlowerColor}"/>
+                            <StackPanel Orientation="Horizontal">
+                                <local:ColorEditor DataContext="{Binding SlowerColor}"/>
+                                <TextBox Text="{Binding SlowerColor.HexRgb, UpdateSourceTrigger=LostFocus}"
+                                         Width="90" Margin="8,0,0,0"/>
+                            </StackPanel>
                         </local:FieldRow>
                         <local:FieldRow Label="">
                             <CheckBox Content="Show trend arrow" IsChecked="{Binding ShowTrendArrow}"
@@ -147,6 +155,10 @@
                         </local:FieldRow>
                         <local:FieldRow Label="">
                             <CheckBox Content="Show delta text" IsChecked="{Binding ShowDeltaText}"
+                                      Checked="Toggle_Changed" Unchecked="Toggle_Changed"/>
+                        </local:FieldRow>
+                        <local:FieldRow Label="">
+                            <CheckBox Content="Show reference lap time" IsChecked="{Binding ShowReferenceLapTime}"
                                       Checked="Toggle_Changed" Unchecked="Toggle_Changed"/>
                         </local:FieldRow>
                     </StackPanel>
@@ -233,14 +245,30 @@
                                      IsEnabled="{Binding HasDeltaBarMaxSeconds}"/>
                         </local:OverrideRow>
                         <local:OverrideRow Label="Faster Color" HasOverride="{Binding HasFasterColor}">
-                            <local:ColorEditor DataContext="{Binding FasterColor}"
-                                               IsEnabled="{Binding DataContext.HasFasterColor,
-                                                   RelativeSource={RelativeSource AncestorType=local:OverrideRow}}"/>
+                            <StackPanel Orientation="Horizontal">
+                                <local:ColorEditor DataContext="{Binding FasterColor}"
+                                                   IsEnabled="{Binding DataContext.HasFasterColor,
+                                                       RelativeSource={RelativeSource AncestorType=local:OverrideRow}}"/>
+                                <TextBox Text="{Binding FasterColor.HexRgb, UpdateSourceTrigger=LostFocus}"
+                                         Width="90" Margin="8,0,0,0"
+                                         IsEnabled="{Binding DataContext.HasFasterColor,
+                                             RelativeSource={RelativeSource AncestorType=local:OverrideRow}}"/>
+                            </StackPanel>
                         </local:OverrideRow>
                         <local:OverrideRow Label="Slower Color" HasOverride="{Binding HasSlowerColor}">
-                            <local:ColorEditor DataContext="{Binding SlowerColor}"
-                                               IsEnabled="{Binding DataContext.HasSlowerColor,
-                                                   RelativeSource={RelativeSource AncestorType=local:OverrideRow}}"/>
+                            <StackPanel Orientation="Horizontal">
+                                <local:ColorEditor DataContext="{Binding SlowerColor}"
+                                                   IsEnabled="{Binding DataContext.HasSlowerColor,
+                                                       RelativeSource={RelativeSource AncestorType=local:OverrideRow}}"/>
+                                <TextBox Text="{Binding SlowerColor.HexRgb, UpdateSourceTrigger=LostFocus}"
+                                         Width="90" Margin="8,0,0,0"
+                                         IsEnabled="{Binding DataContext.HasSlowerColor,
+                                             RelativeSource={RelativeSource AncestorType=local:OverrideRow}}"/>
+                            </StackPanel>
+                        </local:OverrideRow>
+                        <local:OverrideRow Label="Show Ref Time" HasOverride="{Binding HasShowReferenceLapTime}">
+                            <CheckBox IsChecked="{Binding ShowReferenceLapTime}" IsEnabled="{Binding HasShowReferenceLapTime}"
+                                      Checked="Toggle_Changed" Unchecked="Toggle_Changed"/>
                         </local:OverrideRow>
                     </StackPanel>
 

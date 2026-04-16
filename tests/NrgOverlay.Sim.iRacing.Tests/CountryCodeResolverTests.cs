@@ -15,7 +15,7 @@ public class CountryCodeResolverTests
         Assert.Equal("DE", CountryCodeResolver.ResolveCountryCode(42, 0, overrides, cache, byFlairIso2, byFlairIso3));
         Assert.Equal("FR", CountryCodeResolver.ResolveCountryCode(7, 0, overrides, cache, byFlairIso2, byFlairIso3));
         Assert.Equal("IT", CountryCodeResolver.ResolveCountryCode(99, 99, overrides, cache, byFlairIso2, byFlairIso3));
-        Assert.Equal("WLS", CountryCodeResolver.ResolveCountryCode(100, 100, overrides, cache, byFlairIso2, byFlairIso3));
+        Assert.Equal("GB", CountryCodeResolver.ResolveCountryCode(100, 100, overrides, cache, byFlairIso2, byFlairIso3));
         Assert.Equal(string.Empty, CountryCodeResolver.ResolveCountryCode(101, 0, overrides, cache, byFlairIso2, byFlairIso3));
     }
 

@@ -6,6 +6,8 @@
 /// </summary>
 public static class CountryCodeResolver
 {
+    private static readonly IReadOnlyDictionary<string, string> Iso2ByIso3 = BuildIso2ByIso3();
+
     /// <summary>
     /// Resolves an ISO alpha-2 country code for a driver.
     /// </summary>
@@ -18,16 +20,16 @@ public static class CountryCodeResolver
         IReadOnlyDictionary<int, string>? byFlairIso3)
     {
         if (TryGetAnyCode(overridesByUserId, userId, out var overrideCode))
-            return overrideCode;
+            return PreferIso2Code(overrideCode);
 
         if (TryGetAnyCode(cachedByUserId, userId, out var cachedCode))
-            return cachedCode;
+            return PreferIso2Code(cachedCode);
 
         if (TryGetIso2Code(byFlairIso2, flairId, out var iso2))
             return iso2;
 
         if (TryGetIso3Code(byFlairIso3, flairId, out var iso3))
-            return iso3;
+            return PreferIso2Code(iso3);
 
         return string.Empty;
     }
@@ -125,6 +127,49 @@ public static class CountryCodeResolver
 
         code = NormalizeIsoCode(raw);
         return code.Length is 2 or 3;
+    }
+
+    private static string PreferIso2Code(string code)
+    {
+        var iso2 = NormalizeIso2Code(code);
+        if (iso2.Length == 2)
+            return iso2;
+
+        var iso3 = NormalizeIso3Code(code);
+        if (iso3.Length != 3)
+            return string.Empty;
+
+        return Iso2ByIso3.TryGetValue(iso3, out var mappedIso2)
+            ? mappedIso2
+            : iso3;
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildIso2ByIso3()
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            // UK home nations (iRacing flair IDs use these pseudo ISO3 values).
+            ["ENG"] = "GB",
+            ["SCT"] = "GB",
+            ["WLS"] = "GB",
+            ["NIR"] = "GB",
+        };
+
+        foreach (var kv in DriverCountryDefaults.Iso3ByFlairId)
+        {
+            var iso3 = NormalizeIso3Code(kv.Value);
+            if (iso3.Length != 3)
+                continue;
+
+            if (!DriverCountryDefaults.Iso2ByFlairId.TryGetValue(kv.Key, out var rawIso2))
+                continue;
+
+            var iso2 = NormalizeIso2Code(rawIso2);
+            if (iso2.Length == 2)
+                map[iso3] = iso2;
+        }
+
+        return map;
     }
 }
 

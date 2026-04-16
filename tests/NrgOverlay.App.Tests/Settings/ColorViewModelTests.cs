@@ -99,5 +99,30 @@ public class ColorViewModelTests
         Assert.Equal(0,   brush.Color.B);
         Assert.Equal(255, brush.Color.A);
     }
+
+    [Fact]
+    public void HexRgb_Get_ReturnsCanonicalUppercaseValue()
+    {
+        var vm = new ColorViewModel();
+        vm.R = 10;
+        vm.G = 11;
+        vm.B = 12;
+
+        Assert.Equal("#0A0B0C", vm.HexRgb);
+    }
+
+    [Fact]
+    public void HexRgb_Set_UpdatesRgbChannels_AndKeepsAlpha()
+    {
+        var vm = new ColorViewModel();
+        vm.A = 111;
+
+        vm.HexRgb = "#80A0C0";
+
+        Assert.Equal(128, vm.R);
+        Assert.Equal(160, vm.G);
+        Assert.Equal(192, vm.B);
+        Assert.Equal(111, vm.A);
+    }
 }
 

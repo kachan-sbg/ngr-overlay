@@ -186,7 +186,32 @@ public partial class SettingsWindow : Window
     {
         if (_activeOverlayId != null && _viewModels.TryGetValue(_activeOverlayId, out var vm))
         {
-            _overlayManager.ApplyConfig(_activeOverlayId, vm.ToConfig());
+            var configToApply = vm.ToConfig();
+
+            // In edit mode, overlays can be dragged/resized directly on screen.
+            // Those live bounds are written into AppConfig by BaseOverlay, but this
+            // Settings VM is a detached snapshot. Merge live bounds so Apply does not
+            // snap the overlay back to stale pre-drag coordinates.
+            if (_overlayManager.EditModeActive)
+            {
+                var live = _appConfig.Overlays.FirstOrDefault(c => c.Id == _activeOverlayId);
+                if (live is not null)
+                {
+                    configToApply.X = live.X;
+                    configToApply.Y = live.Y;
+                    configToApply.Width = live.Width;
+                    configToApply.Height = live.Height;
+
+                    if (configToApply.StreamOverride is not null && live.StreamOverride is not null)
+                    {
+                        configToApply.StreamOverride.Width = live.StreamOverride.Width;
+                        configToApply.StreamOverride.Height = live.StreamOverride.Height;
+                    }
+                }
+            }
+
+            _overlayManager.ApplyConfig(_activeOverlayId, configToApply);
+            vm.LoadFrom(configToApply);
         }
         else
         {

@@ -27,6 +27,7 @@ public class OverlayConfigViewModelTests
         DeltaBarMaxSeconds = 3f,
         ShowTrendArrow  = false,
         ShowDeltaText   = true,
+        ShowReferenceLapTime = true,
         FasterColor     = new ColorConfig { R = 0f, G = 1f, B = 0f, A = 1f },
         SlowerColor     = new ColorConfig { R = 1f, G = 0f, B = 0f, A = 1f },
         StreamOverride  = new StreamOverrideConfig { Enabled = true, Width = 800 },
@@ -60,6 +61,7 @@ public class OverlayConfigViewModelTests
         Assert.Equal(config.DeltaBarMaxSeconds, result.DeltaBarMaxSeconds);
         Assert.Equal(config.ShowTrendArrow,  result.ShowTrendArrow);
         Assert.Equal(config.ShowDeltaText,   result.ShowDeltaText);
+        Assert.Equal(config.ShowReferenceLapTime, result.ShowReferenceLapTime);
     }
 
     [Fact]

@@ -31,6 +31,7 @@ public class OverlayConfigDeepCloneTests
         SlowerColor = new ColorConfig { R = 1f, G = 0f, B = 0f, A = 1f },
         ShowTrendArrow = false,
         ShowDeltaText = true,
+        ShowReferenceLapTime = true,
         StreamOverride = new StreamOverrideConfig
         {
             Enabled = true,
@@ -43,6 +44,7 @@ public class OverlayConfigDeepCloneTests
             ShowIRating = false,
             MaxDriversShown = 10,
             DeltaBarMaxSeconds = 5f,
+            ShowReferenceLapTime = false,
             FasterColor = new ColorConfig { R = 0f, G = 0.8f, B = 0f, A = 1f },
         },
     };
@@ -81,6 +83,7 @@ public class OverlayConfigDeepCloneTests
         Assert.Equal(original.DeltaBarMaxSeconds, clone.DeltaBarMaxSeconds);
         Assert.Equal(original.ShowTrendArrow, clone.ShowTrendArrow);
         Assert.Equal(original.ShowDeltaText, clone.ShowDeltaText);
+        Assert.Equal(original.ShowReferenceLapTime, clone.ShowReferenceLapTime);
     }
 
     [Fact]
@@ -134,6 +137,7 @@ public class OverlayConfigDeepCloneTests
         Assert.Equal(original.StreamOverride.ShowIRating, clone.StreamOverride.ShowIRating);
         Assert.Equal(original.StreamOverride.MaxDriversShown, clone.StreamOverride.MaxDriversShown);
         Assert.Equal(original.StreamOverride.DeltaBarMaxSeconds, clone.StreamOverride.DeltaBarMaxSeconds);
+        Assert.Equal(original.StreamOverride.ShowReferenceLapTime, clone.StreamOverride.ShowReferenceLapTime);
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-﻿using NrgOverlay.Core;
+using NrgOverlay.Core;
 using NrgOverlay.Core.Config;
 using NrgOverlay.Rendering;
 using NrgOverlay.Sim.Contracts;
@@ -9,13 +9,12 @@ using Vortice.DirectWrite;
 namespace NrgOverlay.Overlays;
 
 /// <summary>
-/// Input telemetry overlay вЂ” vertical bars for throttle, brake, clutch; gear and speed
-/// header; optional scrolling time-series trace.
+/// Input telemetry overlay - compact throttle/brake visualization with shared-plane trace.
 /// </summary>
 public sealed class InputTelemetryOverlay : BaseOverlay
 {
     public const string OverlayId   = "InputTelemetry";
-    public const string WindowTitle = "NrgOverlay \u2014 Input";
+    public const string WindowTitle = "NrgOverlay - Input";
 
     public static OverlayConfig DefaultConfig => new()
     {
@@ -39,17 +38,18 @@ public sealed class InputTelemetryOverlay : BaseOverlay
         ClutchColor    = ColorConfig.Blue,
     };
 
-    // в”Ђв”Ђ Live data в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
     private volatile TelemetryData? _telemetry;
 
-    // в”Ђв”Ђ Scrolling trace ring buffer (5 s Г— 60 Hz = 300 samples) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // Ring buffer (5 s x 60 Hz = 300 samples)
     private const int TraceSamples = 300;
     private readonly float[] _throttleBuf = new float[TraceSamples];
     private readonly float[] _brakeBuf    = new float[TraceSamples];
     private volatile int _traceTail;  // next write index
-    private volatile int _traceCount; // valid sample count (0вЂ“TraceSamples)
+    private volatile int _traceCount; // valid sample count (0-TraceSamples)
+    private const float CurrentBarWidthPx = 14f;
+    private const float CurrentBarGapPx = 4f;
 
-    // в”Ђв”Ђ Mock animation state (render thread only) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // Mock animation state (render thread only)
     private int _frameCounter;
 
     public InputTelemetryOverlay(
@@ -73,16 +73,17 @@ public sealed class InputTelemetryOverlay : BaseOverlay
     protected override void OnRender(ID2D1RenderTarget ctx, OverlayConfig cfg)
     {
         bool editMode = !IsLocked;
-        var  telem    = editMode ? null : _telemetry;
+        var telem = editMode ? null : _telemetry;
 
-        float throttle, brake, clutch, speedMps;
-        int   gear;
+        float throttle;
+        float brake;
+        float speedMps;
+        int gear;
 
         if (telem is not null)
         {
             throttle = telem.Throttle;
             brake    = telem.Brake;
-            clutch   = telem.Clutch;
             speedMps = telem.SpeedMps;
             gear     = telem.Gear;
         }
@@ -91,13 +92,11 @@ public sealed class InputTelemetryOverlay : BaseOverlay
             float t  = ++_frameCounter / 60f;
             throttle = MathF.Max(0f, MathF.Sin(t * 1.2f));
             brake    = MathF.Max(0f, -MathF.Sin(t * 0.8f + 0.5f));
-            clutch   = MathF.Max(0f, MathF.Sin(t * 0.4f + 1f) * 0.3f);
-            speedMps = 33.33f + MathF.Sin(t * 0.3f) * 8f; // ~100вЂ“150 km/h
+            speedMps = 33.33f + MathF.Sin(t * 0.3f) * 8f;
             gear     = (int)(t * 0.4f % 5) + 1;
         }
         else
         {
-            // Connected but no telemetry data yet.
             var dimmed = Resources.GetBrush(cfg.TextColor.R, cfg.TextColor.G,
                                              cfg.TextColor.B, cfg.TextColor.A * 0.45f);
             var fmt = Resources.GetTextFormat("Oswald", cfg.FontSize);
@@ -109,32 +108,28 @@ public sealed class InputTelemetryOverlay : BaseOverlay
             return;
         }
 
-        float pad  = 8f;
-        float w    = (float)cfg.Width;
-        float h    = (float)cfg.Height;
-        var   dw   = Resources.WriteFactory;
-        var   text = Resources.GetBrush(cfg.TextColor);
-        var   dim  = Resources.GetBrush(cfg.TextColor.R, cfg.TextColor.G,
-                                         cfg.TextColor.B, cfg.TextColor.A * 0.45f);
+        float pad = 8f;
+        float w = (float)cfg.Width;
+        float h = (float)cfg.Height;
+        var dw = Resources.WriteFactory;
+        var text = Resources.GetBrush(cfg.TextColor);
 
         float y = pad;
 
-        // в”Ђв”Ђ Gear + Speed header в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-        float gearSpeedH = 0f;
         if (cfg.ShowGearSpeed)
         {
             float gearFontSize = MathF.Max(cfg.FontSize * 2f, 24f);
-            gearSpeedH = gearFontSize + 8f;
+            float gearSpeedH = gearFontSize + 8f;
 
             string gearStr = gear switch { -1 => "R", 0 => "N", _ => gear.ToString() };
-            float  speed   = cfg.SpeedUnit == SpeedUnit.Kph ? speedMps * 3.6f : speedMps * 2.23694f;
-            string unit    = cfg.SpeedUnit == SpeedUnit.Kph ? "km/h" : "mph";
+            float speed = cfg.SpeedUnit == SpeedUnit.Kph ? speedMps * 3.6f : speedMps * 2.23694f;
+            string unit = cfg.SpeedUnit == SpeedUnit.Kph ? "km/h" : "mph";
             string speedStr = $"{speed:F0} {unit}";
 
-            float gearColW  = w * 0.3f;
+            float gearColW = w * 0.3f;
             float speedColW = w - gearColW - pad;
 
-            var gearFmt  = Resources.GetTextFormat("Oswald", gearFontSize);
+            var gearFmt = Resources.GetTextFormat("Oswald", gearFontSize);
             var speedFmt = Resources.GetTextFormat("Oswald", cfg.FontSize);
 
             using var gearLayout = dw.CreateTextLayout(gearStr, gearFmt, gearColW - pad, gearSpeedH);
@@ -149,144 +144,152 @@ public sealed class InputTelemetryOverlay : BaseOverlay
             y += gearSpeedH + 4f;
         }
 
-        // в”Ђв”Ђ Compute section heights в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-        float labelH  = cfg.FontSize + 4f;
-        float available = h - y - pad - labelH;
-        float traceH  = cfg.ShowInputTrace ? MathF.Max(50f, available * 0.28f) : 0f;
-        float traceGap = traceH > 0f ? 4f : 0f;
-        float barsH   = available - traceH - traceGap;
-        if (barsH < 4f) barsH = 4f;
-
-        // в”Ђв”Ђ Pedal bars в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-        bool[] showBar = [cfg.ShowThrottle, cfg.ShowBrake, cfg.ShowClutch];
-        float[] values = [throttle, brake, clutch];
-        ColorConfig[] colors = [cfg.ThrottleColor, cfg.BrakeColor, cfg.ClutchColor];
-        string[] barLabels = ["T", "B", "C"];
-
-        int numBars = 0;
-        for (int i = 0; i < 3; i++) if (showBar[i]) numBars++;
-
         float innerW = w - 2f * pad;
+        float contentTop = y;
+        float contentH = MathF.Max(16f, h - contentTop - pad);
+        float gap = 6f;
+        float sideW = (CurrentBarWidthPx * 2f) + CurrentBarGapPx;
+        float graphW = MathF.Max(40f, innerW - sideW - gap);
 
-        if (numBars > 0 && barsH > 4f)
+        float graphLeft = pad;
+        float graphTop = contentTop;
+        float graphBottom = graphTop + contentH;
+        float graphRight = graphLeft + graphW;
+
+        var panelBg = Resources.GetBrush(
+            Math.Min(1f, cfg.BackgroundColor.R + 0.12f),
+            Math.Min(1f, cfg.BackgroundColor.G + 0.12f),
+            Math.Min(1f, cfg.BackgroundColor.B + 0.12f),
+            0.88f);
+        var panelStroke = Resources.GetBrush(cfg.TextColor.R, cfg.TextColor.G, cfg.TextColor.B, 0.20f);
+        ctx.FillRectangle(new Vortice.RawRectF(graphLeft, graphTop, graphRight, graphBottom), panelBg);
+        ctx.DrawRectangle(new Vortice.RawRectF(graphLeft, graphTop, graphRight, graphBottom), panelStroke, 1f);
+
+        var grid = Resources.GetBrush(cfg.TextColor.R, cfg.TextColor.G, cfg.TextColor.B, 0.10f);
+        for (int i = 1; i < 5; i++)
         {
-            float slotW = innerW / numBars;
-            float barW  = slotW * 0.55f;
-            float barOff = (slotW - barW) / 2f;
-
-            var barBg = Resources.GetBrush(
-                Math.Min(1f, cfg.BackgroundColor.R + 0.15f),
-                Math.Min(1f, cfg.BackgroundColor.G + 0.15f),
-                Math.Min(1f, cfg.BackgroundColor.B + 0.15f),
-                0.9f);
-            var labelFmt = Resources.GetTextFormat("Oswald", cfg.FontSize);
-
-            int slotIdx = 0;
-            for (int i = 0; i < 3; i++)
-            {
-                if (!showBar[i]) continue;
-
-                float bx      = pad + slotIdx * slotW + barOff;
-                float barTop  = y;
-                float barBot  = y + barsH;
-                float fillH   = Math.Clamp(values[i], 0f, 1f) * barsH;
-
-                ctx.FillRectangle(new Vortice.RawRectF(bx, barTop, bx + barW, barBot), barBg);
-
-                if (fillH > 0f)
-                {
-                    var c = colors[i];
-                    var fillBrush = Resources.GetBrush(c.R, c.G, c.B, c.A);
-                    ctx.FillRectangle(
-                        new Vortice.RawRectF(bx, barBot - fillH, bx + barW, barBot),
-                        fillBrush);
-                }
-
-                using var labelLayout = dw.CreateTextLayout(barLabels[i], labelFmt, slotW, labelH);
-                labelLayout.TextAlignment = TextAlignment.Center;
-                ctx.DrawTextLayout(new Vector2(pad + slotIdx * slotW, y + barsH + 2f),
-                                   labelLayout, dim, DrawTextOptions.Clip);
-
-                slotIdx++;
-            }
+            float gx = graphLeft + graphW * (i / 5f);
+            ctx.DrawLine(new Vector2(gx, graphTop + 1f), new Vector2(gx, graphBottom - 1f), grid, 1f);
         }
 
-        y += barsH + labelH + 4f;
+        var tc = cfg.ThrottleColor;
+        var bc = cfg.BrakeColor;
+        var throttleFill = Resources.GetBrush(tc.R, tc.G, tc.B, Math.Clamp(tc.A * 0.5f, 0f, 1f));
+        var brakeFill = Resources.GetBrush(bc.R, bc.G, bc.B, Math.Clamp(bc.A * 0.5f, 0f, 1f));
+        var throttleStroke = Resources.GetBrush(tc.R, tc.G, tc.B, 1f);
+        var brakeStroke = Resources.GetBrush(bc.R, bc.G, bc.B, 1f);
 
-        // в”Ђв”Ђ Scrolling trace в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-        if (cfg.ShowInputTrace && traceH > 4f)
+        int availableSamples = editMode ? TraceSamples : Math.Max(0, _traceCount);
+        int renderPoints = graphW < 220f
+            ? Math.Max(2, (int)MathF.Ceiling(graphW))
+            : Math.Clamp((int)MathF.Ceiling(graphW * 0.75f), 160, 600);
+        float pxPerPoint = graphW / MathF.Max(1f, renderPoints - 1f);
+
+        Vector2? prevThrottle = null;
+        Vector2? prevBrake = null;
+        var previousAntialias = ctx.AntialiasMode;
+        ctx.AntialiasMode = AntialiasMode.Aliased;
+        for (int i = 0; i < renderPoints; i++)
         {
-            float traceLeft = pad;
-            float traceTop  = y;
-            float traceW    = innerW;
+            float samplePos = renderPoints <= 1 || availableSamples <= 1
+                ? 0f
+                : (i / (float)(renderPoints - 1)) * (availableSamples - 1);
+            GetTraceSampleInterpolated(editMode, samplePos, availableSamples, out float tVal, out float bVal);
 
-            var traceBg = Resources.GetBrush(
-                Math.Min(1f, cfg.BackgroundColor.R + 0.10f),
-                Math.Min(1f, cfg.BackgroundColor.G + 0.10f),
-                Math.Min(1f, cfg.BackgroundColor.B + 0.10f),
-                0.85f);
-            ctx.FillRectangle(
-                new Vortice.RawRectF(traceLeft, traceTop, traceLeft + traceW, traceTop + traceH),
-                traceBg);
+            float x = graphLeft + i * pxPerPoint;
+            float xNext = i == renderPoints - 1 ? graphRight : graphLeft + (i + 1) * pxPerPoint + 0.75f;
+            float x0 = MathF.Floor(x);
+            float x1 = MathF.Ceiling(xNext);
+            if (x1 <= x0) x1 = x0 + 1f;
+            float tY = graphBottom - Math.Clamp(tVal, 0f, 1f) * contentH;
+            float bY = graphBottom - Math.Clamp(bVal, 0f, 1f) * contentH;
 
-            var divider = Resources.GetBrush(cfg.TextColor.R, cfg.TextColor.G,
-                                              cfg.TextColor.B, 0.20f);
-            float mid = traceTop + traceH * 0.5f;
-            ctx.DrawLine(new Vector2(traceLeft, mid), new Vector2(traceLeft + traceW, mid), divider, 1f);
+            if (tVal > 0.001f)
+                ctx.FillRectangle(new Vortice.RawRectF(x0, tY, x1, graphBottom), throttleFill);
+            if (bVal > 0.001f)
+                ctx.FillRectangle(new Vortice.RawRectF(x0, bY, x1, graphBottom), brakeFill);
 
-            var tc = cfg.ThrottleColor;
-            var bc = cfg.BrakeColor;
-            var throttleBrush = Resources.GetBrush(tc.R, tc.G, tc.B, 0.85f);
-            var brakeBrush    = Resources.GetBrush(bc.R, bc.G, bc.B, 0.85f);
-            float halfH = traceH * 0.48f;
-            float pxPerSample = traceW / TraceSamples;
-            float pxW = MathF.Max(1f, pxPerSample);
-
-            if (editMode)
-            {
-                float offset = _frameCounter * 0.5f;
-                for (int i = 0; i < TraceSamples; i++)
-                {
-                    float frac = (i + offset) / TraceSamples;
-                    float tVal = MathF.Max(0f, MathF.Sin(frac * MathF.Tau * 2.5f));
-                    float bVal = MathF.Max(0f, -MathF.Sin(frac * MathF.Tau * 2f + 1f));
-                    float x = traceLeft + i * pxPerSample;
-
-                    if (tVal > 0.01f)
-                        ctx.FillRectangle(
-                            new Vortice.RawRectF(x, mid - tVal * halfH, x + pxW, mid),
-                            throttleBrush);
-                    if (bVal > 0.01f)
-                        ctx.FillRectangle(
-                            new Vortice.RawRectF(x, mid, x + pxW, mid + bVal * halfH),
-                            brakeBrush);
-                }
-            }
-            else
-            {
-                int count    = _traceCount;
-                int startIdx = count < TraceSamples ? 0 : _traceTail;
-
-                for (int i = 0; i < count; i++)
-                {
-                    int   bufIdx = (startIdx + i) % TraceSamples;
-                    float x      = traceLeft + (TraceSamples - count + i) * pxPerSample;
-                    float tVal   = _throttleBuf[bufIdx];
-                    float bVal   = _brakeBuf[bufIdx];
-
-                    if (tVal > 0.01f)
-                        ctx.FillRectangle(
-                            new Vortice.RawRectF(x, mid - tVal * halfH, x + pxW, mid),
-                            throttleBrush);
-                    if (bVal > 0.01f)
-                        ctx.FillRectangle(
-                            new Vortice.RawRectF(x, mid, x + pxW, mid + bVal * halfH),
-                            brakeBrush);
-                }
-            }
+            var throttlePoint = new Vector2(x, tY);
+            var brakePoint = new Vector2(x, bY);
+            if (prevThrottle.HasValue)
+                ctx.DrawLine(prevThrottle.Value, throttlePoint, throttleStroke, 2.5f);
+            if (prevBrake.HasValue)
+                ctx.DrawLine(prevBrake.Value, brakePoint, brakeStroke, 2.5f);
+            prevThrottle = throttlePoint;
+            prevBrake = brakePoint;
         }
+        ctx.AntialiasMode = previousAntialias;
+
+        float sideLeft = graphRight + gap;
+        DrawCompactBar(ctx, sideLeft, graphTop, CurrentBarWidthPx, contentH, throttle, tc);
+        DrawCompactBar(ctx, sideLeft + CurrentBarWidthPx + CurrentBarGapPx, graphTop, CurrentBarWidthPx, contentH, brake, bc);
+    }
+
+    private void DrawCompactBar(
+        ID2D1RenderTarget ctx,
+        float x,
+        float top,
+        float w,
+        float h,
+        float value,
+        ColorConfig color)
+    {
+        var bg = Resources.GetBrush(0.08f, 0.08f, 0.08f, 0.80f);
+        var fill = Resources.GetBrush(color.R, color.G, color.B, Math.Clamp(color.A * 0.85f, 0f, 1f));
+        var stroke = Resources.GetBrush(color.R, color.G, color.B, 1f);
+        ctx.FillRectangle(new Vortice.RawRectF(x, top, x + w, top + h), bg);
+        float fillH = Math.Clamp(value, 0f, 1f) * h;
+        if (fillH > 0.001f)
+        {
+            var y0 = top + h - fillH;
+            ctx.FillRectangle(new Vortice.RawRectF(x, y0, x + w, top + h), fill);
+            ctx.DrawLine(new Vector2(x, y0), new Vector2(x + w, y0), stroke, 2f);
+        }
+        ctx.DrawRectangle(new Vortice.RawRectF(x, top, x + w, top + h), stroke, 1f);
+    }
+
+    private void GetTraceSampleInterpolated(
+        bool editMode,
+        float samplePos,
+        int availableSamples,
+        out float throttle,
+        out float brake)
+    {
+        if (editMode)
+        {
+            float offset = _frameCounter * 0.5f;
+            float frac = ((samplePos + offset) % TraceSamples) / TraceSamples;
+            throttle = MathF.Max(0f, MathF.Sin(frac * MathF.Tau * 2.5f));
+            brake = MathF.Max(0f, -MathF.Sin(frac * MathF.Tau * 2f + 1f));
+            return;
+        }
+
+        if (availableSamples <= 0)
+        {
+            throttle = 0f;
+            brake = 0f;
+            return;
+        }
+
+        int count = Math.Min(availableSamples, TraceSamples);
+        if (count <= 1)
+        {
+            int idx0 = count < TraceSamples ? 0 : _traceTail;
+            throttle = _throttleBuf[idx0];
+            brake = _brakeBuf[idx0];
+            return;
+        }
+
+        int startIdx = count < TraceSamples ? 0 : _traceTail;
+        float clamped = Math.Clamp(samplePos, 0f, count - 1f);
+        int i0 = (int)MathF.Floor(clamped);
+        int i1 = Math.Min(i0 + 1, count - 1);
+        float t = clamped - i0;
+
+        int buf0 = (startIdx + i0) % TraceSamples;
+        int buf1 = (startIdx + i1) % TraceSamples;
+
+        throttle = _throttleBuf[buf0] + ((_throttleBuf[buf1] - _throttleBuf[buf0]) * t);
+        brake = _brakeBuf[buf0] + ((_brakeBuf[buf1] - _brakeBuf[buf0]) * t);
     }
 }
-
-
-

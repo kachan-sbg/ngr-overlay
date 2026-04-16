@@ -156,8 +156,12 @@ public sealed class FuelCalculatorOverlay : BaseOverlay
             }
             else if (!isLapLimited && session != null && avgLap.HasValue)
             {
-                double lapsEst = session.SessionTimeRemaining.TotalSeconds / avgLap.Value.TotalSeconds;
-                fuelToFinish = (float)lapsEst * avgL;
+                var remaining = driver?.SessionTimeRemaining;
+                if (remaining.HasValue && remaining.Value > TimeSpan.Zero)
+                {
+                    double lapsEst = remaining.Value.TotalSeconds / avgLap.Value.TotalSeconds;
+                    fuelToFinish = (float)lapsEst * avgL;
+                }
             }
         }
 
