@@ -1,4 +1,3 @@
-﻿using System.IO.MemoryMappedFiles;
 using NrgOverlay.Core;
 using NrgOverlay.Core.Config;
 using NrgOverlay.Sim.Contracts;
@@ -8,29 +7,19 @@ namespace NrgOverlay.Sim.iRacing;
 /// <summary>
 /// <see cref="ISimProvider"/> implementation for iRacing.
 /// <para>
-/// Detection reads the iRacing SDK shared memory header directly вЂ” no process enumeration.
+/// Detection reads the iRacing SDK shared memory header directly - no process enumeration.
 /// The polling machinery (<see cref="IRacingPoller"/> / IRSDKSharper) is only started when
 /// <see cref="Start"/> is called.
 /// </para>
 /// </summary>
 public sealed class IRacingProvider : ISimProvider, IDisposable
 {
-    // The iRacing SDK shared memory file name.
-    // iRacingSVC.exe (the background service) holds this file open permanently but does NOT
-    // set the irsdk_stConnected bit.  Reading the status field avoids the false positive
-    // that a plain "can the file be opened?" check would produce.
-    private const string IracingMmfName = "Local\\IRSDKMemMapFileName";
-
-    // Byte offset of `int status` within the irsdk_header struct (after `int ver`).
-    // Bit 0 = irsdk_stConnected: set by the sim when it is running, cleared on exit.
-    private const int StatusOffset        = 4;
-    private const int StatusConnectedBit  = 0x01;
-
     private readonly ISimDataBus _bus;
-    private readonly AppConfig   _appConfig;
+    private readonly AppConfig _appConfig;
     private readonly ConfigStore _configStore;
-    private IRacingPoller?       _poller;
-    private bool                 _started;
+    private readonly IIRacingConnectionProbe _connectionProbe;
+    private IRacingPoller? _poller;
+    private bool _started;
 
     /// <inheritdoc/>
     public string SimId => "iRacing";
@@ -39,28 +28,31 @@ public sealed class IRacingProvider : ISimProvider, IDisposable
     public event Action<SimState>? StateChanged;
 
     public IRacingProvider(ISimDataBus bus, AppConfig appConfig, ConfigStore configStore)
+        : this(bus, appConfig, configStore, new IRacingConnectionProbe())
+    {
+    }
+
+    internal IRacingProvider(
+        ISimDataBus bus,
+        AppConfig appConfig,
+        ConfigStore configStore,
+        IIRacingConnectionProbe connectionProbe)
     {
         _bus = bus;
         _appConfig = appConfig;
         _configStore = configStore;
+        _connectionProbe = connectionProbe;
     }
 
     /// <summary>
     /// Returns <c>true</c> when the iRacing SDK shared memory header reports the sim as
     /// connected (<c>irsdk_stConnected</c> bit set).
-    /// <para>
-    /// Checking the status field вЂ” rather than file existence вЂ” correctly handles the
-    /// <c>iRacingSVC.exe</c> background service, which keeps the MMF open at all times
-    /// but never sets the connected bit when the sim itself is not running.
-    /// </para>
     /// </summary>
     public bool IsRunning()
     {
         try
         {
-            using var mmf  = MemoryMappedFile.OpenExisting(IracingMmfName, MemoryMappedFileRights.Read);
-            using var view = mmf.CreateViewAccessor(0, 8, MemoryMappedFileAccess.Read);
-            return (view.ReadInt32(StatusOffset) & StatusConnectedBit) != 0;
+            return _connectionProbe.IsConnected();
         }
         catch
         {
@@ -75,7 +67,7 @@ public sealed class IRacingProvider : ISimProvider, IDisposable
     /// We skip the intermediate <c>Connected</c> state because <see cref="IsRunning"/>
     /// already confirmed the sim is live before this method is called. Waiting for
     /// IRSDKSharper's <c>OnConnected</c> event is unreliable when iRacing is already
-    /// running at SDK init time вЂ” the event sometimes never fires, leaving overlays locked.
+    /// running at SDK init time - the event sometimes never fires, leaving overlays locked.
     /// Firing <c>InSession</c> immediately unblocks overlays; IRSDKSharper will connect
     /// internally and telemetry will start flowing within a second or two. If the SDK stalls,
     /// the watchdog inside <see cref="IRacingPoller"/> detects it and restarts the SDK.
@@ -90,9 +82,9 @@ public sealed class IRacingProvider : ISimProvider, IDisposable
         _poller = new IRacingPoller(_bus, _appConfig, _configStore, FireStateChanged);
         _poller.Start();
 
-        // iRacing is confirmed running вЂ” fire InSession immediately so overlays unlock.
+        // iRacing is confirmed running - fire InSession immediately so overlays unlock.
         // IRSDKSharper will also fire HandleConnected once its loop attaches, which
-        // re-fires InSession (idempotent вЂ” SimDetector ignores repeated same-state transitions).
+        // re-fires InSession (idempotent - SimDetector ignores repeated same-state transitions).
         FireStateChanged(SimState.InSession);
     }
 
@@ -117,4 +109,3 @@ public sealed class IRacingProvider : ISimProvider, IDisposable
 
     private void FireStateChanged(SimState state) => StateChanged?.Invoke(state);
 }
-
