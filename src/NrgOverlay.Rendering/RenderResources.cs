@@ -18,7 +18,7 @@ public sealed class RenderResources : IDisposable
 
     private readonly object _lock = new();
     private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = new();
-    private readonly Dictionary<(string Family, float Size), IDWriteTextFormat> _textFormats = new();
+    private readonly Dictionary<(string Family, float Size, FontWeight Weight, FontStyle Style), IDWriteTextFormat> _textFormats = new();
 
     private bool _disposed;
 
@@ -57,9 +57,16 @@ public sealed class RenderResources : IDisposable
     // Text format cache
     // -------------------------------------------------------------------------
 
-    public IDWriteTextFormat GetTextFormat(string fontFamily, float fontSize)
+    public IDWriteTextFormat GetTextFormat(string fontFamily, float fontSize) =>
+        GetTextFormat(fontFamily, fontSize, FontWeight.Normal, FontStyle.Normal);
+
+    public IDWriteTextFormat GetTextFormat(
+        string fontFamily,
+        float fontSize,
+        FontWeight fontWeight,
+        FontStyle fontStyle)
     {
-        var key = (fontFamily, fontSize);
+        var key = (fontFamily, fontSize, fontWeight, fontStyle);
 
         lock (_lock)
         {
@@ -68,8 +75,8 @@ public sealed class RenderResources : IDisposable
                 format = _writeFactory.CreateTextFormat(
                     fontFamily,
                     fontCollection:  null,
-                    fontWeight:      FontWeight.Normal,
-                    fontStyle:       FontStyle.Normal,
+                    fontWeight:      fontWeight,
+                    fontStyle:       fontStyle,
                     fontStretch:     FontStretch.Normal,
                     fontSize:        fontSize,
                     localeName:      "");

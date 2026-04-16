@@ -20,6 +20,7 @@ public sealed class DriverData
 
     public float LapDeltaVsBestLap     { get; init; } // seconds; negative = faster than personal best
     public float LapDeltaVsSessionBest { get; init; } // seconds; negative = faster than session best
+    public bool HasSessionBestReference { get; init; }
 
     // в”Ђв”Ђ Live session timing (60 Hz from telemetry, not YAML snapshot) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
@@ -38,5 +39,17 @@ public sealed class DriverData
     /// Supersedes <see cref="SessionData.GameTimeOfDay"/> which is a stale snapshot.
     /// </summary>
     public TimeOnly? GameTimeOfDay { get; init; }
+
+    /// <summary>
+    /// Estimated laps remaining for time-limited sessions, based on the current leader's
+    /// rolling 5-lap average. <c>null</c> = unavailable or not applicable.
+    /// </summary>
+    public int? EstimatedLapsRemaining { get; init; }
+
+    /// <summary>
+    /// Live laps remaining from simulator telemetry when provided.
+    /// <c>null</c> = unavailable / not applicable for current session mode.
+    /// </summary>
+    public int? SessionLapsRemaining { get; init; }
 }
 

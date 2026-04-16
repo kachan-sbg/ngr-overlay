@@ -71,18 +71,20 @@ public sealed class StreamOverrideViewModel : INotifyPropertyChanged
     public TemperatureUnit TemperatureUnit   { get => _tempUnit;        set => Set(ref _tempUnit,        value); }
 
     // в”Ђв”Ђ Delta Bar в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-    private bool  _hasDeltaMax, _hasFaster, _hasSlower, _hasShowTrend, _hasShowDeltaTxt;
-    private float _deltaMax = 2f;
-    private bool  _showTrend = true, _showDeltaTxt = true;
+    private bool  _hasDeltaMax, _hasFaster, _hasSlower, _hasShowTrend, _hasShowDeltaTxt, _hasShowReferenceLapTime;
+    private float _deltaMax = 3f;
+    private bool  _showTrend = true, _showDeltaTxt = true, _showReferenceLapTime = true;
 
     public bool  HasDeltaBarMaxSeconds{ get => _hasDeltaMax;       set => Set(ref _hasDeltaMax,       value); }
     public bool  HasFasterColor       { get => _hasFaster;         set => Set(ref _hasFaster,         value); }
     public bool  HasSlowerColor       { get => _hasSlower;         set => Set(ref _hasSlower,         value); }
     public bool  HasShowTrendArrow    { get => _hasShowTrend;      set => Set(ref _hasShowTrend,      value); }
     public bool  HasShowDeltaText     { get => _hasShowDeltaTxt;   set => Set(ref _hasShowDeltaTxt,   value); }
+    public bool  HasShowReferenceLapTime { get => _hasShowReferenceLapTime; set => Set(ref _hasShowReferenceLapTime, value); }
     public float DeltaBarMaxSeconds   { get => _deltaMax;          set => Set(ref _deltaMax,          value); }
     public bool  ShowTrendArrow       { get => _showTrend;         set => Set(ref _showTrend,         value); }
     public bool  ShowDeltaText        { get => _showDeltaTxt;      set => Set(ref _showDeltaTxt,      value); }
+    public bool  ShowReferenceLapTime { get => _showReferenceLapTime; set => Set(ref _showReferenceLapTime, value); }
     public ColorViewModel FasterColor { get; } = new();
     public ColorViewModel SlowerColor { get; } = new();
 
@@ -212,6 +214,7 @@ public sealed class StreamOverrideViewModel : INotifyPropertyChanged
         SlowerColor.LoadFrom(src?.SlowerColor ?? baseConfig.SlowerColor);
         LoadNullable(src?.ShowTrendArrow, baseConfig.ShowTrendArrow, ref _hasShowTrend,    ref _showTrend);
         LoadNullable(src?.ShowDeltaText,  baseConfig.ShowDeltaText,  ref _hasShowDeltaTxt, ref _showDeltaTxt);
+        LoadNullable(src?.ShowReferenceLapTime, baseConfig.ShowReferenceLapTime, ref _hasShowReferenceLapTime, ref _showReferenceLapTime);
 
         LoadNullable(src?.ShowPitServices,     baseConfig.ShowPitServices,     ref _hasShowPitServices, ref _showPitServices);
         LoadNullable(src?.ShowNextPitEstimate, baseConfig.ShowNextPitEstimate, ref _hasShowNextPit,      ref _showNextPit);
@@ -282,6 +285,7 @@ public sealed class StreamOverrideViewModel : INotifyPropertyChanged
             SlowerColor       = _hasSlower ? SlowerColor.ToColorConfig() : null,
             ShowTrendArrow    = _hasShowTrend    ? _showTrend    : null,
             ShowDeltaText     = _hasShowDeltaTxt ? _showDeltaTxt : null,
+            ShowReferenceLapTime = _hasShowReferenceLapTime ? _showReferenceLapTime : null,
             ShowPitServices     = _hasShowPitServices ? _showPitServices : null,
             ShowNextPitEstimate = _hasShowNextPit     ? _showNextPit     : null,
             ShowHumidity        = _hasShowHumidity    ? _showHumidity    : null,

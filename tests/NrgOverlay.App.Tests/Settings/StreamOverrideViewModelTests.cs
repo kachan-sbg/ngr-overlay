@@ -20,6 +20,7 @@ public class StreamOverrideViewModelTests
         DeltaBarMaxSeconds = 2f,
         ShowTrendArrow  = true,
         ShowDeltaText   = true,
+        ShowReferenceLapTime = true,
         BackgroundColor = new ColorConfig { R = 0f, G = 0f, B = 0f, A = 0.85f },
         TextColor       = new ColorConfig { R = 1f, G = 1f, B = 1f, A = 1f },
         FasterColor     = new ColorConfig { R = 0f, G = 1f, B = 0f, A = 1f },
@@ -51,6 +52,7 @@ public class StreamOverrideViewModelTests
         Assert.False(vm.HasSlowerColor);
         Assert.False(vm.HasShowTrendArrow);
         Assert.False(vm.HasShowDeltaText);
+        Assert.False(vm.HasShowReferenceLapTime);
     }
 
     [Fact]
@@ -67,6 +69,7 @@ public class StreamOverrideViewModelTests
         Assert.Equal(base_.MaxDriversShown,  vm.MaxDriversShown);
         Assert.Equal(base_.ShowIRating,      vm.ShowIRating);
         Assert.Equal(base_.DeltaBarMaxSeconds, vm.DeltaBarMaxSeconds);
+        Assert.Equal(base_.ShowReferenceLapTime, vm.ShowReferenceLapTime);
     }
 
     // в”Ђв”Ђ LoadFrom with partial StreamOverrideConfig в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
@@ -156,6 +159,7 @@ public class StreamOverrideViewModelTests
             FontSize      = 18f,
             ShowIRating   = false,
             DeltaBarMaxSeconds = 5f,
+            ShowReferenceLapTime = false,
         };
 
         var vm = new StreamOverrideViewModel();
@@ -167,6 +171,7 @@ public class StreamOverrideViewModelTests
         Assert.Equal(18f,   result.FontSize);
         Assert.Equal(false, result.ShowIRating);
         Assert.Equal(5f,    result.DeltaBarMaxSeconds);
+        Assert.Equal(false, result.ShowReferenceLapTime);
         Assert.Null(result.Height);   // was null in src в†’ must still be null
         Assert.Null(result.Opacity);  // was null in src в†’ must still be null
     }

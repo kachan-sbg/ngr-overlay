@@ -38,6 +38,7 @@ public sealed class StreamOverrideConfig
     public ColorConfig? SlowerColor { get; set; }
     public bool? ShowTrendArrow { get; set; }
     public bool? ShowDeltaText { get; set; }
+    public bool? ShowReferenceLapTime { get; set; }
 
     // --- Standings overlay ---
     public StandingsDisplayMode? StandingsDisplayMode { get; set; }

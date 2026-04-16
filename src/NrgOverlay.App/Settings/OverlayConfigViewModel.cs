@@ -64,13 +64,15 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
     public TemperatureUnit TemperatureUnit{ get => _tempUnit;     set => Set(ref _tempUnit,     value); }
 
     // в”Ђв”Ђ Delta Bar-specific в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-    private float _deltaBarMax   = 2f;
+    private float _deltaBarMax   = 3f;
     private bool  _showTrend     = true;
     private bool  _showDeltaTxt  = true;
+    private bool  _showReferenceLapTime = true;
 
     public float DeltaBarMaxSeconds { get => _deltaBarMax;  set => Set(ref _deltaBarMax,  value); }
     public bool  ShowTrendArrow     { get => _showTrend;    set => Set(ref _showTrend,    value); }
     public bool  ShowDeltaText      { get => _showDeltaTxt; set => Set(ref _showDeltaTxt, value); }
+    public bool  ShowReferenceLapTime { get => _showReferenceLapTime; set => Set(ref _showReferenceLapTime, value); }
 
     public ColorViewModel FasterColor { get; } = new();
     public ColorViewModel SlowerColor { get; } = new();
@@ -168,6 +170,7 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
         _deltaBarMax  = c.DeltaBarMaxSeconds;
         _showTrend    = c.ShowTrendArrow;
         _showDeltaTxt = c.ShowDeltaText;
+        _showReferenceLapTime = c.ShowReferenceLapTime;
         FasterColor.LoadFrom(c.FasterColor);
         SlowerColor.LoadFrom(c.SlowerColor);
 
@@ -228,6 +231,7 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
         DeltaBarMaxSeconds = _deltaBarMax,
         ShowTrendArrow     = _showTrend,
         ShowDeltaText      = _showDeltaTxt,
+        ShowReferenceLapTime = _showReferenceLapTime,
         FasterColor        = FasterColor.ToColorConfig(),
         SlowerColor        = SlowerColor.ToColorConfig(),
         ShowPitServices     = _showPitServices,

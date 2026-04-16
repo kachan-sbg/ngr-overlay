@@ -1,5 +1,8 @@
 ﻿using NrgOverlay.Core.Config;
 using NrgOverlay.Sim.Contracts;
+using System.Collections;
+using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace NrgOverlay.Sim.iRacing;
 
@@ -74,6 +77,18 @@ internal static class IRacingSessionDecoder
               }).ToList()
             : (IReadOnlyList<CarClassInfo>)[];
 
+        var activeDrivers = drivers.Where(d => !d.IsSpectator && !d.IsPaceCar).ToList();
+        var playerCarIdx = info?.DriverInfo?.DriverCarIdx ?? 0;
+        var playerClassId = activeDrivers.FirstOrDefault(d => d.CarIdx == playerCarIdx)?.CarClassId ?? 0;
+        var classDrivers = playerClassId != 0
+            ? activeDrivers.Where(d => d.CarClassId == playerClassId).ToList()
+            : activeDrivers;
+
+        var playerCountOverall = activeDrivers.Count;
+        var playerCountInClass = classDrivers.Count;
+        var sofOverall = ComputeSof(activeDrivers);
+        var sofInClass = ComputeSof(classDrivers);
+
         // в”Ђв”Ђ Track / weather в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
         var weekendInfo = info?.WeekendInfo;
         var trackName   = weekendInfo?.TrackDisplayName ?? string.Empty;
@@ -81,9 +96,10 @@ internal static class IRacingSessionDecoder
         var trackTempC  = ParseTemperatureC(weekendInfo?.TrackSurfaceTemp);
 
         // в”Ђв”Ђ Active session в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-        var sessionType          = SessionType.Unknown;
-        var sessionTimeRemaining = TimeSpan.Zero;
-        var totalLaps            = 0;
+        var sessionType       = SessionType.Unknown;
+        var sessionTimeLimit  = TimeSpan.Zero;
+        var sessionBestLapTime = TimeSpan.Zero;
+        var totalLaps         = 0;
 
         var sessions          = info?.SessionInfo?.Sessions;
         var currentSessionNum = data.GetInt("SessionNum");
@@ -91,21 +107,46 @@ internal static class IRacingSessionDecoder
         if (sessions != null && currentSessionNum >= 0 && currentSessionNum < sessions.Count)
         {
             var s            = sessions[currentSessionNum];
-            sessionType          = ParseSessionType(s?.SessionType);
-            sessionTimeRemaining = ParseSessionTime(s?.SessionTime);
-            totalLaps            = ParseSessionLaps(s?.SessionLaps);
+            sessionType      = ParseSessionType(s?.SessionType);
+            sessionTimeLimit = ParseSessionTime(s?.SessionTime);
+            sessionBestLapTime = ParseSessionBestLapTime(s);
+            totalLaps        = ParseSessionLaps(s?.SessionLaps);
         }
 
         // в”Ђв”Ђ Live weather telemetry в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
         var humidity          = data.GetFloat("RelativeHumidity");
         var weatherDeclaredWet = data.GetInt("WeatherDeclaredWet") != 0;
         var trackWetness      = data.GetInt("TrackWetness");
+        var weekendOptions = weekendInfo?.WeekendOptions;
+        var incidentDriveThroughLimit = ParseIncidentDriveThroughLimit(weekendOptions);
+        var incidentDisqualificationLimit = ParseIncidentDisqualificationLimit(weekendOptions);
 
-        // SessionTime: session elapsed seconds (snapshot at YAML change; not real-time).
-        var sessionTimeSec = data.GetFloat("SessionTime");
+        var sessionTimeRemainSec = GetTelemetrySeconds(data, "SessionTimeRemain");
+        var sessionTimeRemainValid = sessionTimeRemainSec >= 0f && sessionTimeRemainSec < 1e10f;
+        var sessionTimeRemaining = sessionTimeRemainValid
+            ? SafeTimeSpanFromSeconds(sessionTimeRemainSec)
+            : TimeSpan.Zero;
+
+        TimeSpan sessionElapsed;
+        if (sessionTimeLimit > TimeSpan.Zero && sessionTimeRemaining > TimeSpan.Zero)
+        {
+            var boundedRemaining = sessionTimeRemaining > sessionTimeLimit
+                ? sessionTimeLimit
+                : sessionTimeRemaining;
+            sessionElapsed = sessionTimeLimit - boundedRemaining;
+        }
+        else
+        {
+            // Fallback snapshot from telemetry. Filter absurd values that appear while
+            // session telemetry is initializing (e.g. giant sentinel-like numbers).
+            var sessionTimeSec = GetTelemetrySeconds(data, "SessionTime");
+            sessionElapsed = sessionTimeSec > 0f && sessionTimeSec < 86400f * 7f
+                ? SafeTimeSpanFromSeconds(sessionTimeSec)
+                : TimeSpan.Zero;
+        }
 
         // SessionTimeOfDay: seconds since midnight in the sim world (snapshot at YAML change time).
-        var timeOfDaySec = data.GetFloat("SessionTimeOfDay");
+        var timeOfDaySec = GetTelemetrySeconds(data, "SessionTimeOfDay");
         TimeOnly? gameTimeOfDay = timeOfDaySec > 0
             ? TimeOnly.FromTimeSpan(TimeSpan.FromSeconds(timeOfDaySec % 86400))
             : null;
@@ -114,8 +155,10 @@ internal static class IRacingSessionDecoder
         {
             TrackName            = trackName,
             SessionType          = sessionType,
+            SessionTimeLimit     = sessionTimeLimit,
             SessionTimeRemaining = sessionTimeRemaining,
-            SessionTimeElapsed   = sessionTimeSec > 0 ? SafeTimeSpanFromSeconds(sessionTimeSec) : TimeSpan.Zero,
+            SessionTimeElapsed   = sessionElapsed,
+            SessionBestLapTime   = sessionBestLapTime,
             TotalLaps            = totalLaps,
             AirTempC             = airTempC,
             TrackTempC           = trackTempC,
@@ -124,9 +167,164 @@ internal static class IRacingSessionDecoder
             WeatherDeclaredWet   = weatherDeclaredWet,
             TrackWetness         = trackWetness,
             CarClasses           = carClasses,
+            PlayerCountOverall = playerCountOverall,
+            PlayerCountInClass = playerCountInClass,
+            StrengthOfFieldOverall = sofOverall,
+            StrengthOfFieldInClass = sofInClass,
+            IncidentDriveThroughLimit = incidentDriveThroughLimit,
+            IncidentDisqualificationLimit = incidentDisqualificationLimit,
         };
 
         return (drivers, session);
+    }
+
+    private static TimeSpan ParseSessionBestLapTime(object? session)
+    {
+        if (session is null)
+            return TimeSpan.Zero;
+
+        var bestSeconds = FindBestLapSecondsInCollectionProperty(session, "ResultsFastestLap");
+        if (bestSeconds <= 0)
+            bestSeconds = FindBestLapSecondsInCollectionProperty(session, "ResultsPositions");
+
+        return bestSeconds > 0 ? SafeTimeSpanFromSeconds(bestSeconds) : TimeSpan.Zero;
+    }
+
+    private static double FindBestLapSecondsInCollectionProperty(object source, string propertyName)
+    {
+        if (!TryReadProperty(source, propertyName, out var raw) || raw is null || raw is string)
+            return 0d;
+
+        if (raw is not IEnumerable items)
+            return 0d;
+
+        double best = 0d;
+        foreach (var item in items)
+        {
+            if (item is null) continue;
+            if (!TryReadLapTimeSeconds(item, out var secs)) continue;
+            if (secs <= 0d) continue;
+
+            if (best <= 0d || secs < best)
+                best = secs;
+        }
+
+        return best;
+    }
+
+    private static bool TryReadLapTimeSeconds(object source, out double seconds)
+    {
+        seconds = 0d;
+
+        // Avoid generic "Time" fields (often position/interval/session values, not lap time).
+        var candidates = new[] { "FastestTime", "FastestLapTime", "BestLapTime" };
+        foreach (var propertyName in candidates)
+        {
+            if (!TryReadProperty(source, propertyName, out var raw) || raw is null)
+                continue;
+
+            switch (raw)
+            {
+                case double d when d > 0d:
+                    seconds = d;
+                    return true;
+                case float f when f > 0f:
+                    seconds = f;
+                    return true;
+                case int i when i > 0:
+                    seconds = i;
+                    return true;
+                case long l when l > 0:
+                    seconds = l;
+                    return true;
+                case string s when TryParseTimeStringSeconds(s, out var parsed) && parsed > 0d:
+                    seconds = parsed;
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryParseTimeStringSeconds(string raw, out double seconds)
+    {
+        seconds = 0d;
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var trimmed = raw.Trim();
+        if (double.TryParse(
+                trimmed,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var directSeconds)
+            && directSeconds > 0d)
+        {
+            seconds = directSeconds;
+            return true;
+        }
+
+        var formats = new[]
+        {
+            @"m\:ss\.fff",
+            @"m\:ss\.ffff",
+            @"m\:ss\.fffff",
+            @"m\:ss",
+            @"mm\:ss\.fff",
+            @"mm\:ss\.ffff",
+            @"mm\:ss",
+            @"h\:mm\:ss\.fff",
+            @"h\:mm\:ss\.ffff",
+            @"h\:mm\:ss",
+            @"d\.h\:mm\:ss\.fff",
+            @"d\.h\:mm\:ss",
+        };
+        if (TimeSpan.TryParseExact(
+                trimmed,
+                formats,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsedTimeSpan)
+            && parsedTimeSpan > TimeSpan.Zero)
+        {
+            seconds = parsedTimeSpan.TotalSeconds;
+            return true;
+        }
+
+        // iRacing can sometimes emit "0.1:39.873" style values.
+        // Interpret as H:MM:SS(.fff) where the left side of '.' is hours.
+        var dotHourMatch = Regex.Match(
+            trimmed,
+            @"^(?<h>\d+)\.(?<m>\d{1,2}):(?<s>\d{2})(?:\.(?<f>\d{1,4}))?$");
+        if (dotHourMatch.Success
+            && int.TryParse(dotHourMatch.Groups["h"].Value, out var h)
+            && int.TryParse(dotHourMatch.Groups["m"].Value, out var m)
+            && int.TryParse(dotHourMatch.Groups["s"].Value, out var s))
+        {
+            var fracRaw = dotHourMatch.Groups["f"].Value;
+            var fracSec = 0d;
+            if (!string.IsNullOrEmpty(fracRaw)
+                && double.TryParse(
+                    "0." + fracRaw,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsedFrac))
+            {
+                fracSec = parsedFrac;
+            }
+
+            seconds = (h * 3600d) + (m * 60d) + s + fracSec;
+            return seconds > 0d;
+        }
+
+        var match = Regex.Match(trimmed, @"[-+]?\d+(\.\d+)?");
+        if (!match.Success)
+            return false;
+
+        return double.TryParse(
+            match.Value,
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out seconds);
     }
 
     // в”Ђв”Ђ Helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
@@ -248,7 +446,14 @@ internal static class IRacingSessionDecoder
             || value.StartsWith("unlimited", StringComparison.OrdinalIgnoreCase))
             return 0;
 
-        return int.TryParse(value.Trim(), out var laps) ? laps : 0;
+        if (!int.TryParse(value.Trim(), out var laps))
+            return 0;
+
+        // iRacing uses 32767 as a sentinel for unlimited/unknown lap count in time-based sessions.
+        if (laps >= short.MaxValue)
+            return 0;
+
+        return Math.Max(0, laps);
     }
 
     /// <summary>
@@ -263,5 +468,160 @@ internal static class IRacingSessionDecoder
         const double MaxSec = 86400d * 30d; // 30 days
         return TimeSpan.FromSeconds(Math.Clamp(seconds, 0d, MaxSec));
     }
+
+    /// <summary>
+    /// iRacing SOF approximation: -ln(sum(exp(-iR/1600))) * 1600.
+    /// Returns 0 when no positive iRating values are present.
+    /// </summary>
+    private static int ComputeSof(IReadOnlyList<DriverSnapshot> drivers)
+    {
+        if (drivers.Count == 0)
+            return 0;
+
+        double sum = 0d;
+        foreach (var d in drivers)
+        {
+            if (d.IRating <= 0)
+                continue;
+            sum += Math.Exp(-d.IRating / 1600d);
+        }
+
+        if (sum <= 0d)
+            return 0;
+
+        var sof = -Math.Log(sum) * 1600d;
+        if (double.IsNaN(sof) || double.IsInfinity(sof) || sof <= 0d)
+            return 0;
+
+        return (int)Math.Round(sof, MidpointRounding.AwayFromZero);
+    }
+
+    private static int ParseIncidentDriveThroughLimit(object? weekendOptions)
+    {
+        if (weekendOptions is null)
+            return 0;
+
+        if (TryReadIntProperty(weekendOptions, "IncidentLimit", out var incidentLimit))
+            return incidentLimit;
+
+        if (TryReadIntProperty(weekendOptions, "Incidents", out incidentLimit))
+            return incidentLimit;
+
+        if (TryReadStringProperty(weekendOptions, "DCRuleSet", out var dcRuleSet))
+        {
+            var directDt = Regex.Match(dcRuleSet, @"(?i)(?:dt|drive\s*through)[^\d]{0,20}(\d+)");
+            if (directDt.Success && int.TryParse(directDt.Groups[1].Value, out var parsedDt) && parsedDt > 0)
+                return parsedDt;
+        }
+
+        return 0;
+    }
+
+    private static int ParseIncidentDisqualificationLimit(object? weekendOptions)
+    {
+        if (weekendOptions is null)
+            return 0;
+
+        if (TryReadIntProperty(weekendOptions, "Disqualify", out var dqLimit))
+            return dqLimit;
+
+        if (TryReadIntProperty(weekendOptions, "DisqualifyAt", out dqLimit))
+            return dqLimit;
+
+        if (TryReadIntProperty(weekendOptions, "DqLimit", out dqLimit))
+            return dqLimit;
+
+        if (TryReadStringProperty(weekendOptions, "DCRuleSet", out var dcRuleSet))
+        {
+            var directDq = Regex.Match(dcRuleSet, @"(?i)(?:dq|disqualif\w*)[^\d]{0,20}(\d+)");
+            if (directDq.Success && int.TryParse(directDq.Groups[1].Value, out var parsedDq) && parsedDq > 0)
+                return parsedDq;
+        }
+
+        return 0;
+    }
+
+    private static bool TryReadIntProperty(object source, string propertyName, out int value)
+    {
+        value = 0;
+        if (!TryReadProperty(source, propertyName, out var raw) || raw is null)
+            return false;
+
+        switch (raw)
+        {
+            case int i when i > 0:
+                value = i;
+                return true;
+            case long l when l > 0 && l <= int.MaxValue:
+                value = (int)l;
+                return true;
+            case float f when f > 0 && f <= int.MaxValue:
+                value = (int)Math.Round(f, MidpointRounding.AwayFromZero);
+                return true;
+            case double d when d > 0 && d <= int.MaxValue:
+                value = (int)Math.Round(d, MidpointRounding.AwayFromZero);
+                return true;
+            case string s:
+                var m = Regex.Match(s, @"\d+");
+                if (m.Success && int.TryParse(m.Value, out var parsed) && parsed > 0)
+                {
+                    value = parsed;
+                    return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryReadStringProperty(object source, string propertyName, out string value)
+    {
+        value = string.Empty;
+        if (!TryReadProperty(source, propertyName, out var raw) || raw is null)
+            return false;
+
+        value = raw.ToString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static bool TryReadProperty(object source, string propertyName, out object? value)
+    {
+        value = null;
+
+        var flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase;
+        var prop = source.GetType().GetProperty(propertyName, flags);
+        if (prop is null)
+            return false;
+
+        value = prop.GetValue(source);
+        return value is not null;
+    }
+
+    private static float GetTelemetrySeconds(IRSDKSharper.IRacingSdkData data, string name)
+    {
+        if (!data.TelemetryDataProperties.ContainsKey(name))
+            return 0f;
+
+        var meta = data.TelemetryDataProperties[name];
+        var varType = TryReadPropertyValue(meta, "VarType")?.ToString() ?? string.Empty;
+        if (varType.Contains("Double", StringComparison.OrdinalIgnoreCase))
+            return (float)data.GetDouble(name);
+
+        return data.GetFloat(name);
+    }
+
+    private static object? TryReadPropertyValue(object source, string propertyName)
+    {
+        var flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase;
+        var prop = source.GetType().GetProperty(propertyName, flags);
+        return prop?.GetValue(source);
+    }
 }
+
+
+
+
+
+
+
 

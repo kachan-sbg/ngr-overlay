@@ -17,6 +17,7 @@ public class OverlayConfigResolveTests
         MaxDriversShown = 15,
         ShowIRating = true,
         DeltaBarMaxSeconds = 2f,
+        ShowReferenceLapTime = true,
     };
 
     [Fact]
@@ -74,6 +75,7 @@ public class OverlayConfigResolveTests
         Assert.Equal(config.FontSize, resolved.FontSize);
         Assert.Equal(config.Opacity, resolved.Opacity);
         Assert.Equal(config.MaxDriversShown, resolved.MaxDriversShown);
+        Assert.Equal(config.ShowReferenceLapTime, resolved.ShowReferenceLapTime);
     }
 
     [Fact]
@@ -85,16 +87,18 @@ public class OverlayConfigResolveTests
             Enabled = true,
             Width = 800,
             FontSize = 20f,
-            // Height, Opacity, MaxDriversShown left null в†’ inherit from base
+            ShowReferenceLapTime = false,
+            // Height, Opacity, MaxDriversShown left null to inherit from base.
         };
 
         var resolved = config.Resolve(streamModeActive: true);
 
-        Assert.Equal(800, resolved.Width);           // from override
-        Assert.Equal(20f, resolved.FontSize);        // from override
-        Assert.Equal(config.Height, resolved.Height);       // from base
-        Assert.Equal(config.Opacity, resolved.Opacity);     // from base
+        Assert.Equal(800, resolved.Width);                       // from override
+        Assert.Equal(20f, resolved.FontSize);                    // from override
+        Assert.Equal(config.Height, resolved.Height);            // from base
+        Assert.Equal(config.Opacity, resolved.Opacity);          // from base
         Assert.Equal(config.MaxDriversShown, resolved.MaxDriversShown); // from base
+        Assert.False(resolved.ShowReferenceLapTime);
     }
 
     [Fact]

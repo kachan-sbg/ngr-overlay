@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Globalization;
 using System.Windows.Media;
 using NrgOverlay.Core.Config;
 using Brush = System.Windows.Media.Brush;
@@ -8,7 +9,7 @@ namespace NrgOverlay.App.Settings;
 
 /// <summary>
 /// INPC wrapper for <see cref="ColorConfig"/> used in settings panels.
-/// R/G/B/A are exposed as integers 0вЂ“255 for easy TextBox binding.
+/// R/G/B/A are exposed as integers 0-255 for easy TextBox binding.
 /// </summary>
 public sealed class ColorViewModel : INotifyPropertyChanged
 {
@@ -20,8 +21,24 @@ public sealed class ColorViewModel : INotifyPropertyChanged
     public int G { get => _g; set { _g = Clamp(value); Notify(); } }
     public int B { get => _b; set { _b = Clamp(value); Notify(); } }
     public int A { get => _a; set { _a = Clamp(value); Notify(); } }
+    public string HexRgb
+    {
+        get => $"#{_r:X2}{_g:X2}{_b:X2}";
+        set
+        {
+            if (TryParseHexRgb(value, out var r, out var g, out var b))
+            {
+                _r = r;
+                _g = g;
+                _b = b;
+            }
 
-    /// <summary>Color preview brush вЂ” updates whenever any channel changes.</summary>
+            // Full refresh: invalid input snaps back to canonical #RRGGBB.
+            Notify();
+        }
+    }
+
+    /// <summary>Color preview brush - updates whenever any channel changes.</summary>
     public Brush PreviewBrush =>
         new SolidColorBrush(Color.FromArgb((byte)_a, (byte)_r, (byte)_g, (byte)_b));
 
@@ -50,5 +67,27 @@ public sealed class ColorViewModel : INotifyPropertyChanged
 
     private static int ToByte(float f) =>
         (int)Math.Clamp(MathF.Round(f * 255f), 0f, 255f);
+
+    private static bool TryParseHexRgb(string? raw, out int r, out int g, out int b)
+    {
+        r = g = b = 0;
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var s = raw.Trim();
+        if (s.StartsWith('#'))
+            s = s[1..];
+        if (s.Length != 6)
+            return false;
+
+        if (!int.TryParse(s[0..2], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out r))
+            return false;
+        if (!int.TryParse(s[2..4], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out g))
+            return false;
+        if (!int.TryParse(s[4..6], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out b))
+            return false;
+
+        return true;
+    }
 }
 

@@ -65,6 +65,11 @@ public sealed class RelativeOverlay : BaseOverlay
         AppConfig appConfig)
         : base(WindowTitle, config, bus, configStore, appConfig)
     {
+        Subscribe<RaceStateSnapshot>(state =>
+        {
+            if (state.Relative is not null)
+                _latest = state.Relative;
+        });
         Subscribe<RelativeData>(data => _latest = data);
     }
 
@@ -72,6 +77,8 @@ public sealed class RelativeOverlay : BaseOverlay
     {
         var data    = IsLocked ? _latest : MockData;
         var entries = data?.Entries ?? [];
+        var orderedEntries = GetDisplayOrderedEntries(entries);
+        var intervals = ComputeIntervals(orderedEntries);
 
         var fontSize = config.FontSize;
         var charW    = fontSize * 0.615f;
@@ -122,6 +129,8 @@ public sealed class RelativeOverlay : BaseOverlay
                                            config.TextColor.B, 0.25f);
         var rowAlt   = Resources.GetBrush(1f, 1f, 1f, 0.04f);
         var pitColor = Resources.GetBrush(0.8f, 0.5f, 0.1f, 1f);   // amber for pit/outlap status
+        var lappedCarBlue = Resources.GetBrush(0.32f, 0.66f, 1.0f, 1f);
+        var playerLappedOrange = Resources.GetBrush(1.0f, 0.62f, 0.18f, 1f);
         var ccColor  = Resources.GetBrush(config.TextColor.R, config.TextColor.G,
                                            config.TextColor.B, config.TextColor.A * 0.55f);
 
@@ -141,14 +150,21 @@ public sealed class RelativeOverlay : BaseOverlay
         y += 3f;
 
         // ----- Select visible window centered on player -----
-        var visible = SelectVisible(entries, config.MaxDriversShown);
+        var visible = SelectVisible(orderedEntries, config.MaxDriversShown);
 
         int rowIndex = 0;
         foreach (var entry in visible)
         {
             if (y + rowH > h - pad) break;
 
-            var rowBrush = entry.IsPlayer ? text : otherText;
+            var rowBrush = entry.IsPlayer
+                ? text
+                : entry.LapDifference switch
+                {
+                    < 0 => lappedCarBlue,       // this car is lapped by player
+                    > 0 => playerLappedOrange,  // this car has lapped player
+                    _ => otherText,
+                };
 
             if (entry.IsPlayer)
             {
@@ -205,7 +221,12 @@ public sealed class RelativeOverlay : BaseOverlay
 
             // GAP вЂ” suppress numeric gap for garage cars
             if (!entry.IsInGarage)
-                DrawR(context, dw, fmt, rowBrush, FormatGap(entry), xGap, y, gapW, rowH);
+            {
+                var gapOrInterval = entry.LapDifference != 0
+                    ? FormatInterval(intervals.TryGetValue(entry, out var iv) ? iv : null)
+                    : FormatGap(entry);
+                DrawR(context, dw, fmt, rowBrush, gapOrInterval, xGap, y, gapW, rowH);
+            }
 
             // LAST
             var lastStr = entry.LastLapTime > TimeSpan.Zero
@@ -231,15 +252,40 @@ public sealed class RelativeOverlay : BaseOverlay
         if (playerIdx < 0)
             return entries.Count <= maxShown ? entries : entries.Take(maxShown).ToArray();
 
-        const int aroundPlayer = 5;
-        int start = Math.Max(0, playerIdx - aroundPlayer);
-        int end   = Math.Min(entries.Count - 1, playerIdx + aroundPlayer);
-        var window = entries.Skip(start).Take(end - start + 1).ToArray();
+        maxShown = Math.Max(1, maxShown);
+        if (entries.Count <= maxShown)
+            return entries.ToArray();
 
-        if (maxShown > 0 && window.Length > maxShown)
-            return window.Take(maxShown).ToArray();
+        var before = (maxShown - 1) / 2;
+        var after = maxShown - before - 1;
+        var result = new RelativeEntry[maxShown];
 
-        return window;
+        var write = 0;
+        for (var offset = -before; offset <= after; offset++)
+        {
+            var idx = playerIdx + offset;
+            while (idx < 0) idx += entries.Count;
+            while (idx >= entries.Count) idx -= entries.Count;
+            result[write++] = entries[idx];
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<RelativeEntry> GetDisplayOrderedEntries(IReadOnlyList<RelativeEntry> entries)
+    {
+        if (entries.Count <= 1)
+            return entries;
+
+        // In race sessions we want "cars ahead/behind in race order" around player.
+        var hasRacePositions = entries.Any(e => e.Position > 0);
+        if (!hasRacePositions)
+            return entries;
+
+        return entries
+            .OrderBy(e => e.Position > 0 ? e.Position : int.MaxValue)
+            .ThenBy(e => e.GapToPlayerSeconds)
+            .ToArray();
     }
 
     private static string FormatCountryFallback(string? countryCode, int flairId)
@@ -263,6 +309,42 @@ public sealed class RelativeOverlay : BaseOverlay
         var gap = entry.GapToPlayerSeconds;
         var s   = Math.Abs(gap).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
         return gap < 0 ? $"-{s}" : $"+{s}";
+    }
+
+    private static string FormatInterval(float? intervalSeconds)
+    {
+        if (!intervalSeconds.HasValue || intervalSeconds.Value <= 0f)
+            return "\u2014";
+        return intervalSeconds.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static Dictionary<RelativeEntry, float?> ComputeIntervals(IReadOnlyList<RelativeEntry> entries)
+    {
+        var result = new Dictionary<RelativeEntry, float?>(entries.Count);
+        RelativeEntry? prev = null;
+
+        foreach (var entry in entries)
+        {
+            if (entry.IsInGarage)
+            {
+                result[entry] = null;
+                continue;
+            }
+
+            if (prev is null || prev.IsInGarage)
+            {
+                result[entry] = null;
+            }
+            else
+            {
+                var iv = MathF.Abs(entry.GapToPlayerSeconds - prev.GapToPlayerSeconds);
+                result[entry] = iv > 0f ? iv : null;
+            }
+
+            prev = entry;
+        }
+
+        return result;
     }
 
     private static string FormatLapTime(TimeSpan ts)

@@ -49,11 +49,12 @@ public sealed class OverlayConfig
     public TemperatureUnit TemperatureUnit { get; set; } = TemperatureUnit.Celsius;
 
     // --- Delta Bar overlay ---
-    public float DeltaBarMaxSeconds { get; set; } = 2f;
-    public ColorConfig FasterColor { get; set; } = ColorConfig.Green;
-    public ColorConfig SlowerColor { get; set; } = ColorConfig.Red;
+    public float DeltaBarMaxSeconds { get; set; } = 3f;
+    public ColorConfig FasterColor { get; set; } = new() { R = 0.56f, G = 0.85f, B = 0.66f, A = 0.95f };
+    public ColorConfig SlowerColor { get; set; } = new() { R = 0.95f, G = 0.65f, B = 0.65f, A = 0.95f };
     public bool ShowTrendArrow { get; set; } = true;
     public bool ShowDeltaText { get; set; } = true;
+    public bool ShowReferenceLapTime { get; set; } = true;
 
     // --- Standings overlay ---
     public StandingsDisplayMode StandingsDisplayMode { get; set; } = StandingsDisplayMode.Combined;
@@ -139,6 +140,7 @@ public sealed class OverlayConfig
             SlowerColor = o.SlowerColor ?? SlowerColor,
             ShowTrendArrow = o.ShowTrendArrow ?? ShowTrendArrow,
             ShowDeltaText = o.ShowDeltaText ?? ShowDeltaText,
+            ShowReferenceLapTime = o.ShowReferenceLapTime ?? ShowReferenceLapTime,
             StandingsDisplayMode = o.StandingsDisplayMode ?? StandingsDisplayMode,
             ShowClassBadge       = o.ShowClassBadge       ?? ShowClassBadge,
             ShowBestLap          = o.ShowBestLap          ?? ShowBestLap,

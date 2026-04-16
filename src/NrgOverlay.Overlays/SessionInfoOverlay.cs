@@ -35,6 +35,7 @@ public sealed class SessionInfoOverlay : BaseOverlay
 
     private volatile SessionData? _session;
     private volatile DriverData?  _driver;
+    private volatile TelemetryData? _telemetry;
 
     // Smoothed session timing вЂ” avoids display blinking caused by occasional SDK
     // returning 0 for SessionTime/SessionTimeRemain between valid samples.
@@ -51,6 +52,12 @@ public sealed class SessionInfoOverlay : BaseOverlay
         TrackName            = "Silverstone GP",
         SessionType          = SessionType.Race,
         TotalLaps            = 30,
+        PlayerCountOverall   = 34,
+        PlayerCountInClass   = 12,
+        StrengthOfFieldOverall = 3120,
+        StrengthOfFieldInClass = 2985,
+        IncidentDriveThroughLimit = 17,
+        IncidentDisqualificationLimit = 40,
         AirTempC             = 22.1f,
         TrackTempC           = 38.7f,
         RelativeHumidity     = 0.62f,
@@ -68,7 +75,20 @@ public sealed class SessionInfoOverlay : BaseOverlay
         SessionTimeElapsed    = TimeSpan.FromMinutes(18).Add(TimeSpan.FromSeconds(34)),
         SessionTimeRemaining  = TimeSpan.FromMinutes(27),
         GameTimeOfDay         = new TimeOnly(14, 45, 0),
+        EstimatedLapsRemaining = 18,
     };
+    private static readonly TelemetryData MockTelemetry = new(
+        Throttle: 0f,
+        Brake: 0f,
+        Clutch: 0f,
+        SteeringAngle: 0f,
+        SpeedMps: 0f,
+        Gear: 4,
+        Rpm: 6200f,
+        FuelLevelLiters: 42f,
+        FuelConsumptionPerLap: 2.35f,
+        LastLapFuelLiters: 2.41f,
+        IncidentCount: 5);
 
     public SessionInfoOverlay(
         ISimDataBus bus,
@@ -90,6 +110,10 @@ public sealed class SessionInfoOverlay : BaseOverlay
         Subscribe<DriverData>(data =>
         {
             _driver = data;
+            // Keep remaining synced whenever it's available, even if elapsed is temporarily invalid.
+            if (data.SessionTimeRemaining.HasValue && data.SessionTimeRemaining.Value >= TimeSpan.Zero)
+                _syncedRemaining = data.SessionTimeRemaining;
+
             // Accept SDK elapsed only when it is non-zero and not more than
             // SyncTolerance behind our current local estimate (filters blips).
             if (data.SessionTimeElapsed > TimeSpan.Zero)
@@ -102,17 +126,19 @@ public sealed class SessionInfoOverlay : BaseOverlay
                     data.SessionTimeElapsed >= localNow - SyncTolerance)
                 {
                     _syncedElapsed   = data.SessionTimeElapsed;
-                    _syncedRemaining = data.SessionTimeRemaining;
                     _syncWallClock   = DateTime.UtcNow;
                 }
             }
         });
+
+        Subscribe<TelemetryData>(data => _telemetry = data);
     }
 
     protected override void OnRender(ID2D1RenderTarget context, OverlayConfig config)
     {
         var session = IsLocked ? _session : MockSession;
         var driver  = IsLocked ? _driver  : MockDriver;
+        var telemetry = IsLocked ? _telemetry : MockTelemetry;
 
         var fontSize = config.FontSize;
         var charW    = fontSize * 0.615f;
@@ -148,6 +174,7 @@ public sealed class SessionInfoOverlay : BaseOverlay
             smoothedRemaining = _syncedRemaining.HasValue
                 ? _syncedRemaining.Value - drift
                 : (TimeSpan?)null;
+
         }
         else
         {
@@ -161,19 +188,63 @@ public sealed class SessionInfoOverlay : BaseOverlay
         DrawL(context, dw, fmt, text, session?.TrackName ?? "\u2014", pad, y, w - 2f * pad, rowH);
         y += rowH;
 
-        // в”Ђв”Ђ Session type + remaining/laps в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-        DrawL(context, dw, fmt, dimmed, FormatSessionLine(session, driver, smoothedRemaining), pad, y, w - 2f * pad, rowH);
+        // в”Ђв”Ђ Session type (stable, no multiplexed values) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+        DrawL(context, dw, fmt, dimmed, FormatSessionType(session), pad, y, w - 2f * pad, rowH);
         y += rowH + 2f;
 
         // в”Ђв”Ђ Separator в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
         context.DrawLine(new Vector2(pad, y), new Vector2(w - pad, y), sep, 1f);
         y += 4f;
 
+        // в”Ђв”Ђ Separate remaining fields (time + laps) to avoid blinking between meanings в”Ђв”Ђ
+        var remainingTimeText = smoothedRemaining.HasValue && smoothedRemaining.Value >= TimeSpan.Zero
+            ? FormatCountdown(smoothedRemaining.Value)
+            : "--:--";
+        DrawRow(context, dw, fmt, dimmed, text, "Remain", remainingTimeText, pad, y, labelW, valueX, valueW, rowH);
+        y += rowH;
+
+        var remainingLaps = GetRemainingLaps(session, driver);
+        var remainingLapsText = remainingLaps.HasValue
+            ? remainingLaps.Value.ToString()
+            : "--";
+        DrawRow(context, dw, fmt, dimmed, text, "Laps", remainingLapsText, pad, y, labelW, valueX, valueW, rowH);
+        y += rowH;
+
         // в”Ђв”Ђ Session elapsed в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-        DrawRow(context, dw, fmt, dimmed, text, "Session",
+        DrawRow(context, dw, fmt, dimmed, text, "Elapsed",
             smoothedElapsed > TimeSpan.Zero ? FormatElapsed(smoothedElapsed) : "--:--:--",
             pad, y, labelW, valueX, valueW, rowH);
         y += rowH;
+
+        if (session != null && session.PlayerCountOverall > 0)
+        {
+            var fieldStr = session.PlayerCountInClass > 0 && session.PlayerCountInClass != session.PlayerCountOverall
+                ? $"{session.PlayerCountOverall} ({session.PlayerCountInClass} cls)"
+                : session.PlayerCountOverall.ToString();
+            DrawRow(context, dw, fmt, dimmed, text, "Field", fieldStr, pad, y, labelW, valueX, valueW, rowH);
+            y += rowH;
+        }
+
+        if (session != null && session.StrengthOfFieldOverall > 0)
+        {
+            var sofStr = session.StrengthOfFieldInClass > 0 && session.StrengthOfFieldInClass != session.StrengthOfFieldOverall
+                ? $"{session.StrengthOfFieldOverall} ({session.StrengthOfFieldInClass} cls)"
+                : session.StrengthOfFieldOverall.ToString();
+            DrawRow(context, dw, fmt, dimmed, text, "SOF", sofStr, pad, y, labelW, valueX, valueW, rowH);
+            y += rowH;
+        }
+
+        if (telemetry != null)
+        {
+            var dt = session?.IncidentDriveThroughLimit ?? 0;
+            var dq = session?.IncidentDisqualificationLimit ?? 0;
+            var incidents = telemetry.IncidentCount;
+            var incidentsStr = dt > 0 || dq > 0
+                ? $"{incidents} / DT {FmtLimit(dt)} / DSQ {FmtLimit(dq)}"
+                : incidents.ToString();
+            DrawRow(context, dw, fmt, dimmed, text, "Inc", incidentsStr, pad, y, labelW, valueX, valueW, rowH);
+            y += rowH;
+        }
 
         // в”Ђв”Ђ Wall clock в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
         var clockStr = config.Use12HourClock
@@ -284,11 +355,11 @@ public sealed class SessionInfoOverlay : BaseOverlay
 
     // в”Ђв”Ђ Formatting helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
-    private static string FormatSessionLine(SessionData? session, DriverData? driver, TimeSpan? smoothedRemaining)
+    private static string FormatSessionType(SessionData? session)
     {
         if (session == null) return "Waiting for session";
 
-        var type = session.SessionType switch
+        return session.SessionType switch
         {
             SessionType.Practice  => "Practice",
             SessionType.Qualify   => "Qualifying",
@@ -297,25 +368,27 @@ public sealed class SessionInfoOverlay : BaseOverlay
             SessionType.Warmup    => "Warmup",
             _                     => "Session",
         };
+    }
+
+    private static int? GetRemainingLaps(SessionData? session, DriverData? driver)
+    {
+        if (session == null)
+            return null;
 
         if (session.TotalLaps > 0)
         {
-            var rem = driver != null
+            if (driver?.SessionLapsRemaining is >= 0 and < short.MaxValue)
+                return driver.SessionLapsRemaining.Value;
+
+            return driver != null
                 ? Math.Max(0, session.TotalLaps - driver.Lap)
                 : session.TotalLaps;
-            return $"{type} \u00b7 {rem} laps remaining";
         }
 
-        // Use smoothed remaining (locally counted down, synced from SDK).
-        // Fall back to YAML snapshot if no live data yet.
-        var timeLeft = smoothedRemaining
-                    ?? (session.SessionTimeRemaining > TimeSpan.Zero
-                           ? (TimeSpan?)session.SessionTimeRemaining
-                           : null);
-        if (timeLeft.HasValue && timeLeft.Value >= TimeSpan.Zero)
-            return $"{type} \u00b7 {FormatCountdown(timeLeft.Value)} remaining";
+        if (driver?.EstimatedLapsRemaining is > 0)
+            return driver.EstimatedLapsRemaining.Value;
 
-        return type;
+        return null;
     }
 
     /// <summary>Always HH:MM:SS вЂ” for session elapsed display.</summary>
@@ -386,6 +459,8 @@ public sealed class SessionInfoOverlay : BaseOverlay
         < 21 => "evening",
         _    => "night",
     };
+
+    private static string FmtLimit(int value) => value > 0 ? value.ToString() : "--";
 }
 
 

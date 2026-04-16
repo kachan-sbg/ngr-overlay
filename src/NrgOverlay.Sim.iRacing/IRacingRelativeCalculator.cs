@@ -160,6 +160,24 @@ internal sealed class IRacingRelativeCalculator
                 IsGarage:        true));
         }
 
+        // Safety net: always include player entry even if session-driver metadata is delayed/missing.
+        // This prevents the overlay from losing "self" around race starts/reconnect boundaries.
+        if (!onTrackCars.Any(c => c.CarIdx == snapshot.PlayerCarIdx))
+        {
+            driverByIdx.TryGetValue(snapshot.PlayerCarIdx, out var playerDriver);
+            var playerPos = snapshot.PlayerCarIdx < snapshot.Positions.Length
+                ? snapshot.Positions[snapshot.PlayerCarIdx]
+                : 0;
+
+            onTrackCars.Add(new CarCandidate(
+                CarIdx:          snapshot.PlayerCarIdx,
+                Gap:             0f,
+                OverallPosition: playerPos,
+                LapDiff:         0,
+                Driver:          playerDriver,
+                IsGarage:        !playerIsOnTrack));
+        }
+
         // в”Ђв”Ђ Determine session mode в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
         // In a race, iRacing populates CarIdxPosition (> 0) for every active car.
         // In practice/qualify all positions are 0 вЂ” use best lap time ordering.
@@ -213,7 +231,10 @@ internal sealed class IRacingRelativeCalculator
                 ? cp : (isRace ? rtPositions[car.CarIdx] : car.OverallPosition);
             var lastLapSec    = car.CarIdx < snapshot.LastLapTimes.Length
                 ? snapshot.LastLapTimes[car.CarIdx] : 0f;
-            var isOnPit  = car.CarIdx < snapshot.OnPitRoad.Length && snapshot.OnPitRoad[car.CarIdx];
+            var trackSurface = car.CarIdx < snapshot.TrackSurfaces.Length ? snapshot.TrackSurfaces[car.CarIdx] : -1;
+            var telemetryOnPit = car.CarIdx < snapshot.OnPitRoad.Length && snapshot.OnPitRoad[car.CarIdx];
+            var isPitSurface = trackSurface is 1 or 2; // InPitStall / ApproachingPits
+            var isOnPit  = telemetryOnPit && isPitSurface;
             var isOutLap = carState.IsOnOutLap(car.CarIdx);
             var tire     = car.CarIdx < snapshot.TireCompounds.Length ? snapshot.TireCompounds[car.CarIdx] : 0;
 
@@ -384,7 +405,10 @@ internal sealed class IRacingRelativeCalculator
 
             float bestLapSec = carIdx < snapshot.BestLapTimes.Length ? snapshot.BestLapTimes[carIdx] : 0f;
             float lastLapSec = carIdx < snapshot.LastLapTimes.Length ? snapshot.LastLapTimes[carIdx] : 0f;
-            bool  isOnPit    = carIdx < snapshot.OnPitRoad.Length    && snapshot.OnPitRoad[carIdx];
+            var trackSurface = carIdx < snapshot.TrackSurfaces.Length ? snapshot.TrackSurfaces[carIdx] : -1;
+            bool telemetryOnPit = carIdx < snapshot.OnPitRoad.Length && snapshot.OnPitRoad[carIdx];
+            bool isPitSurface = trackSurface is 1 or 2; // InPitStall / ApproachingPits
+            bool isOnPit = telemetryOnPit && isPitSurface;
             float pitLaneSec = carIdx < snapshot.PitLaneTimes.Length ? snapshot.PitLaneTimes[carIdx] : 0f;
             int   tire       = carIdx < snapshot.TireCompounds.Length ? snapshot.TireCompounds[carIdx] : 0;
             bool  hasTimingData = isOnTrack || bestLapSec > 0f || lastLapSec > 0f;
