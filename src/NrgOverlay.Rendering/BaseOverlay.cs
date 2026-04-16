@@ -33,9 +33,7 @@ public abstract class BaseOverlay : OverlayWindow
     // Config and resources
     // -------------------------------------------------------------------------
 
-    // _config holds the *backing* (non-resolved) OverlayConfig that maps to the
-    // entry in AppConfig.Overlays.  OnRender() resolves it per-frame so stream
-    // mode changes are always reflected without a restart.
+    // _config holds the backing OverlayConfig that maps to AppConfig.Overlays.
     private OverlayConfig _config;
 
     // Set by UpdateConfig(); the render thread picks it up and calls Invalidate()
@@ -44,7 +42,7 @@ public abstract class BaseOverlay : OverlayWindow
 
     private RenderResources? _resources;
 
-    /// <summary>Current backing overlay configuration (not stream-mode resolved).</summary>
+    /// <summary>Current backing overlay configuration.</summary>
     public OverlayConfig Config => _config;
 
     /// <summary>Cached D2D brushes and DirectWrite text formats for this overlay.</summary>
@@ -73,9 +71,7 @@ public abstract class BaseOverlay : OverlayWindow
 
     /// <param name="displayName">Win32 window title.</param>
     /// <param name="config">
-    ///   The <em>backing</em> (non-resolved) <see cref="OverlayConfig"/> entry from
-    ///   <see cref="AppConfig.Overlays"/>.  The window is positioned/sized using the
-    ///   stream-mode-resolved dimensions so the correct profile is used at startup.
+    ///   The backing <see cref="OverlayConfig"/> entry from <see cref="AppConfig.Overlays"/>.
     /// </param>
     /// <param name="bus">Shared data bus.</param>
     /// <param name="configStore">When provided, move/resize events are persisted.</param>
@@ -86,10 +82,7 @@ public abstract class BaseOverlay : OverlayWindow
         ISimDataBus bus,
         ConfigStore? configStore = null,
         AppConfig?   appConfig   = null)
-        : base(displayName,
-               appConfig is not null
-                   ? config.Resolve(appConfig.GlobalSettings.StreamModeActive)
-                   : config)
+        : base(displayName, config)
     {
         _config      = config;
         _bus         = bus;
@@ -126,8 +119,6 @@ public abstract class BaseOverlay : OverlayWindow
             AppLog.Info($"SimStateChangedEvent в†’ {e.State} (overlay='{DisplayName}')");
             BringToFront();
         });
-        Subscribe<StreamModeChangedEvent>(_ => _pendingInvalidate = true);
-
         StartRenderLoop();
     }
 
@@ -194,10 +185,7 @@ public abstract class BaseOverlay : OverlayWindow
             _pendingInvalidate = false;
         }
 
-        // Resolve stream-mode config per frame so toggling stream mode takes
-        // effect immediately without requiring a config push.
-        var streamModeActive = _appConfig?.GlobalSettings.StreamModeActive ?? false;
-        var effectiveConfig  = _config.Resolve(streamModeActive);
+        var effectiveConfig = _config;
 
         var w = (float)effectiveConfig.Width;
         var h = (float)effectiveConfig.Height;
@@ -278,7 +266,7 @@ public abstract class BaseOverlay : OverlayWindow
     /// <summary>
     /// Override to issue D2D draw calls for this overlay.
     /// Called at ~60 fps on the render thread; <paramref name="config"/> is the
-    /// stream-mode-resolved snapshot consistent for the entire frame.
+    /// snapshot consistent for the entire frame.
     /// </summary>
     protected abstract void OnRender(ID2D1RenderTarget context, OverlayConfig config);
 
@@ -308,9 +296,6 @@ public abstract class BaseOverlay : OverlayWindow
         // synchronously during CreateWindowEx). Guard until fully initialized.
         if (_resources is null)
             return;
-
-        // Position is always written to the base (backing) config regardless of
-        // stream mode вЂ” position is never part of the stream override profile.
         lock (RenderLock)
         {
             _config.X = x;
@@ -324,22 +309,10 @@ public abstract class BaseOverlay : OverlayWindow
     {
         if (_resources is null || width <= 0 || height <= 0)
             return;
-
-        // TASK-302: size is written to the stream override when stream mode is
-        // active and the override is enabled; otherwise to the base config.
         lock (RenderLock)
         {
-            var streamModeActive = _appConfig?.GlobalSettings.StreamModeActive ?? false;
-            if (streamModeActive && _config.StreamOverride is { Enabled: true })
-            {
-                _config.StreamOverride.Width  = width;
-                _config.StreamOverride.Height = height;
-            }
-            else
-            {
-                _config.Width  = width;
-                _config.Height = height;
-            }
+            _config.Width  = width;
+            _config.Height = height;
         }
 
         ResizeRenderTarget(width, height);

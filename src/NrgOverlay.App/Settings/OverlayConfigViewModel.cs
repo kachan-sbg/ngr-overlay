@@ -139,9 +139,6 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
     public ColorViewModel BrakeColor    { get; } = new();
     public ColorViewModel ClutchColor   { get; } = new();
 
-    // в”Ђв”Ђ Stream override в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-    public StreamOverrideViewModel StreamOverride { get; } = new();
-
     // в”Ђв”Ђ Load / save в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
     public void LoadFrom(OverlayConfig c)
@@ -203,8 +200,6 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
         BrakeColor.LoadFrom(c.BrakeColor);
         ClutchColor.LoadFrom(c.ClutchColor);
 
-        StreamOverride.LoadFrom(c.StreamOverride, c);
-
         // Notify all at once after bulk load.
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
     }
@@ -259,7 +254,6 @@ public sealed class OverlayConfigViewModel : INotifyPropertyChanged
         ThrottleColor      = ThrottleColor.ToColorConfig(),
         BrakeColor         = BrakeColor.ToColorConfig(),
         ClutchColor        = ClutchColor.ToColorConfig(),
-        StreamOverride     = StreamOverride.ToConfig(),
     };
 
     private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
