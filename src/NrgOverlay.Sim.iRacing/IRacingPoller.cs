@@ -1,7 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
-using System.IO.MemoryMappedFiles;
 using IRSDKSharper;
 using NrgOverlay.Core;
 using NrgOverlay.Core.Config;
@@ -62,6 +61,7 @@ internal sealed class IRacingPoller : IDisposable
     private readonly AppConfig        _appConfig;
     private readonly ConfigStore      _configStore;
     private readonly Action<SimState> _onStateChanged;
+    private readonly IIRacingConnectionProbe _connectionProbe;
 
     // IRacingSdk is recreated by the watchdog when stalled; not readonly.
     private IRacingSdk _sdk;
@@ -72,10 +72,19 @@ internal sealed class IRacingPoller : IDisposable
 
     // Cached track length (metres), parsed from session YAML.
     private float _trackLengthMeters;
+    // Cached configured session duration (time-limited sessions only).
+    private TimeSpan? _sessionTimeLimit;
+    // Cached session-best lap parsed from session YAML (valid lap table).
+    private TimeSpan _sessionBestLapFromYaml = TimeSpan.Zero;
 
     private readonly FuelConsumptionTracker    _fuelTracker    = new();
     private readonly CarStateTracker           _carStateTracker = new();
     private readonly IRacingRelativeCalculator _calculator      = new();
+    private readonly Queue<float>[] _recentLapTimesByCarIdx = Enumerable.Range(0, MaxCars)
+        .Select(_ => new Queue<float>(5))
+        .ToArray();
+    private readonly int[] _lastLapSampledByCarIdx = new int[MaxCars];
+    private int _cachedPlayerCarIdx = -1;
 
     // Telemetry frame counter вЂ” incremented on every HandleTelemetryData call.
     // The watchdog reads this on a different thread; volatile ensures visibility.
@@ -83,16 +92,26 @@ internal sealed class IRacingPoller : IDisposable
 
     // Watchdog state.
     private readonly Timer _watchdogTimer;
-    private int  _watchdogPrevFrame  = -1;  // -1 = baseline not yet established
-    private int  _watchdogStallCount;
+    private readonly IRacingWatchdogController _watchdog;
     private volatile bool _restarting;       // true while SDK restart is in progress
 
     // Set to true the first time OnConnected fires. The watchdog never restarts the SDK
     // until this is true вЂ” iRacing may still be loading (MMF connected bit set, but no
     // telemetry yet). Restarting during loading is what causes the iRacing/VS Code crash.
     private bool _hasConnected;
+    private bool _sessionFieldDumpLogged;
 
     private bool _disposed;
+    private readonly object _stateLock = new();
+    private long _stateVersion;
+    private SessionData? _stateSession;
+    private DriverData? _stateDriver;
+    private TelemetryData? _stateTelemetry;
+    private RelativeData? _stateRelative;
+    private StandingsData? _stateStandings;
+    private PitData? _statePit;
+    private TrackMapData? _stateTrackMap;
+    private WeatherData? _stateWeather;
 
     // Signalled by OnStopped (v1.1.6+) so Stop/restart can block until the async
     // Stop() task has fully completed and Win32 handles have been nullified.
@@ -117,6 +136,7 @@ internal sealed class IRacingPoller : IDisposable
         _appConfig      = appConfig;
         _configStore    = configStore;
         _onStateChanged = onStateChanged;
+        _connectionProbe = new IRacingConnectionProbe(MmfName, MmfStatusOffset, MmfConnectedBit);
         _appConfig.GlobalSettings ??= new GlobalSettings();
         _appConfig.GlobalSettings.DriverCountryOverrides ??= [];
         _appConfig.GlobalSettings.DriverCountryCache ??= [];
@@ -126,6 +146,7 @@ internal sealed class IRacingPoller : IDisposable
         SeedFlairCountryMappingsFromDefaults();
 
         _stoppedHandler = () => _stoppedGate.Set();
+        _watchdog = new IRacingWatchdogController(WatchdogStallTicks);
 
         _sdk = new IRacingSdk();
         AttachSdkEvents();
@@ -173,9 +194,14 @@ internal sealed class IRacingPoller : IDisposable
     {
         AppLog.Info("iRacing SDK connected вЂ” session active.");
         _hasConnected = true;
+        _sessionFieldDumpLogged = false;
         _fuelTracker.Reset();
         _carStateTracker.Reset();
         _calculator.Reset();
+        ResetLeaderLapAverages();
+        _sessionBestLapFromYaml = TimeSpan.Zero;
+        _cachedPlayerCarIdx = -1;
+        ClearRaceStateSnapshot();
         _onStateChanged(SimState.InSession);
     }
 
@@ -185,6 +211,10 @@ internal sealed class IRacingPoller : IDisposable
         _fuelTracker.Reset();
         _carStateTracker.Reset();
         _calculator.Reset();
+        ResetLeaderLapAverages();
+        _sessionBestLapFromYaml = TimeSpan.Zero;
+        _cachedPlayerCarIdx = -1;
+        ClearRaceStateSnapshot();
         _onStateChanged(SimState.Connected);
     }
 
@@ -195,13 +225,20 @@ internal sealed class IRacingPoller : IDisposable
             var (drivers, session) = IRacingSessionDecoder.Decode(_sdk.Data);
             _cachedDrivers = ResolveDriverCountries(drivers);
             TraceCountryResolution(_cachedDrivers);
+            TryUpdateCachedPlayerCarIdx(_sdk.Data);
 
             // Cache track length for TrackMapData (changes only on track change).
             _trackLengthMeters = ParseTrackLengthMeters(
                 _sdk.Data.SessionInfo?.WeekendInfo?.TrackLength);
+            _sessionTimeLimit = session.SessionTimeLimit > TimeSpan.Zero
+                ? session.SessionTimeLimit
+                : null;
+            _sessionBestLapFromYaml = session.SessionBestLapTime;
 
             _bus.Publish(session);
+            PublishRaceStateSnapshot(() => _stateSession = session);
             AppLog.Info($"Session info updated: {session.TrackName} / {session.SessionType}");
+            DumpSessionSdkFieldsOnce();
         }
         catch (Exception ex)
         {
@@ -312,6 +349,7 @@ internal sealed class IRacingPoller : IDisposable
         if (_restarting) return;
 
         _telemetryFrameCount++;
+        DumpSessionSdkFieldsOnce();
 
         // Each publisher is isolated: one failure cannot block the others.
         try { PublishDriverData(); }
@@ -355,59 +393,30 @@ internal sealed class IRacingPoller : IDisposable
         if (_disposed || _restarting) return;
 
         var current = _telemetryFrameCount;
+        var decision = _watchdog.Evaluate(
+            currentFrame: current,
+            hasConnected: _hasConnected,
+            simConnected: _connectionProbe.IsConnected(),
+            restartDisabled: DebugDisableWatchdogRestart);
 
-        // First tick: just capture baseline, don't decide anything yet.
-        if (_watchdogPrevFrame < 0)
+        if (decision.ShouldLogStall)
         {
-            _watchdogPrevFrame  = current;
-            _watchdogStallCount = 0;
+            AppLog.Info(
+                $"IRacingPoller: telemetry stalled for " +
+                $"{decision.StallCount * WatchdogIntervalSec}s while iRacing MMF is connected " +
+                $"(stall {decision.StallCount}/{WatchdogStallTicks}).");
+        }
+
+        if (decision.RestartSuppressed)
+        {
+            AppLog.Warn(
+                "IRacingPoller watchdog restart suppressed by debug toggle " +
+                $"({EnvDisableWatchdogRestart}=1).");
             return;
         }
 
-        if (current != _watchdogPrevFrame)
-        {
-            // Telemetry is flowing вЂ” reset stall counter.
-            _watchdogPrevFrame  = current;
-            _watchdogStallCount = 0;
-            return;
-        }
-
-        // Frames have not advanced since last check.
-        // If OnConnected has never fired, iRacing is still loading вЂ” the connected bit in
-        // the MMF gets set before telemetry starts. Never restart during loading; just
-        // keep the baseline fresh so the stall count doesn't accumulate.
-        if (!_hasConnected)
-        {
-            _watchdogPrevFrame = current;
-            return;
-        }
-
-        if (!IsMmfConnected())
-        {
-            // iRacing itself has gone away вЂ” SimDetector handles this via IsRunning().
-            _watchdogStallCount = 0;
-            return;
-        }
-
-        _watchdogStallCount++;
-        AppLog.Info(
-            $"IRacingPoller: telemetry stalled for " +
-            $"{_watchdogStallCount * WatchdogIntervalSec}s while iRacing MMF is connected " +
-            $"(stall {_watchdogStallCount}/{WatchdogStallTicks}).");
-
-        if (_watchdogStallCount >= WatchdogStallTicks)
-        {
-            if (DebugDisableWatchdogRestart)
-            {
-                AppLog.Warn(
-                    "IRacingPoller watchdog restart suppressed by debug toggle " +
-                    $"({EnvDisableWatchdogRestart}=1).");
-                _watchdogStallCount = 0;
-                _watchdogPrevFrame = current;
-                return;
-            }
+        if (decision.ShouldRestart)
             RestartSdk();
-        }
     }
 
     /// <summary>
@@ -459,8 +468,6 @@ internal sealed class IRacingPoller : IDisposable
             // Reset frame counters and connection state so the watchdog re-establishes
             // its baseline and doesn't restart again before the new SDK connects.
             _telemetryFrameCount = 0;
-            _watchdogPrevFrame   = -1;
-            _watchdogStallCount  = 0;
             _hasConnected        = false;
 
             _sdk.Start();
@@ -474,25 +481,7 @@ internal sealed class IRacingPoller : IDisposable
         finally
         {
             _restarting = false;
-        }
-    }
-
-    /// <summary>
-    /// Reads the iRacing SDK shared-memory status bit directly.
-    /// Returns <c>true</c> when the sim is live, <c>false</c> if the file is absent
-    /// or the connected bit is not set.
-    /// </summary>
-    private static bool IsMmfConnected()
-    {
-        try
-        {
-            using var mmf  = MemoryMappedFile.OpenExisting(MmfName, MemoryMappedFileRights.Read);
-            using var view = mmf.CreateViewAccessor(0, 8, MemoryMappedFileAccess.Read);
-            return (view.ReadInt32(MmfStatusOffset) & MmfConnectedBit) != 0;
-        }
-        catch
-        {
-            return false;
+            _watchdog.CompleteRestartCycle();
         }
     }
 
@@ -506,46 +495,75 @@ internal sealed class IRacingPoller : IDisposable
         var lastLapSec       = SafeGetFloat(data, "LapLastLapTime");
         var delta            = SafeGetFloat(data, "LapDeltaToBestLap");
         var deltaSessionBest = SafeGetFloat(data, "LapDeltaToSessionBestLap");
+        var hasSessionBestRef = SafeGetBool(data, "LapDeltaToSessionBestLap_OK");
         var position         = SafeGetInt(data, "PlayerCarPosition");
         var lap              = SafeGetInt(data, "Lap");
 
         // Live session timing вЂ” read from telemetry so the display counts down in
         // real time rather than showing a stale YAML snapshot value.
-        var sessionTimeSec       = SafeGetFloat(data, "SessionTime");
-        var sessionTimeRemainSec = SafeGetFloat(data, "SessionTimeRemain");
+        var sessionTimeSec       = SafeGetTelemetrySeconds(data, "SessionTime");
+        var sessionTimeRemainSec = SafeGetTelemetrySeconds(data, "SessionTimeRemain");
+        var sessionLapsRemainRaw = SafeGetInt(data, "SessionLapsRemain");
 
         // In-game time of day (real-time, not YAML snapshot).
-        var sessionTimeOfDaySec = SafeGetFloat(data, "SessionTimeOfDay");
+        var sessionTimeOfDaySec = SafeGetTelemetrySeconds(data, "SessionTimeOfDay");
         TimeOnly? gameTimeOfDay = sessionTimeOfDaySec > 0f
             ? TimeOnly.FromTimeSpan(TimeSpan.FromSeconds(sessionTimeOfDaySec % 86400.0))
             : null;
 
-        // Session best = minimum valid lap time across all cars this session.
-        var sessionBestSec = 0f;
-        for (int i = 0; i < MaxCars; i++)
+        // Player-scoped session best only.
+        // Using field-wide minima (CarIdxBestLapTime / session tables) can pick unrelated cars/classes.
+        // Keep SessionBestLapTime empty until iRacing signals a valid session-best reference.
+        var sessionBestSec = hasSessionBestRef && bestLapSec > 0f
+            ? bestLapSec
+            : 0f;
+
+        var sessionTimeElapsedValid = sessionTimeSec >= 0f && sessionTimeSec < 1e10f;
+        var sessionTimeRemainValid = sessionTimeRemainSec >= 0f && sessionTimeRemainSec < 1e10f;
+        TimeSpan? sessionRemaining = sessionTimeRemainValid
+            ? ClampedTimeSpan(sessionTimeRemainSec)
+            : (TimeSpan?)null;
+
+        var sessionElapsed = TimeSpan.Zero;
+        if (sessionRemaining.HasValue && _sessionTimeLimit is { } limit && limit > TimeSpan.Zero)
         {
-            var t = SafeGetFloat(data, "CarIdxBestLapTime", i);
-            if (t > 0f && (sessionBestSec <= 0f || t < sessionBestSec))
-                sessionBestSec = t;
+            // Prefer elapsed = configured-session-duration - live-remaining.
+            // This path avoids bogus SessionTime telemetry values seen in some sessions.
+            var boundedRemaining = sessionRemaining.Value > limit ? limit : sessionRemaining.Value;
+            sessionElapsed = limit - boundedRemaining;
+        }
+        else if (sessionTimeElapsedValid)
+        {
+            // Fallback only when we cannot derive elapsed from the session limit.
+            sessionElapsed = ClampedTimeSpan(sessionTimeSec);
         }
 
-        _bus.Publish(new DriverData
+        var sessionLapsRemaining =
+            sessionLapsRemainRaw >= 0 && sessionLapsRemainRaw < short.MaxValue
+                ? sessionLapsRemainRaw
+                : (int?)null;
+
+        var driverData = new DriverData
         {
-            Position              = position,
-            Lap                   = lap,
-            BestLapTime           = bestLapSec > 0 ? TimeSpan.FromSeconds(bestLapSec) : TimeSpan.Zero,
-            LastLapTime           = lastLapSec > 0 ? TimeSpan.FromSeconds(lastLapSec) : TimeSpan.Zero,
-            SessionBestLapTime    = sessionBestSec > 0 ? TimeSpan.FromSeconds(sessionBestSec) : TimeSpan.Zero,
-            LapDeltaVsBestLap     = delta,
-            LapDeltaVsSessionBest = deltaSessionBest,
-            SessionTimeElapsed    = sessionTimeSec > 0f ? ClampedTimeSpan(sessionTimeSec) : TimeSpan.Zero,
+            Position                = position,
+            Lap                     = lap,
+            BestLapTime             = bestLapSec > 0 ? TimeSpan.FromSeconds(bestLapSec) : TimeSpan.Zero,
+            LastLapTime             = lastLapSec > 0 ? TimeSpan.FromSeconds(lastLapSec) : TimeSpan.Zero,
+            SessionBestLapTime      = sessionBestSec > 0 ? TimeSpan.FromSeconds(sessionBestSec) : TimeSpan.Zero,
+            LapDeltaVsBestLap       = delta,
+            LapDeltaVsSessionBest   = deltaSessionBest,
+            HasSessionBestReference = hasSessionBestRef || sessionBestSec > 0f,
+            SessionTimeElapsed      = sessionElapsed,
             // iRacing returns -1 for SessionTimeRemain when the session has no time limit (laps-based).
             // It also returns a huge sentinel float (~3.4e38) in some session types вЂ” treat those as null too.
-            SessionTimeRemaining  = sessionTimeRemainSec >= 0f && sessionTimeRemainSec < 1e10f
-                                        ? ClampedTimeSpan(sessionTimeRemainSec)
-                                        : (TimeSpan?)null,
-            GameTimeOfDay         = gameTimeOfDay,
-        });
+            SessionTimeRemaining    = sessionRemaining,
+            GameTimeOfDay           = gameTimeOfDay,
+            EstimatedLapsRemaining  = EstimateLapsRemaining(data, sessionRemaining),
+            SessionLapsRemaining    = sessionLapsRemaining,
+        };
+
+        _bus.Publish(driverData);
+        PublishRaceStateSnapshot(() => _stateDriver = driverData);
     }
 
     private void PublishTelemetryData()
@@ -557,7 +575,7 @@ internal sealed class IRacingPoller : IDisposable
 
         _fuelTracker.Update(lap, fuelLevel, sessionFlags);
 
-        _bus.Publish(new TelemetryData(
+        var telemetryData = new TelemetryData(
             Throttle:              SafeGetFloat(data, "Throttle"),
             Brake:                 SafeGetFloat(data, "Brake"),
             Clutch:                SafeGetFloat(data, "Clutch"),
@@ -569,13 +587,17 @@ internal sealed class IRacingPoller : IDisposable
             FuelConsumptionPerLap: _fuelTracker.PerLapAverage,
             LastLapFuelLiters:     _fuelTracker.LastLapConsumption,
             IncidentCount:         SafeGetInt(data, "PlayerCarMyIncidentCount")
-        ));
+        );
+
+        _bus.Publish(telemetryData);
+        PublishRaceStateSnapshot(() => _stateTelemetry = telemetryData);
     }
 
     private void PublishRelativeData()
     {
         var data         = _sdk.Data;
-        var playerCarIdx = data.SessionInfo?.DriverInfo?.DriverCarIdx ?? 0;
+        var playerCarIdx = ResolvePlayerCarIdx(data);
+        TracePlayerCarIdxResolution(data, playerCarIdx);
 
         // Prefer the SDK's pre-computed estimated lap time for the player's car;
         // fall back to session lap times if it's not available yet.
@@ -632,12 +654,17 @@ internal sealed class IRacingPoller : IDisposable
         var (relativeData, standingsData) = _calculator.Compute(snapshot, _cachedDrivers, _carStateTracker);
         _bus.Publish(relativeData);
         _bus.Publish(standingsData);
+        PublishRaceStateSnapshot(() =>
+        {
+            _stateRelative = relativeData;
+            _stateStandings = standingsData;
+        });
     }
 
     private void PublishPitData()
     {
         var data         = _sdk.Data;
-        var playerCarIdx = data.SessionInfo?.DriverInfo?.DriverCarIdx ?? 0;
+        var playerCarIdx = ResolvePlayerCarIdx(data);
 
         var isOnPitRoad    = SafeGetInt(data, "OnPitRoad") != 0;
         var trackSurface   = SafeGetInt(data, "PlayerTrackSurface");
@@ -656,7 +683,7 @@ internal sealed class IRacingPoller : IDisposable
         if ((iracingPitFlags & 0x20) != 0) serviceFlags |= PitServiceFlags.WindshieldTearoff;
         if ((iracingPitFlags & 0x40) != 0) serviceFlags |= PitServiceFlags.FastRepair;
 
-        _bus.Publish(new PitData(
+        var pitData = new PitData(
             IsOnPitRoad:        isOnPitRoad,
             IsInPitStall:       isInPitStall,
             PitLimiterSpeedMps: SafeGetFloat(data, "PitSpeedLimit"),
@@ -665,7 +692,9 @@ internal sealed class IRacingPoller : IDisposable
             PitStopCount:       SafeGetInt(data, "CarIdxNumPitStops", playerCarIdx),
             RequestedService:   serviceFlags,
             FuelToAddLiters:    SafeGetFloat(data, "dpFuelFill")
-        ));
+        );
+        _bus.Publish(pitData);
+        PublishRaceStateSnapshot(() => _statePit = pitData);
     }
 
     private void PublishWeatherData()
@@ -681,7 +710,7 @@ internal sealed class IRacingPoller : IDisposable
         var trackWetnessRaw  = SafeGetInt(data, "TrackWetness");
         var trackWetnessNorm = trackWetnessRaw <= 0 ? 0f : (trackWetnessRaw - 1) / 6f;
 
-        _bus.Publish(new WeatherData(
+        var weatherData = new WeatherData(
             AirTempC:         SafeGetFloat(data, "AirTemp"),
             TrackTempC:       SafeGetFloat(data, "TrackTempCrew"),
             WindSpeedMps:     SafeGetFloat(data, "WindVel"),
@@ -690,13 +719,15 @@ internal sealed class IRacingPoller : IDisposable
             SkyCoverage:      SafeGetInt(data, "Skies"),
             TrackWetness:     trackWetnessNorm,
             IsPrecipitating:  SafeGetInt(data, "WeatherDeclaredWet") != 0
-        ));
+        );
+        _bus.Publish(weatherData);
+        PublishRaceStateSnapshot(() => _stateWeather = weatherData);
     }
 
     private void PublishTrackMapData()
     {
         var data         = _sdk.Data;
-        var playerCarIdx = data.SessionInfo?.DriverInfo?.DriverCarIdx ?? 0;
+        var playerCarIdx = ResolvePlayerCarIdx(data);
 
         var drivers     = _cachedDrivers;
         var driverByIdx = new Dictionary<int, DriverSnapshot>(drivers.Length);
@@ -728,9 +759,49 @@ internal sealed class IRacingPoller : IDisposable
             ));
         }
 
-        _bus.Publish(new TrackMapData(
+        var trackMapData = new TrackMapData(
             TrackLengthMeters: _trackLengthMeters,
-            Cars:              cars));
+            Cars:              cars);
+        _bus.Publish(trackMapData);
+        PublishRaceStateSnapshot(() => _stateTrackMap = trackMapData);
+    }
+
+    private void ClearRaceStateSnapshot()
+    {
+        PublishRaceStateSnapshot(() =>
+        {
+            _stateSession   = null;
+            _stateDriver    = null;
+            _stateTelemetry = null;
+            _stateRelative  = null;
+            _stateStandings = null;
+            _statePit       = null;
+            _stateTrackMap  = null;
+            _stateWeather   = null;
+        });
+    }
+
+    private void PublishRaceStateSnapshot(Action update)
+    {
+        RaceStateSnapshot snapshot;
+        lock (_stateLock)
+        {
+            update();
+            snapshot = new RaceStateSnapshot
+            {
+                Version   = ++_stateVersion,
+                Session   = _stateSession,
+                Driver    = _stateDriver,
+                Telemetry = _stateTelemetry,
+                Relative  = _stateRelative,
+                Standings = _stateStandings,
+                Pit       = _statePit,
+                TrackMap  = _stateTrackMap,
+                Weather   = _stateWeather,
+            };
+        }
+
+        _bus.Publish(snapshot);
     }
 
     // в”Ђв”Ђ Helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
@@ -765,6 +836,12 @@ internal sealed class IRacingPoller : IDisposable
         return data.GetInt(name);
     }
 
+    private static bool SafeGetBool(IRacingSdkData data, string name)
+    {
+        if (!data.TelemetryDataProperties.ContainsKey(name)) return false;
+        return data.GetBool(name);
+    }
+
     /// <summary>Indexed variant of <see cref="SafeGetInt(IRacingSdkData,string)"/>.</summary>
     private static int SafeGetInt(IRacingSdkData data, string name, int index)
     {
@@ -781,6 +858,123 @@ internal sealed class IRacingPoller : IDisposable
     {
         const float MaxSec = 86400f * 30; // 30 days вЂ” no racing session is longer
         return TimeSpan.FromSeconds(Math.Clamp(seconds, 0f, MaxSec));
+    }
+
+    private static float SafeGetTelemetrySeconds(IRacingSdkData data, string name)
+    {
+        if (!data.TelemetryDataProperties.ContainsKey(name))
+            return 0f;
+
+        var meta = data.TelemetryDataProperties[name];
+        var varType = TryReadProperty(meta, "VarType")?.ToString() ?? string.Empty;
+        if (varType.Contains("Double", StringComparison.OrdinalIgnoreCase))
+            return (float)data.GetDouble(name);
+
+        return data.GetFloat(name);
+    }
+
+    private int? EstimateLapsRemaining(IRacingSdkData data, TimeSpan? sessionRemaining)
+    {
+        if (!sessionRemaining.HasValue || sessionRemaining.Value <= TimeSpan.Zero)
+            return null;
+
+        var leaderCarIdx = FindLeaderCarIdx(data);
+        if (leaderCarIdx < 0)
+            return null;
+
+        CaptureLeaderLapHistory(data, leaderCarIdx);
+
+        var recent = _recentLapTimesByCarIdx[leaderCarIdx];
+        if (recent.Count == 0)
+            return null;
+
+        var avgLapSec = recent.Average();
+        if (!(avgLapSec > 0f))
+            return null;
+
+        var laps = (int)Math.Ceiling(sessionRemaining.Value.TotalSeconds / avgLapSec);
+        return Math.Max(0, laps);
+    }
+
+    private static int FindLeaderCarIdx(IRacingSdkData data)
+    {
+        for (var i = 0; i < MaxCars; i++)
+        {
+            if (SafeGetInt(data, "CarIdxPosition", i) == 1)
+                return i;
+        }
+        return -1;
+    }
+
+    private void CaptureLeaderLapHistory(IRacingSdkData data, int leaderCarIdx)
+    {
+        var currentLap = SafeGetInt(data, "CarIdxLap", leaderCarIdx);
+        if (currentLap <= 0)
+            return;
+
+        if (currentLap <= _lastLapSampledByCarIdx[leaderCarIdx])
+            return;
+
+        var lastLapSec = SafeGetFloat(data, "CarIdxLastLapTime", leaderCarIdx);
+        if (!(lastLapSec > 0f))
+            return;
+
+        _lastLapSampledByCarIdx[leaderCarIdx] = currentLap;
+        var queue = _recentLapTimesByCarIdx[leaderCarIdx];
+        queue.Enqueue(lastLapSec);
+        while (queue.Count > 5)
+            queue.Dequeue();
+    }
+
+    private void ResetLeaderLapAverages()
+    {
+        for (var i = 0; i < MaxCars; i++)
+        {
+            _recentLapTimesByCarIdx[i].Clear();
+            _lastLapSampledByCarIdx[i] = 0;
+        }
+    }
+
+    private int ResolvePlayerCarIdx(IRacingSdkData data)
+    {
+        if (TryUpdateCachedPlayerCarIdx(data))
+            return _cachedPlayerCarIdx;
+
+        // Last known good value (prevents temporary SessionInfo null/zero glitches from re-anchoring).
+        if (_cachedPlayerCarIdx >= 0 && _cachedPlayerCarIdx < MaxCars)
+            return _cachedPlayerCarIdx;
+
+        return 0;
+    }
+
+    private bool TryUpdateCachedPlayerCarIdx(IRacingSdkData data)
+    {
+        var sessionIdx = data.SessionInfo?.DriverInfo?.DriverCarIdx ?? -1;
+        if (sessionIdx >= 0 && sessionIdx < MaxCars)
+        {
+            _cachedPlayerCarIdx = sessionIdx;
+            return true;
+        }
+
+        var telemetryIdx = SafeGetInt(data, "PlayerCarIdx");
+        if (telemetryIdx >= 0 && telemetryIdx < MaxCars)
+        {
+            _cachedPlayerCarIdx = telemetryIdx;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void TracePlayerCarIdxResolution(IRacingSdkData data, int resolvedIdx)
+    {
+        if (!DebugTraceLifecycle) return;
+
+        var sessionIdx = data.SessionInfo?.DriverInfo?.DriverCarIdx ?? -1;
+        var telemetryIdx = SafeGetInt(data, "PlayerCarIdx");
+        AppLog.Info(
+            $"IRacingPoller player-car-idx: resolved={resolvedIdx}, session={sessionIdx}, " +
+            $"telemetry={telemetryIdx}, cached={_cachedPlayerCarIdx}");
     }
 
     /// <summary>
@@ -883,6 +1077,198 @@ internal sealed class IRacingPoller : IDisposable
     {
         if (DebugTraceLifecycle)
             AppLog.Info($"IRacingPoller lifecycle: {message}");
+    }
+
+    private void DumpSessionSdkFieldsOnce()
+    {
+        if (_sessionFieldDumpLogged)
+            return;
+
+        try
+        {
+            var data = _sdk.Data;
+            if (data?.SessionInfo == null)
+                return;
+
+            AppLog.Info("IRSDK Session Dump BEGIN | field | value");
+            DumpYamlSessionSection(data);
+            DumpTelemetrySessionFields(data);
+            AppLog.Info("IRSDK Session Dump END");
+            _sessionFieldDumpLogged = true;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Exception("IRSDK Session Dump failed", ex);
+        }
+    }
+
+    private static void DumpYamlSessionSection(IRacingSdkData data)
+    {
+        var info = data.SessionInfo;
+        if (info == null)
+            return;
+
+        var weekend = info.WeekendInfo;
+        if (weekend != null)
+        {
+            foreach (var prop in weekend.GetType().GetProperties(
+                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                if (prop.Name.Contains("Driver", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                object? value;
+                try { value = prop.GetValue(weekend); }
+                catch { value = null; }
+
+                AppLog.Info($"IRSDK Session Dump | WeekendInfo.{prop.Name} | {FormatDumpValue(value)}");
+            }
+        }
+
+        var sessions = info.SessionInfo?.Sessions;
+        var sessionNum = data.GetInt("SessionNum");
+        if (sessions == null)
+            return;
+
+        AppLog.Info($"IRSDK Session Dump | SessionInfo.SessionNum | {sessionNum}");
+        AppLog.Info($"IRSDK Session Dump | SessionInfo.Sessions.Count | {sessions.Count}");
+
+        if (sessionNum < 0 || sessionNum >= sessions.Count)
+            return;
+
+        var current = sessions[sessionNum];
+        if (current == null)
+            return;
+
+        foreach (var prop in current.GetType().GetProperties(
+                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (prop.Name.Contains("Driver", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            object? value;
+            try { value = prop.GetValue(current); }
+            catch { value = null; }
+
+            AppLog.Info($"IRSDK Session Dump | SessionInfo.Current.{prop.Name} | {FormatDumpValue(value)}");
+        }
+    }
+
+    private static void DumpTelemetrySessionFields(IRacingSdkData data)
+    {
+        var keys = data.TelemetryDataProperties.Keys
+            .Where(IsSessionTelemetryField)
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var key in keys)
+        {
+            if (!data.TelemetryDataProperties.TryGetValue(key, out var meta) || meta == null)
+                continue;
+
+            var count = TryReadIntProperty(meta, "Count");
+            var varType = TryReadProperty(meta, "VarType")?.ToString() ?? "?";
+
+            if (count > 1)
+            {
+                AppLog.Info($"IRSDK Session Dump | Telemetry.{key} | [array count={count}, type={varType}]");
+                continue;
+            }
+
+            var value = ReadTelemetryScalarValue(data, key, varType);
+            AppLog.Info($"IRSDK Session Dump | Telemetry.{key} | {value} (type={varType})");
+        }
+    }
+
+    private static bool IsSessionTelemetryField(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        if (name.Contains("CarIdx", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Driver", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Player", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return name.Contains("Session", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Weekend", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "Lap", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "LapBestLapTime", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "LapLastLapTime", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "SessionFlags", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ReadTelemetryScalarValue(IRacingSdkData data, string key, string varType)
+    {
+        try
+        {
+            var lowered = varType.ToLowerInvariant();
+            if (lowered.Contains("double"))
+            {
+                var value = data.GetDouble(key);
+                return value.ToString("G17", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            if (lowered.Contains("float"))
+            {
+                var value = data.GetFloat(key);
+                return value.ToString("G9", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            if (lowered.Contains("bitfield"))
+                return data.GetBitField(key).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            if (lowered.Contains("bool"))
+                return data.GetBool(key) ? "true" : "false";
+
+            if (lowered.Contains("char"))
+            {
+                var ch = data.GetChar(key);
+                return char.IsControl(ch) ? ((int)ch).ToString(System.Globalization.CultureInfo.InvariantCulture) : ch.ToString();
+            }
+
+            return data.GetInt(key).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (Exception ex)
+        {
+            return $"<read-error:{ex.GetType().Name}>";
+        }
+    }
+
+    private static object? TryReadProperty(object source, string propertyName)
+    {
+        var prop = source.GetType().GetProperty(
+            propertyName,
+            System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.IgnoreCase);
+        return prop?.GetValue(source);
+    }
+
+    private static int TryReadIntProperty(object source, string propertyName)
+    {
+        var raw = TryReadProperty(source, propertyName);
+        if (raw == null)
+            return 0;
+
+        return raw switch
+        {
+            int i => i,
+            long l when l >= int.MinValue && l <= int.MaxValue => (int)l,
+            _ => int.TryParse(raw.ToString(), out var parsed) ? parsed : 0,
+        };
+    }
+
+    private static string FormatDumpValue(object? value)
+    {
+        if (value == null)
+            return "<null>";
+
+        return value switch
+        {
+            string s when string.IsNullOrEmpty(s) => "<empty>",
+            string s => s,
+            _ => value.ToString() ?? "<null>",
+        };
     }
 }
 
