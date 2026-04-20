@@ -2,6 +2,16 @@
 
 This guide defines how AI tools should load project documentation with minimal context cost.
 
+## Execution Priority (read first)
+
+1. `docs/tasks/INDEX.md`
+2. Process "Execution Queue" (top → bottom)
+3. Then continue normal loading
+
+Rules:
+- Execution Queue overrides phase order
+- Critical bugfixes come before feature work
+
 ## Goal
 
 Load the fewest files needed to answer the current task correctly.
