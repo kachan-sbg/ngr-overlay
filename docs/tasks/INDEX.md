@@ -1,17 +1,25 @@
-﻿# NrgOverlay вЂ” Task Index
+﻿# NrgOverlay — Task Index
 
-> Navigation: [CODE-NAV.md](../CODE-NAV.md) В· [ARCHITECTURE.md](../ARCHITECTURE.md) В· [ROADMAP.md](../ROADMAP.md)
+> Navigation: [CODE-NAV.md](../CODE-NAV.md) · [ARCHITECTURE.md](../ARCHITECTURE.md) · [ROADMAP.md](../ROADMAP.md)
 > AI docs policy: [AI-DOCS-GUIDE.md](../AI-DOCS-GUIDE.md)
 
+## 🚀 Execution Queue (read first)
+
+1. Beta — fix ISSUE-001 (multi-overlay shutdown crash)
+2. Beta — fix ISSUE-002 (config race)
+3. Beta — fix ISSUE-003 (RenderResources thread safety)
+4. Beta — fix ISSUE-004 (config persistence)
+5. Phase 13 — continue data validation
+
 ## Status legend
-`[ ]` Not started В· `[~]` In progress В· `[x]` Done
+`[ ]` Not started · `[~]` In progress · `[x]` Done
 
 ---
 
-## MVP (Phases 0вЂ“6) вЂ” Complete
+## MVP (Phases 0–6) — Complete
 All archived to `docs/archive/mvp/tasks/`.
 
-## Alpha вЂ” Phases 7вЂ“11 вЂ” Complete
+## Alpha — Phases 7–11 — Complete
 All archived to [`docs/archive/alpha/tasks/`](../archive/alpha/tasks/README.md).
 
 ---
@@ -20,20 +28,19 @@ All archived to [`docs/archive/alpha/tasks/`](../archive/alpha/tasks/README.md).
 
 | Phase | Status | File | Summary |
 |---|---|---|---|
-| 13 вЂ” Data Validation & Audit | `[~]` | [PHASE-13-data-validation.md](PHASE-13-data-validation.md) | Audit every field in every overlay against iRacing + LMU SDK; fix wrong values |
+| Beta — Stability & Usability | `[~]` | [PHASE-BETA-stability-and-usability.md](PHASE-BETA-stability-and-usability.md) | Stabilization for long sessions and real usage |
+| 13 — Data Validation & Audit | `[~]` | [PHASE-13-data-validation.md](PHASE-13-data-validation.md) | Audit every field in every overlay against iRacing + LMU SDK; fix wrong values |
 
 ## Upcoming
 
 | Phase | Status | Summary |
 |---|---|---|
-| 12 вЂ” OBS Mode & Enhanced UX | `[ ]` | Deferred вЂ” spec in [PHASE-12-obs-and-ux.md](PHASE-12-obs-and-ux.md) |
-| 14 вЂ” WebSocket Server | `[ ]` | Live telemetry over WebSocket for custom HTML widgets |
-| 15 вЂ” Field Visibility & Layout | `[ ]` | Per-overlay column show/hide/reorder |
+| 12 — OBS Mode & Enhanced UX | `[ ]` | Deferred — spec in [PHASE-12-obs-and-ux.md](PHASE-12-obs-and-ux.md) |
+| 14 — WebSocket Server | `[ ]` | Live telemetry over WebSocket for custom HTML widgets |
+| 15 — Field Visibility & Layout | `[ ]` | Per-overlay column show/hide/reorder |
 | 16 - Cross-sim Normalization | `[ ]` | Spec: [PHASE-16-cross-sim-normalization.md](PHASE-16-cross-sim-normalization.md) |
 | 21 - Performance & Soak Validation | `[ ]` | Mid priority: [PHASE-21-performance-and-soak.md](PHASE-21-performance-and-soak.md) |
-| 17 вЂ” Radar Overlay | `[ ]` | Top-down proximity radar |
-| 18 вЂ” Map Overlay | `[ ]` | SVG track map + auto-trace |
-| 19 вЂ” ACC Integration | `[ ]` | Assetto Corsa Competizione sim provider |
-| 20 вЂ” Session-State Visibility | `[ ]` | Auto show/hide overlays by session phase |
-
-
+| 17 — Radar Overlay | `[ ]` | Top-down proximity radar |
+| 18 — Map Overlay | `[ ]` | SVG track map + auto-trace |
+| 19 — ACC Integration | `[ ]` | Assetto Corsa Competizione sim provider |
+| 20 — Session-State Visibility | `[ ]` | Auto show/hide overlays by session phase |
